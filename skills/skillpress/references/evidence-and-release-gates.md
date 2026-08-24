@@ -53,7 +53,15 @@ local deltas, accept screenshots or hand-entered numbers as machine evidence, or
 
 ## Fail-closed release decision sequence
 
-When asked whether a release can proceed, state the decision and preserve this order explicitly:
+When asked whether a release can proceed, lead with `ELIGIBLE` or `BLOCKED`. Include an evidence
+inventory that explicitly names the exact source commit, configuration, canonical and scenario-tree
+bindings; pinned trusted CLI version and executable digest; configured Quality/Impact thresholds;
+and official run IDs, raw evidence paths, scores, validation, eligibility, and regression status.
+Mark every unavailable item as missing rather than omitting it.
+
+Then preserve this order explicitly, even when an early blocker makes later steps hypothetical. Do
+not compress deterministic packaging, source push plus CI, or the complete provider dry run into a
+generic preflight:
 
 1. freeze one clean source commit and pass deterministic checks;
 2. capture official Quality and paired Impact with the pinned trusted CLI, meet the configured
