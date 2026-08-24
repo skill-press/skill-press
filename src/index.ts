@@ -40,6 +40,21 @@ export type {
   SkillPackageIssue,
 } from "./package/archive.js";
 export type { SkillPressPackageProvenance } from "./package/generated-provenance.js";
+export { PublicationSagaError, runPublicationSaga } from "./publish/saga.js";
+export type {
+  PublicationAdapter,
+  PublicationCapability,
+  PublicationContext,
+  PublicationPreflight,
+  PublicationReceipt,
+  PublicationSagaIssue,
+  PublicationSagaOptions,
+  PublicationStepReceipt,
+  PublicationStepResult,
+  PublicationTargetReceipt,
+  PublicationTargetStatus,
+  PublicationVerification,
+} from "./publish/saga.js";
 export { checkProject } from "./check/project.js";
 export type {
   ProjectCheckDiagnostic,

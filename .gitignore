@@ -6,6 +6,7 @@ coverage/
 # SkillPress keeps raw evaluation material private and out of source control.
 .skillpress/runs/
 .skillpress/tessl/
+.skillpress/publications/
 .skillpress/staging/
 .skillpress/tmp/
 
