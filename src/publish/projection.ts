@@ -167,18 +167,12 @@ async function collectProjectedFiles(
     const path = relativeDirectory === "" ? entry.name : `${relativeDirectory}/${entry.name}`;
     const absolute = join(root, ...path.split("/"));
     const metadata = await lstat(absolute);
-    if (metadata.isSymbolicLink()) throw new Error("ClawHub projection rejects symbolic links");
+    if (metadata.isSymbolicLink()) throw new Error("Publication projection rejects symbolic links");
     if (metadata.isDirectory()) {
       await collectProjectedFiles(root, path, files);
       continue;
     }
-    if (!metadata.isFile()) throw new Error("ClawHub projection rejects special files");
-    if (
-      path === "SKILL.md" ||
-      (relativeDirectory === "" && entry.name.toLowerCase() === "license")
-    ) {
-      continue;
-    }
+    if (!metadata.isFile()) throw new Error("Publication projection rejects special files");
     files.set(path, {
       bytes: await readFile(absolute),
       executable: (metadata.mode & 0o111) !== 0,
@@ -204,7 +198,7 @@ async function ensureProjectedFile(
     if (!(error instanceof Error) || !("code" in error) || error.code !== "EEXIST") throw error;
     const metadata = await lstat(absolute);
     if (!metadata.isFile() || !(await readFile(absolute)).equals(expected.bytes)) {
-      throw new Error("ClawHub projection conflicts with its idempotency binding");
+      throw new Error("Publication projection conflicts with its idempotency binding");
     }
   }
   await chmod(absolute, mode);
@@ -219,12 +213,12 @@ async function actualProjectedFiles(
     const path = relativeDirectory === "" ? entry.name : `${relativeDirectory}/${entry.name}`;
     const absolute = join(root, ...path.split("/"));
     const metadata = await lstat(absolute);
-    if (metadata.isSymbolicLink()) throw new Error("ClawHub projection storage is unsafe");
+    if (metadata.isSymbolicLink()) throw new Error("Publication projection storage is unsafe");
     if (metadata.isDirectory()) {
       await actualProjectedFiles(root, path, files);
       continue;
     }
-    if (!metadata.isFile()) throw new Error("ClawHub projection storage is unsafe");
+    if (!metadata.isFile()) throw new Error("Publication projection storage is unsafe");
     files.set(path, {
       bytes: await readFile(absolute),
       executable: (metadata.mode & 0o111) !== 0,
@@ -247,6 +241,9 @@ export async function projectClawHubSkill(
   });
   const expected = new Map<string, ProjectedTreeFile>();
   await collectProjectedFiles(canonical.root, "", expected);
+  for (const path of expected.keys()) {
+    if (!path.includes("/") && path.toLowerCase() === "license") expected.delete(path);
+  }
   expected.set("SKILL.md", {
     bytes: Buffer.from(projected.skillMarkdown),
     executable: false,
@@ -270,4 +267,82 @@ export async function projectClawHubSkill(
     throw new Error("ClawHub projection contains unexpected or changed files");
   }
   return projected;
+}
+
+function projectedDescription(source: string): string {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(source);
+  if (match === null) throw new Error("Canonical SKILL.md frontmatter is unavailable");
+  const document = parseDocument(match[1] as string, {
+    merge: false,
+    prettyErrors: false,
+    strict: true,
+    uniqueKeys: true,
+  });
+  if (document.errors.length > 0) throw new Error("Canonical SKILL.md frontmatter is invalid");
+  const value: unknown = document.toJS({ maxAliasCount: 0 });
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Canonical SKILL.md frontmatter must be a mapping");
+  }
+  const description = (value as Readonly<Record<string, unknown>>).description;
+  if (typeof description !== "string" || description.length === 0) {
+    throw new Error("Canonical skill description is unavailable");
+  }
+  return description;
+}
+
+/** Project the complete canonical skill into Tessl's current public plugin package shape. */
+export async function projectTesslPlugin(
+  context: PublicationContext,
+  workspace: string,
+): Promise<{
+  readonly root: string;
+  readonly manifest: string;
+  readonly skillMarkdown: string;
+}> {
+  const canonical = await readBoundCanonicalSkill(context);
+  const privateRoot = join(context.root, ".skillpress");
+  const projections = join(privateRoot, "projections");
+  const run = join(projections, context.idempotencyKey);
+  const root = join(run, "tessl");
+  const manifest = `${JSON.stringify(
+    {
+      name: `${workspace}/${context.skill.name}`,
+      version: context.project.version,
+      description: projectedDescription(canonical.skillMarkdown),
+      private: false,
+      skills: [`skills/${context.skill.name}`],
+    },
+    null,
+    2,
+  )}\n`;
+  for (const path of [privateRoot, projections, run, root]) await ensureDirectory(path);
+
+  const expected = new Map<string, ProjectedTreeFile>();
+  const canonicalFiles = new Map<string, ProjectedTreeFile>();
+  await collectProjectedFiles(canonical.root, "", canonicalFiles);
+  for (const [path, file] of canonicalFiles) {
+    expected.set(`skills/${context.skill.name}/${path}`, file);
+  }
+  expected.set(".tessl-plugin/plugin.json", {
+    bytes: Buffer.from(manifest),
+    executable: false,
+  });
+  for (const [path, file] of expected) await ensureProjectedFile(root, path, file);
+
+  const actual = new Map<string, ProjectedTreeFile>();
+  await actualProjectedFiles(root, "", actual);
+  if (
+    actual.size !== expected.size ||
+    [...expected].some(([path, file]) => {
+      const candidate = actual.get(path);
+      return (
+        candidate === undefined ||
+        candidate.executable !== file.executable ||
+        !candidate.bytes.equals(file.bytes)
+      );
+    })
+  ) {
+    throw new Error("Tessl projection contains unexpected or changed files");
+  }
+  return Object.freeze({ root, manifest, skillMarkdown: canonical.skillMarkdown });
 }

@@ -68,6 +68,8 @@ export { createClawHubPublicationAdapter } from "./publish/adapters/clawhub.js";
 export type { ClawHubPublicationAdapterOptions } from "./publish/adapters/clawhub.js";
 export { createSkillsShDerivedAdapter } from "./publish/adapters/skills-sh.js";
 export type { SkillsShDerivedAdapterOptions } from "./publish/adapters/skills-sh.js";
+export { createTesslPublicationAdapter } from "./publish/adapters/tessl.js";
+export type { TesslPublicationAdapterOptions } from "./publish/adapters/tessl.js";
 export type {
   PublicationAdapterRuntime,
   PublicationCommandExecutor,
