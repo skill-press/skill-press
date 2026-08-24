@@ -4,9 +4,11 @@ import { readFile, readdir } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 import {
+  COMPARABLE_TEXT_GENERAL_CATEGORY_VERSION,
   fullCaseFoldUnicode15_1,
   isAssignedScalarUnicode15_1,
   isDefaultIgnorableCodePointUnicode15_1,
+  isPunctuationOrSymbolCodePointUnicode17_0,
   UNICODE_PORTABILITY_VERSION,
 } from "../src/validate/generated-unicode.js";
 
@@ -41,6 +43,13 @@ function withPropertyReplacement<T>(
 
 async function readUnicodeSource(file: string): Promise<string> {
   return readFile(new URL(`vendor/unicode/15.1.0/${file}`, repositoryRoot), "utf8");
+}
+
+async function readGeneralCategorySource(): Promise<string> {
+  return readFile(
+    new URL("vendor/unicode/17.0.0/DerivedGeneralCategory.txt", repositoryRoot),
+    "utf8",
+  );
 }
 
 function parseCaseFoldOracle(source: string): Map<number, readonly number[]> {
@@ -142,6 +151,24 @@ function parseDefaultIgnorableOracle(source: string): {
   return { bitmap, recordCount };
 }
 
+function parsePunctuationAndSymbolOracle(source: string): {
+  readonly bitmap: Uint8Array;
+  readonly recordCount: number;
+} {
+  const bitmap = new Uint8Array(CODE_POINT_COUNT);
+  let recordCount = 0;
+  for (const line of source.split("\n")) {
+    const match = /^([0-9A-F]{4,6})(?:\.\.([0-9A-F]{4,6}))?\s*;\s*([PS][a-z])\s+#/u.exec(line);
+    if (match === null) continue;
+    const startText = match[1];
+    const endText = match[2] ?? startText;
+    if (startText === undefined || endText === undefined) continue;
+    bitmap.fill(1, Number.parseInt(startText, 16), Number.parseInt(endText, 16) + 1);
+    recordCount += 1;
+  }
+  return { bitmap, recordCount };
+}
+
 function countSetRanges(bitmap: Uint8Array): number {
   let count = 0;
   let inside = false;
@@ -180,6 +207,7 @@ function scalarValues(value: string): number[] {
 describe("generated Unicode 15.1 portability tables", () => {
   it("exposes the pinned Unicode version and readable full-fold goldens", () => {
     expect(UNICODE_PORTABILITY_VERSION).toBe("15.1.0");
+    expect(COMPARABLE_TEXT_GENERAL_CATEGORY_VERSION).toBe("17.0.0");
     expect(fullCaseFoldUnicode15_1("AZ")).toBe("az");
     expect(fullCaseFoldUnicode15_1("ß")).toBe("ss");
     expect(fullCaseFoldUnicode15_1("İ")).toBe("i\u0307");
@@ -247,12 +275,14 @@ describe("generated Unicode 15.1 portability tables", () => {
       () => ({
         assigned: isAssignedScalarUnicode15_1(0x41),
         defaultIgnorable: isDefaultIgnorableCodePointUnicode15_1(0x00ad),
+        punctuationOrSymbol: isPunctuationOrSymbolCodePointUnicode17_0(0x21),
         folded: fullCaseFoldUnicode15_1(input),
       }),
     );
     expect(throwingArrayIteratorResult).toEqual({
       assigned: true,
       defaultIgnorable: true,
+      punctuationOrSymbol: true,
       folded: expected,
     });
 
@@ -263,12 +293,14 @@ describe("generated Unicode 15.1 portability tables", () => {
       () => ({
         assigned: isAssignedScalarUnicode15_1(0x41),
         defaultIgnorable: isDefaultIgnorableCodePointUnicode15_1(0x00ad),
+        punctuationOrSymbol: isPunctuationOrSymbolCodePointUnicode17_0(0x21),
         folded: fullCaseFoldUnicode15_1(input),
       }),
     );
     expect(emptyArrayIteratorResult).toEqual({
       assigned: true,
       defaultIgnorable: true,
+      punctuationOrSymbol: true,
       folded: expected,
     });
 
@@ -315,9 +347,14 @@ describe("generated Unicode 15.1 portability tables", () => {
       () => ({
         assigned: isAssignedScalarUnicode15_1(0x41),
         defaultIgnorable: isDefaultIgnorableCodePointUnicode15_1(0x00ad),
+        punctuationOrSymbol: isPunctuationOrSymbolCodePointUnicode17_0(0x21),
       }),
     );
-    expect(integerResult).toEqual({ assigned: true, defaultIgnorable: true });
+    expect(integerResult).toEqual({
+      assigned: true,
+      defaultIgnorable: true,
+      punctuationOrSymbol: true,
+    });
   });
 
   it("matches independent UCD oracles for every code point and locks semantic digests", async () => {
@@ -476,16 +513,59 @@ describe("generated Unicode 15.1 portability tables", () => {
     );
   }, 30_000);
 
+  it("matches the independent Unicode 17 punctuation/symbol oracle for every code point", async () => {
+    const oracle = parsePunctuationAndSymbolOracle(await readGeneralCategorySource());
+    const actual = new Uint8Array(CODE_POINT_COUNT);
+    let mismatchCount = 0;
+    let firstMismatch:
+      | { readonly codePoint: number; readonly expected: boolean; readonly observed: boolean }
+      | undefined;
+
+    for (let codePoint = 0; codePoint <= MAX_CODE_POINT; codePoint += 1) {
+      const expected = oracle.bitmap[codePoint] === 1;
+      const observed = isPunctuationOrSymbolCodePointUnicode17_0(codePoint);
+      if (expected !== observed) {
+        mismatchCount += 1;
+        firstMismatch ??= { codePoint, expected, observed };
+      }
+      if (observed) actual[codePoint] = 1;
+    }
+
+    expect(oracle.recordCount).toBe(708);
+    expect({ count: mismatchCount, first: firstMismatch }).toEqual({
+      count: 0,
+      first: undefined,
+    });
+    expect(actual.reduce((count, value) => count + value, 0)).toBe(9_473);
+    expect(countSetRanges(actual)).toBe(355);
+    expect(digest(packBitset(actual))).toBe(
+      "c06972e22f0b283c265dd69e0ee3a44b525f1f06a45e57f6f2ed64091b8f666a",
+    );
+    for (const invalid of [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      -1,
+      1.5,
+      SURROGATE_START,
+      SURROGATE_END,
+      MAX_CODE_POINT + 1,
+    ]) {
+      expect(isPunctuationOrSymbolCodePointUnicode17_0(invalid)).toBe(false);
+    }
+  }, 30_000);
+
   it("keeps generated declarations narrow and host Unicode operations out of generation", async () => {
     const declaration = await readFile(
       new URL("dist/validate/generated-unicode.d.ts", repositoryRoot),
       "utf8",
     );
     expect(declaration).toContain(
-      "export declare const UNICODE_PORTABILITY_VERSION: string;\nexport declare function fullCaseFoldUnicode15_1(value: string): string;\nexport declare function isAssignedScalarUnicode15_1(codePoint: number): boolean;\nexport declare function isDefaultIgnorableCodePointUnicode15_1(codePoint: number): boolean;",
+      "export declare const UNICODE_PORTABILITY_VERSION: string;\nexport declare const COMPARABLE_TEXT_GENERAL_CATEGORY_VERSION: string;\nexport declare function fullCaseFoldUnicode15_1(value: string): string;\nexport declare function isAssignedScalarUnicode15_1(codePoint: number): boolean;\nexport declare function isDefaultIgnorableCodePointUnicode15_1(codePoint: number): boolean;\nexport declare function isPunctuationOrSymbolCodePointUnicode17_0(codePoint: number): boolean;",
     );
-    expect(declaration).not.toMatch(/(?:ASSIGNED_SCALAR|CASE_FOLD_|DEFAULT_IGNORABLE_)/u);
-    expect(declaration.split("\n").length).toBeLessThanOrEqual(7);
+    expect(declaration).not.toMatch(
+      /(?:ASSIGNED_SCALAR|CASE_FOLD_|DEFAULT_IGNORABLE_|PUNCTUATION_AND_SYMBOL_)/u,
+    );
+    expect(declaration.split("\n").length).toBeLessThanOrEqual(9);
 
     const scriptDirectory = new URL("scripts/", repositoryRoot);
     const unicodeScripts = (await readdir(scriptDirectory)).filter((file) =>

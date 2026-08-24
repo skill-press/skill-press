@@ -38,6 +38,15 @@ const unicodeFiles = [
   },
 ] as const;
 
+const comparableTextUnicodeFile = {
+  file: "DerivedGeneralCategory.txt",
+  bytes: 277_514,
+  displayBytes: "277,514",
+  sha256: "d62e5bab70ca74f099343f71224fa051cb1fdd61a1ab45c0488c44cfc0b6102e",
+  header: "# DerivedGeneralCategory-17.0.0.txt\n",
+  upstream: "https://www.unicode.org/Public/17.0.0/ucd/extracted/DerivedGeneralCategory.txt",
+} as const;
+
 function sha256(content: Uint8Array): string {
   return createHash("sha256").update(content).digest("hex");
 }
@@ -68,6 +77,16 @@ describe("vendored Unicode portability data", () => {
     },
   );
 
+  it("pins the Unicode 17 general-category source byte-for-byte", async () => {
+    const content = await readFile(
+      new URL(`vendor/unicode/17.0.0/${comparableTextUnicodeFile.file}`, repositoryRoot),
+    );
+
+    expect(content.byteLength).toBe(comparableTextUnicodeFile.bytes);
+    expect(sha256(content)).toBe(comparableTextUnicodeFile.sha256);
+    expect(content.toString("utf8").startsWith(comparableTextUnicodeFile.header)).toBe(true);
+  });
+
   it("carries the exact official Unicode License V3 text", async () => {
     const license = await readFile(new URL("LICENSES/Unicode-3.0.txt", repositoryRoot));
 
@@ -82,6 +101,10 @@ describe("vendored Unicode portability data", () => {
     const notice = await readFile(new URL("THIRD_PARTY_NOTICES.md", repositoryRoot), "utf8");
     const readme = await readFile(
       new URL("vendor/unicode/15.1.0/README.md", repositoryRoot),
+      "utf8",
+    );
+    const comparableTextReadme = await readFile(
+      new URL("vendor/unicode/17.0.0/README.md", repositoryRoot),
       "utf8",
     );
 
@@ -104,6 +127,24 @@ describe("vendored Unicode portability data", () => {
     expect(readme).toContain("[`LICENSES/Unicode-3.0.txt`](../../../LICENSES/Unicode-3.0.txt)");
     expect(notice).toContain("SPDX license identifier: `Unicode-3.0`");
     expect(readme).toContain("Source retrieval date: 2026-08-19");
+
+    const expectedComparableTextTable = [
+      "| File | Upstream | Bytes | SHA-256 |",
+      "| --- | --- | ---: | --- |",
+      `| \`${comparableTextUnicodeFile.file}\` | <${comparableTextUnicodeFile.upstream}> | ` +
+        `${comparableTextUnicodeFile.displayBytes} | \`${comparableTextUnicodeFile.sha256}\` |`,
+    ];
+    const comparableTextNotice = notice.slice(
+      notice.indexOf("## Unicode Character Database 17.0.0"),
+    );
+    expect(provenanceTable(comparableTextNotice)).toEqual(expectedComparableTextTable);
+    expect(provenanceTable(comparableTextReadme)).toEqual(expectedComparableTextTable);
+    expect(notice.split(comparableTextUnicodeFile.file)).toHaveLength(3);
+    expect(comparableTextReadme.split(comparableTextUnicodeFile.file)).toHaveLength(3);
+    expect(comparableTextReadme).toContain(
+      "[`LICENSES/Unicode-3.0.txt`](../../../LICENSES/Unicode-3.0.txt)",
+    );
+    expect(comparableTextReadme).toContain("Source retrieval date: 2026-08-24");
   });
 
   it("ships notices and licenses while excluding generation inputs", async () => {
@@ -145,7 +186,10 @@ describe("vendored Unicode portability data", () => {
     expect(packedPaths).toContain("THIRD_PARTY_NOTICES.md");
     expect(packedPaths.some((path) => path === "vendor" || path.startsWith("vendor/"))).toBe(false);
 
-    const rawDigests = new Set(unicodeFiles.map((entry) => entry.sha256));
+    const rawDigests = new Set([
+      ...unicodeFiles.map((entry) => entry.sha256),
+      comparableTextUnicodeFile.sha256,
+    ]);
     const packedDigests = await Promise.all(
       packedPaths.map(async (path) => sha256(await readFile(resolve(repositoryPath, path)))),
     );

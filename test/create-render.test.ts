@@ -195,6 +195,106 @@ describe("capability brief rendering", () => {
     await expect(loadCapabilityBrief(path)).resolves.toMatchObject({ name: "todo" });
   });
 
+  it("accepts high-confidence placeholder near misses in prose", async () => {
+    const safeTitles = [
+      "todo-list",
+      "placeholder-driven design",
+      "replace me-not",
+      "todo-later",
+      "todo—later",
+      "todo -x",
+      "todo —x",
+      "Todo -x",
+      "PLACEHOLDER -x",
+      "[fill]",
+      "[fill rate]",
+      "[replace value]",
+      "[insert value]",
+      "[describe service]",
+      "[enter key]",
+      "[your rights]",
+      "[your title now]",
+      "[todo-rate]",
+      "[todo.rate]",
+      "[your organization]",
+      "TODO-later",
+    ] as const;
+
+    for (const title of safeTitles) {
+      const value = parse(briefText) as SkillPressCapabilityBrief;
+      value.title = title;
+      await expect(
+        loadCapabilityBrief(await temporaryFile(stringify(value))),
+      ).resolves.toMatchObject({ title });
+    }
+  });
+
+  it("accepts realistic property-tax template prose that contains editing words", async () => {
+    const safeOutcomes = [
+      "REPLACE after parcel-source verification",
+      "For this fictional template, the official rule source states that the assessed value directly equals the fair market comparison value. Replace this with the actual jurisdiction-specific transformation.",
+      "Example fixed deadline for this fictional template; replace it with the current official rule for the actual locality.",
+      "Example sale window for the fictional template; replace with the current official jurisdiction-specific rule.",
+      "Describe the verified condition, notice, repair program, litigation, insurance issue, or other fact without making an unsupported legal conclusion.",
+    ] as const;
+
+    for (const outcome of safeOutcomes) {
+      const value = parse(briefText) as SkillPressCapabilityBrief;
+      value.capability.outcome = outcome;
+      await expect(
+        loadCapabilityBrief(await temporaryFile(stringify(value))),
+      ).resolves.toMatchObject({ capability: { outcome } });
+    }
+  });
+
+  it("retains editable brackets and uppercase annotations as placeholders", async () => {
+    const placeholders = [
+      "[fill this in]",
+      "[fill this in later]",
+      "[fill me]",
+      "[fill me later]",
+      "[replace me]",
+      "[replace this later]",
+      "[insert value here]",
+      "[describe service here]",
+      "[enter owner here]",
+      "[your title]",
+      "[your url here]",
+      "TODO -x",
+      "TODO —x",
+    ] as const;
+
+    for (const title of placeholders) {
+      const value = parse(briefText) as SkillPressCapabilityBrief;
+      value.title = title;
+      const error = await expectBriefIssues(stringify(value), "brief.placeholder");
+      expect(error.issues.filter((entry) => entry.code === "brief.placeholder")).toContainEqual({
+        code: "brief.placeholder",
+        path: "/title",
+        message: "value is a placeholder",
+      });
+    }
+  });
+
+  it("freezes the line-separator edge of the refined dash grammar", async () => {
+    for (const title of ["todo -\u2028detail", "todo - \u2029detail", "todo \u2028-\u2029detail"]) {
+      const value = parse(briefText) as SkillPressCapabilityBrief;
+      value.title = title;
+      const error = await expectBriefIssues(stringify(value), "brief.placeholder");
+      expect(error.issues).toContainEqual({
+        code: "brief.placeholder",
+        path: "/title",
+        message: "value is a placeholder",
+      });
+    }
+
+    const safe = parse(briefText) as SkillPressCapabilityBrief;
+    safe.title = "todo:\u2028detail";
+    await expect(loadCapabilityBrief(await temporaryFile(stringify(safe)))).resolves.toMatchObject({
+      title: "todo:\u2028detail",
+    });
+  });
+
   it("reports all structural schema errors instead of accepting a partial brief", async () => {
     const value = parse(briefText) as Record<string, unknown>;
     delete (value.capability as Record<string, unknown>).useWhen;

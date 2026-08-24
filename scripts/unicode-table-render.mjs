@@ -4,6 +4,7 @@ import {
   MAX_CODE_POINT,
   SURROGATE_END,
   SURROGATE_START,
+  COMPARABLE_TEXT_GENERAL_CATEGORY_VERSION,
   UNICODE_VERSION,
 } from "./unicode-source-parse.mjs";
 
@@ -15,11 +16,19 @@ function escapedMapping(mapping) {
   return mapping.map((codePoint) => `\\u{${codePoint.toString(16)}}`).join("");
 }
 
-export function renderGeneratedSource(assignedRanges, defaultIgnorableRanges, compressed) {
+export function renderGeneratedSource(
+  assignedRanges,
+  defaultIgnorableRanges,
+  punctuationAndSymbolRanges,
+  compressed,
+) {
   const assignedRows = assignedRanges
     .map(([start, end]) => `  [${hex(start)}, ${hex(end)}],`)
     .join("\n");
   const defaultIgnorableRows = defaultIgnorableRanges
+    .map(([start, end]) => `  [${hex(start)}, ${hex(end)}],`)
+    .join("\n");
+  const punctuationAndSymbolRows = punctuationAndSymbolRanges
     .map(([start, end]) => `  [${hex(start)}, ${hex(end)}],`)
     .join("\n");
   const foldRangeRows = compressed.ranges
@@ -29,7 +38,8 @@ export function renderGeneratedSource(assignedRanges, defaultIgnorableRanges, co
     .map(({ source, mapping }) => `  [${hex(source)}, "${escapedMapping(mapping)}"],`)
     .join("\n");
 
-  const generated = `/* Generated from Unicode Character Database ${UNICODE_VERSION} by
+  const generated = `/* Generated from Unicode Character Database ${UNICODE_VERSION} and
+ * ${COMPARABLE_TEXT_GENERAL_CATEGORY_VERSION} by
  * scripts/generate-unicode-tables.mjs. Do not edit by hand. */
 
 type CodePointRange = readonly [start: number, end: number];
@@ -51,6 +61,10 @@ const DEFAULT_IGNORABLE_CODE_POINT_RANGES: readonly CodePointRange[] = [
 ${defaultIgnorableRows}
 ];
 
+const PUNCTUATION_AND_SYMBOL_CODE_POINT_RANGES: readonly CodePointRange[] = [
+${punctuationAndSymbolRows}
+];
+
 const CASE_FOLD_RANGES: readonly FoldRange[] = [
 ${foldRangeRows}
 ];
@@ -60,6 +74,7 @@ ${exceptionRows}
 ];
 
 export const UNICODE_PORTABILITY_VERSION: string = "${UNICODE_VERSION}";
+export const COMPARABLE_TEXT_GENERAL_CATEGORY_VERSION: string = "${COMPARABLE_TEXT_GENERAL_CATEGORY_VERSION}";
 
 function codeUnitAt(value: string, index: number): number {
   return applySnapshot(charCodeAtSnapshot, value, [index]) as number;
@@ -161,6 +176,13 @@ export function isDefaultIgnorableCodePointUnicode15_1(codePoint: number): boole
   return (
     isScalarCodePoint(codePoint) &&
     rangeTableContains(DEFAULT_IGNORABLE_CODE_POINT_RANGES, codePoint)
+  );
+}
+
+export function isPunctuationOrSymbolCodePointUnicode17_0(codePoint: number): boolean {
+  return (
+    isScalarCodePoint(codePoint) &&
+    rangeTableContains(PUNCTUATION_AND_SYMBOL_CODE_POINT_RANGES, codePoint)
   );
 }
 `;

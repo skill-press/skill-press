@@ -4,6 +4,7 @@ import { TextDecoder } from "node:util";
 import { fileURLToPath } from "node:url";
 
 export const UNICODE_VERSION = "15.1.0";
+export const COMPARABLE_TEXT_GENERAL_CATEGORY_VERSION = "17.0.0";
 export const MAX_CODE_POINT = 0x10ffff;
 export const SURROGATE_START = 0xd800;
 export const SURROGATE_END = 0xdfff;
@@ -26,6 +27,12 @@ const inputs = {
     bytes: 1_072_686,
     sha256: "f55d0db69123431a7317868725b1fcbf1eab6b265d756d1bd7f0f6d9f9ee108b",
     header: "# DerivedCoreProperties-15.1.0.txt",
+  },
+  derivedGeneralCategory: {
+    path: "vendor/unicode/17.0.0/DerivedGeneralCategory.txt",
+    bytes: 277_514,
+    sha256: "d62e5bab70ca74f099343f71224fa051cb1fdd61a1ab45c0488c44cfc0b6102e",
+    header: "# DerivedGeneralCategory-17.0.0.txt",
   },
 };
 
@@ -97,12 +104,23 @@ async function readPinnedInput(input) {
 }
 
 export async function readPinnedUnicodeInputs() {
-  const [caseFoldingLines, derivedAgeLines, derivedCorePropertiesLines] = await Promise.all([
+  const [
+    caseFoldingLines,
+    derivedAgeLines,
+    derivedCorePropertiesLines,
+    derivedGeneralCategoryLines,
+  ] = await Promise.all([
     readPinnedInput(inputs.caseFolding),
     readPinnedInput(inputs.derivedAge),
     readPinnedInput(inputs.derivedCoreProperties),
+    readPinnedInput(inputs.derivedGeneralCategory),
   ]);
-  return { caseFoldingLines, derivedAgeLines, derivedCorePropertiesLines };
+  return {
+    caseFoldingLines,
+    derivedAgeLines,
+    derivedCorePropertiesLines,
+    derivedGeneralCategoryLines,
+  };
 }
 
 export function parseCaseFolding(lines) {

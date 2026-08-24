@@ -1,13 +1,37 @@
 import { readFile } from "node:fs/promises";
+import { types } from "node:util";
 
 import { Ajv, type ErrorObject, type ValidateFunction } from "ajv";
 
 import { ProjectConfigError } from "../config/errors.js";
 import { loadStrictYamlDocument } from "../config/load.js";
+import {
+  classifySemanticTextPlaceholder,
+  isGenuineSemanticTextPlaceholderClassification,
+} from "../validate/semantic-text-placeholder.js";
+import { normalizeComparableText } from "./comparable-text.js";
 import { type CapabilityBriefIssue, CapabilityBriefError } from "./errors.js";
 import type { ScenarioCase, SkillPressCapabilityBrief } from "./generated.js";
 
 export type ResolvedCapabilityBrief = SkillPressCapabilityBrief & { readonly version: string };
+
+// Module initialization, before the schema read yields, is the semantic trust boundary.
+const applySnapshot = Reflect.apply;
+const classifyPlaceholderSnapshot = classifySemanticTextPlaceholder;
+const genuinePlaceholderSnapshot = isGenuineSemanticTextPlaceholderClassification;
+const normalizeComparableTextSnapshot = normalizeComparableText;
+const arrayIsArraySnapshot = Array.isArray;
+const definePropertySnapshot = Object.defineProperty;
+const getOwnPropertyDescriptorSnapshot = Object.getOwnPropertyDescriptor;
+const objectEntriesSnapshot = Object.entries;
+const setHasSnapshot = Set.prototype.has;
+const stringEndsWithSnapshot = String.prototype.endsWith;
+const stringIncludesSnapshot = String.prototype.includes;
+const stringReplaceAllSnapshot = String.prototype.replaceAll;
+const stringStartsWithSnapshot = String.prototype.startsWith;
+const isProxySnapshot = types.isProxy;
+const ABSENT = Symbol("absent");
+const INVALID_FIELD = Symbol("invalid");
 
 const schemaUrl = new URL("../../schemas/capability-brief.schema.json", import.meta.url);
 const schema = JSON.parse(await readFile(schemaUrl, "utf8")) as object;
@@ -31,27 +55,77 @@ function schemaIssues(errors: readonly ErrorObject[]): CapabilityBriefIssue[] {
 }
 
 function escapePointer(value: string): string {
-  return value.replaceAll("~", "~0").replaceAll("/", "~1");
+  const escapedTildes = applySnapshot(stringReplaceAllSnapshot, value, ["~", "~0"]) as string;
+  return applySnapshot(stringReplaceAllSnapshot, escapedTildes, ["/", "~1"]) as string;
 }
 
-function isPlaceholderLine(trimmed: string): boolean {
-  return (
-    /^(?:todo|tbd|fixme|changeme|placeholder|replace me|fill me)$/iu.test(trimmed) ||
-    /^(?:todo|tbd|fixme|changeme|placeholder|replace me|fill me)\s*[:—-].*$/iu.test(trimmed) ||
-    /^(?:TODO|TBD|FIXME|CHANGEME)\s+.+$/u.test(trimmed) ||
-    /^\[(?:todo|tbd|fixme|changeme|placeholder|fill|replace|insert|describe|enter|your)\b[^\]]*\](?:\s.*)?$/iu.test(
-      trimmed,
-    )
-  );
+function applyIntrinsic<T>(
+  intrinsic: (...args: never[]) => unknown,
+  receiver: unknown,
+  args: unknown[],
+): T {
+  return applySnapshot(intrinsic, receiver, args) as T;
 }
 
-function isPlaceholder(value: string): boolean {
-  if (value.trim() === "") {
-    return true;
+function appendOwn<T>(values: T[], value: T): void {
+  applyIntrinsic(definePropertySnapshot, undefined, [
+    values,
+    values.length,
+    {
+      __proto__: null,
+      configurable: true,
+      enumerable: true,
+      value,
+      writable: true,
+    },
+  ]);
+}
+
+function isClassificationRecord(value: unknown): value is object {
+  if (typeof value !== "object" || value === null) return false;
+  try {
+    return applyIntrinsic<boolean>(isProxySnapshot, undefined, [value]) === false;
+  } catch {
+    return false;
   }
-  return value
-    .split(/\r\n?|\n/u)
-    .some((line) => line.trim() !== "" && isPlaceholderLine(line.trim()));
+}
+
+function ownClassificationData(value: object, key: PropertyKey): unknown {
+  try {
+    const descriptor = applyIntrinsic<PropertyDescriptor | undefined>(
+      getOwnPropertyDescriptorSnapshot,
+      undefined,
+      [value, key],
+    );
+    if (descriptor === undefined) return ABSENT;
+    const data = applyIntrinsic<PropertyDescriptor | undefined>(
+      getOwnPropertyDescriptorSnapshot,
+      undefined,
+      [descriptor, "value"],
+    );
+    return data === undefined ? INVALID_FIELD : data.value;
+  } catch {
+    return INVALID_FIELD;
+  }
+}
+
+type PlaceholderClassification = "safe" | "placeholder" | "failure";
+
+function classifyPlaceholder(value: string): PlaceholderClassification {
+  let classification: unknown;
+  try {
+    classification = applyIntrinsic(classifyPlaceholderSnapshot, undefined, [value]);
+    if (applyIntrinsic(genuinePlaceholderSnapshot, undefined, [classification]) !== true) {
+      return "failure";
+    }
+  } catch {
+    return "failure";
+  }
+  if (!isClassificationRecord(classification)) return "failure";
+  const ok = ownClassificationData(classification, "ok");
+  const reason = ownClassificationData(classification, "reason");
+  if (ok === true && reason === ABSENT) return "safe";
+  return ok === false && reason === "placeholder" ? "placeholder" : "failure";
 }
 
 const NON_PROSE_EXACT_PATHS = new Set([
@@ -67,30 +141,78 @@ const NON_PROSE_EXACT_PATHS = new Set([
 
 function isNonProsePath(path: string): boolean {
   return (
-    NON_PROSE_EXACT_PATHS.has(path) ||
-    (path.startsWith("/capability/inputs/") && path.endsWith("/name")) ||
-    (path.startsWith("/capability/outputs/") && path.endsWith("/name")) ||
-    (path.startsWith("/tests/commands/") && (path.includes("/argv/") || path.endsWith("/cwd"))) ||
-    path.startsWith("/publish/targets/") ||
-    (path.startsWith("/scenarios/") && path.endsWith("/id"))
+    (applySnapshot(setHasSnapshot, NON_PROSE_EXACT_PATHS, [path]) as boolean) ||
+    ((applySnapshot(stringStartsWithSnapshot, path, ["/capability/inputs/"]) as boolean) &&
+      (applySnapshot(stringEndsWithSnapshot, path, ["/name"]) as boolean)) ||
+    ((applySnapshot(stringStartsWithSnapshot, path, ["/capability/outputs/"]) as boolean) &&
+      (applySnapshot(stringEndsWithSnapshot, path, ["/name"]) as boolean)) ||
+    ((applySnapshot(stringStartsWithSnapshot, path, ["/tests/commands/"]) as boolean) &&
+      ((applySnapshot(stringIncludesSnapshot, path, ["/argv/"]) as boolean) ||
+        (applySnapshot(stringEndsWithSnapshot, path, ["/cwd"]) as boolean))) ||
+    (applySnapshot(stringStartsWithSnapshot, path, ["/publish/targets/"]) as boolean) ||
+    ((applySnapshot(stringStartsWithSnapshot, path, ["/scenarios/"]) as boolean) &&
+      (applySnapshot(stringEndsWithSnapshot, path, ["/id"]) as boolean))
   );
 }
 
-function placeholderIssues(value: unknown, path = ""): CapabilityBriefIssue[] {
+interface SemanticTextEntry {
+  readonly value: string;
+  readonly path: string;
+}
+
+function collectSemanticTextEntries(
+  value: unknown,
+  path: string,
+  entries: SemanticTextEntry[],
+): void {
   if (typeof value === "string") {
-    return !isNonProsePath(path) && isPlaceholder(value)
-      ? [issue("brief.placeholder", path === "" ? "/" : path, "value is a placeholder")]
-      : [];
+    if (!isNonProsePath(path)) entries[entries.length] = { value, path: path === "" ? "/" : path };
+    return;
   }
-  if (Array.isArray(value)) {
-    return value.flatMap((entry, index) => placeholderIssues(entry, `${path}/${index}`));
+  if (applyIntrinsic<boolean>(arrayIsArraySnapshot, undefined, [value])) {
+    const array = value as readonly unknown[];
+    for (let index = 0; index < array.length; index += 1) {
+      collectSemanticTextEntries(array[index], `${path}/${index}`, entries);
+    }
+    return;
   }
   if (value !== null && typeof value === "object") {
-    return Object.entries(value).flatMap(([key, entry]) =>
-      placeholderIssues(entry, `${path}/${escapePointer(key)}`),
+    const objectEntries = applyIntrinsic<readonly (readonly [string, unknown])[]>(
+      objectEntriesSnapshot,
+      undefined,
+      [value],
     );
+    for (let index = 0; index < objectEntries.length; index += 1) {
+      const entry = objectEntries[index] as readonly [string, unknown];
+      collectSemanticTextEntries(entry[1], `${path}/${escapePointer(entry[0])}`, entries);
+    }
   }
-  return [];
+}
+
+function semanticTextEntries(value: unknown): readonly SemanticTextEntry[] {
+  const entries: SemanticTextEntry[] = [];
+  collectSemanticTextEntries(value, "", entries);
+  return entries;
+}
+
+function placeholderIssues(entries: readonly SemanticTextEntry[]): CapabilityBriefIssue[] {
+  const staged: CapabilityBriefIssue[] = [];
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index] as SemanticTextEntry;
+    const classification = classifyPlaceholder(entry.value);
+    if (classification === "placeholder") {
+      appendOwn(staged, issue("brief.placeholder", entry.path, "value is a placeholder"));
+    } else if (classification === "failure") {
+      return [
+        issue(
+          "brief.placeholder_analysis",
+          entry.path,
+          "value could not be analyzed safely for placeholders",
+        ),
+      ];
+    }
+  }
+  return staged;
 }
 
 function hasUnpairedSurrogate(value: string): boolean {
@@ -130,17 +252,6 @@ function invalidUnicodeIssues(value: unknown, path = ""): CapabilityBriefIssue[]
     );
   }
   return [];
-}
-
-function normalizeComparableText(value: string): string {
-  // This catches lexical disguises only; semantic overlap belongs to later behavioral gates.
-  return value
-    .normalize("NFKC")
-    .toLocaleLowerCase("en-US")
-    .replaceAll(/\p{Default_Ignorable_Code_Point}+/gu, "")
-    .replaceAll(/[\p{P}\p{S}]+/gu, " ")
-    .replaceAll(/\s+/gu, " ")
-    .trim();
 }
 
 interface ScenarioGroup {
@@ -190,12 +301,13 @@ function uniquenessIssues(brief: SkillPressCapabilityBrief): CapabilityBriefIssu
   const prompts = new Map<string, string>();
   const activationConditions = new Map(
     brief.capability.useWhen.map(
-      (value, index) => [normalizeComparableText(value), `/capability/useWhen/${index}`] as const,
+      (value, index) =>
+        [normalizeComparableTextSnapshot(value), `/capability/useWhen/${index}`] as const,
     ),
   );
 
   brief.capability.doNotUseWhen.forEach((value, index) => {
-    const activePath = activationConditions.get(normalizeComparableText(value));
+    const activePath = activationConditions.get(normalizeComparableTextSnapshot(value));
     if (activePath !== undefined) {
       issues.push(
         issue(
@@ -223,7 +335,7 @@ function uniquenessIssues(brief: SkillPressCapabilityBrief): CapabilityBriefIssu
         ids.set(scenario.id, `${path}/id`);
       }
 
-      const promptKey = normalizeComparableText(scenario.prompt);
+      const promptKey = normalizeComparableTextSnapshot(scenario.prompt);
       const previousPrompt = prompts.get(promptKey);
       if (previousPrompt !== undefined) {
         issues.push(
@@ -248,9 +360,9 @@ function uniquenessIssues(brief: SkillPressCapabilityBrief): CapabilityBriefIssu
       }
 
       if (scenario.forbiddenBehavior !== undefined) {
-        const expected = new Set(scenario.expectedBehavior.map(normalizeComparableText));
+        const expected = new Set(scenario.expectedBehavior.map(normalizeComparableTextSnapshot));
         scenario.forbiddenBehavior.forEach((behavior, behaviorIndex) => {
-          if (expected.has(normalizeComparableText(behavior))) {
+          if (expected.has(normalizeComparableTextSnapshot(behavior))) {
             issues.push(
               issue(
                 "brief.behavior_contradiction",
@@ -312,14 +424,41 @@ export async function loadCapabilityBrief(path: string): Promise<ResolvedCapabil
     );
   }
 
-  const semanticIssues = [
-    ...invalidUnicodeIssues(value),
-    ...placeholderIssues(value),
-    ...uniquenessIssues(value),
-  ];
+  // Finish traversal and normalization before the first classifier callback can run.
+  // Diagnostics are assembled below in the historical public order.
+  const invalidUnicode = invalidUnicodeIssues(value);
+  const semanticText = semanticTextEntries(value);
+  const uniqueness = uniquenessIssues(value);
+  const semanticIssues: CapabilityBriefIssue[] = [];
+  const semanticError = new CapabilityBriefError(
+    "Capability brief is incomplete or ambiguous.",
+    semanticIssues,
+  );
+  const resolved: ResolvedCapabilityBrief = { ...value, version: value.version ?? "0.1.0" };
+  applyIntrinsic(definePropertySnapshot, undefined, [
+    resolved,
+    "then",
+    {
+      __proto__: null,
+      configurable: false,
+      enumerable: false,
+      value: undefined,
+      writable: false,
+    },
+  ]);
+  const placeholders = placeholderIssues(semanticText);
+  for (let index = 0; index < invalidUnicode.length; index += 1) {
+    appendOwn(semanticIssues, invalidUnicode[index] as CapabilityBriefIssue);
+  }
+  for (let index = 0; index < placeholders.length; index += 1) {
+    appendOwn(semanticIssues, placeholders[index] as CapabilityBriefIssue);
+  }
+  for (let index = 0; index < uniqueness.length; index += 1) {
+    appendOwn(semanticIssues, uniqueness[index] as CapabilityBriefIssue);
+  }
   if (semanticIssues.length > 0) {
-    throw new CapabilityBriefError("Capability brief is incomplete or ambiguous.", semanticIssues);
+    throw semanticError;
   }
 
-  return { ...value, version: value.version ?? "0.1.0" };
+  return resolved;
 }
