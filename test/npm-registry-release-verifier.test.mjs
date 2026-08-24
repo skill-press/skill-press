@@ -1,3 +1,9 @@
+import { execFile } from "node:child_process";
+import { copyFile, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -21,6 +27,7 @@ const manifest = Object.freeze({
 });
 const provenanceUrl =
   "https://registry.npmjs.org/-/npm/v1/attestations/%40mushanyoung%2Fskillpress%400.1.0";
+const execFileAsync = promisify(execFile);
 
 function metadata(overrides = {}) {
   return JSON.stringify({
@@ -154,5 +161,25 @@ describe("npm registry release verifier", () => {
         verified: [{ ...audit.verified[0], attestationBundles: [] }],
       }),
     ).toThrow(/provenance/u);
+  });
+
+  it("runs after being copied through a platform temporary-path alias", async () => {
+    const temporary = await mkdtemp(join(tmpdir(), "skillpress-npm-verifier-"));
+    try {
+      const script = join(temporary, "verify-npm-registry-release.mjs");
+      const invalidManifest = join(temporary, "manifest.json");
+      await copyFile(
+        new URL("../scripts/verify-npm-registry-release.mjs", import.meta.url),
+        script,
+      );
+      await writeFile(invalidManifest, "{}\n");
+      await expect(
+        execFileAsync(process.execPath, [script, invalidManifest]),
+      ).rejects.toMatchObject({
+        stderr: expect.stringContaining("manifest identity or digest contract is invalid"),
+      });
+    } finally {
+      await rm(temporary, { recursive: true });
+    }
   });
 });

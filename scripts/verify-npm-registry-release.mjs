@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -262,7 +263,16 @@ async function main() {
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 
-if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+let invokedDirectly = false;
+try {
+  invokedDirectly =
+    process.argv[1] !== undefined &&
+    realpathSync(fileURLToPath(import.meta.url)) === realpathSync(resolve(process.argv[1]));
+} catch {
+  invokedDirectly = false;
+}
+
+if (invokedDirectly) {
   main().catch((error) => {
     process.stderr.write(`${error instanceof Error ? error.message : "verification failed"}\n`);
     process.exitCode = 1;
