@@ -1,5 +1,5 @@
-import { lstat, realpath } from "node:fs/promises";
-import { homedir } from "node:os";
+import { chmod, lstat, mkdtemp, realpath, rm } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { checkProject } from "../check/project.js";
@@ -125,6 +125,7 @@ function commandProbes(
 async function runProbe(
   root: string,
   probe: CommandProbe,
+  probeHome: string,
   executor: (command: CapturedCommand) => Promise<CapturedCommandResult>,
 ): Promise<DoctorCheck> {
   const result = await executor({
@@ -132,6 +133,13 @@ async function runProbe(
     cwd: root,
     timeoutSeconds: 15,
     maxOutputBytes: 1024 * 1024,
+    env: {
+      HOME: probeHome,
+      USERPROFILE: probeHome,
+      XDG_CACHE_HOME: join(probeHome, "cache"),
+      XDG_CONFIG_HOME: join(probeHome, "config"),
+      XDG_STATE_HOME: join(probeHome, "state"),
+    },
   });
   return result.status === "passed" && result.exitCode === 0 && result.signal === null
     ? check(probe.id, "pass", probe.message)
@@ -238,11 +246,19 @@ export async function diagnoseProject(
   const root = await realpath(projectDirectory);
   const local = await dependencies.checkLocal(root);
   const executor = options.executor ?? runCapturedCommand;
-  const probes = await Promise.all(
-    commandProbes(config.evaluation.sandbox, config.publish.targets, options).map((probe) =>
-      runProbe(root, probe, executor),
-    ),
-  );
+  const temporaryParent = await realpath(tmpdir());
+  const probeHome = await mkdtemp(join(temporaryParent, "skillpress-doctor-"));
+  await chmod(probeHome, 0o700);
+  let probes: readonly DoctorCheck[];
+  try {
+    probes = await Promise.all(
+      commandProbes(config.evaluation.sandbox, config.publish.targets, options).map((probe) =>
+        runProbe(root, probe, probeHome, executor),
+      ),
+    );
+  } finally {
+    await rm(probeHome, { recursive: true, force: true });
+  }
   const checks: DoctorCheck[] = [
     supportedNode(options.nodeVersion ?? process.version)
       ? check("runtime.node", "pass", "Node.js satisfies the supported major version")

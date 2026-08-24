@@ -1,5 +1,5 @@
 import { realpathSync } from "node:fs";
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -137,6 +137,25 @@ describe("project doctor", () => {
       "--version",
     ]);
     expect(commands.every((entry) => !("shell" in entry))).toBe(true);
+  });
+
+  it("isolates probe state in one private temporary home and removes it afterward", async () => {
+    const value = await fixture();
+    const homes: string[] = [];
+    await diagnoseProject(value.root, {
+      executor: async (command) => {
+        const home = command.env?.HOME as string;
+        homes.push(home);
+        await writeFile(join(home, `probe-${homes.length}`), "state\n");
+        return commandResult(true);
+      },
+      environment: {},
+      homeDirectory: value.home,
+      nodeVersion: "22.0.0",
+    });
+    expect(new Set(homes).size).toBe(1);
+    expect(homes[0]?.startsWith(value.root)).toBe(false);
+    await expect(stat(homes[0] as string)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("covers every configured provider probe and credential context with a passing gate", async () => {
