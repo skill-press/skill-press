@@ -717,12 +717,11 @@ export async function runBoundedImprovement(
 
     let deterministicPassed = false;
     try {
-      deterministicPassed =
-        (
-          await withinWallBudget(options, startedMs, now, (signal) =>
-            options.callbacks.deterministic(proposal, signal),
-          )
-        ).passed === true;
+      const deterministic = await withinAtomicWallBudget(options, startedMs, now, (signal) =>
+        options.callbacks.deterministic(proposal, signal),
+      );
+      if (deterministic.deadlineExceeded) return wallFailure(iteration, valid);
+      deterministicPassed = deterministic.value.passed === true;
     } catch (error) {
       if (error instanceof ImprovementDeadlineError) return wallFailure(iteration, valid);
       deterministicPassed = false;

@@ -482,6 +482,39 @@ describe("bounded improvement state machine", () => {
     expect(accepted).toBe(true);
   });
 
+  it("waits for an atomic deterministic transaction to restore before reporting its deadline", async () => {
+    let clockReads = 0;
+    let installed = false;
+    let restored = false;
+    const report = await runBoundedImprovement(
+      options(
+        {
+          deterministic: async () => {
+            installed = true;
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            installed = false;
+            restored = true;
+            return { passed: true };
+          },
+        },
+        {
+          now: () => {
+            clockReads += 1;
+            return clockReads === 1 ? 0 : 59_999;
+          },
+        },
+      ),
+    );
+
+    expect(report).toMatchObject({
+      success: false,
+      stopReason: "wall_time_budget",
+      iterations: [{ decision: "budget_exceeded" }],
+    });
+    expect(installed).toBe(false);
+    expect(restored).toBe(true);
+  });
+
   it("stops at the iteration limit while retaining the last accepted digest", async () => {
     const report = await runBoundedImprovement(
       options({}, { minimumSuccessRate: 0.95, budgets: { maxIterations: 1 } }),
