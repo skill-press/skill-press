@@ -1,4 +1,4 @@
-export { renderCheckHelp, renderCreateHelp, renderHelp, runCli } from "./cli.js";
+export { renderCheckHelp, renderCreateHelp, renderHelp, renderTestHelp, runCli } from "./cli.js";
 export type { CliExitCode, CliIo } from "./cli.js";
 export { checkProject } from "./check/project.js";
 export type {
@@ -6,6 +6,9 @@ export type {
   ReadinessCriterion,
   SkillPressCheckReport,
 } from "./check/types.js";
+export { MAX_TEST_OUTPUT_BYTES } from "./process/run.js";
+export { runProjectTests } from "./test/project.js";
+export type { ProjectTestReport, TestCommandResult, TestCommandStatus } from "./test/types.js";
 export { CONFIG_FILE_NAME, loadProjectConfig, MAX_CONFIG_BYTES } from "./config/load.js";
 export { ProjectConfigError } from "./config/errors.js";
 export type { ConfigIssue } from "./config/errors.js";

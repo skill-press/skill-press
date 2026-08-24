@@ -8,8 +8,11 @@ describe("public API", () => {
     expect(skillpress.renderHelp()).toContain(skillpress.VERSION);
     expect(skillpress.renderCreateHelp()).toContain("skillpress create");
     expect(skillpress.renderCheckHelp()).toContain("skillpress check");
+    expect(skillpress.renderTestHelp()).toContain("skillpress test");
     expect(skillpress.runCli).toBeTypeOf("function");
     expect(skillpress.checkProject).toBeTypeOf("function");
+    expect(skillpress.runProjectTests).toBeTypeOf("function");
+    expect(skillpress.MAX_TEST_OUTPUT_BYTES).toBe(1024 * 1024);
     expect(skillpress.ProjectCreationError).toBeTypeOf("function");
     expect(skillpress.writeRenderedProject).toBeTypeOf("function");
     expect(skillpress.validateAgentSkill).toBeTypeOf("function");

@@ -4,9 +4,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { parse, stringify } from "yaml";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { renderCheckHelp, renderCreateHelp, renderHelp, runCli } from "../src/cli.js";
+import type { SkillPressProject } from "../src/config/generated.js";
+import {
+  renderCheckHelp,
+  renderCreateHelp,
+  renderHelp,
+  renderTestHelp,
+  runCli,
+} from "../src/cli.js";
 import { ProjectCreationError } from "../src/create/errors.js";
 import { VERSION } from "../src/version.js";
 
@@ -84,6 +92,14 @@ describe("SkillPress CLI scaffold", () => {
 
     await expect(runCli(["check", flag as string], capture.io)).resolves.toBe(0);
     expect(capture.stdout).toEqual([renderCheckHelp()]);
+    expect(capture.stderr).toEqual([]);
+  });
+
+  it.each([["--help"], ["-h"]])("renders test help for %s", async (flag) => {
+    const capture = captureIo();
+
+    await expect(runCli(["test", flag as string], capture.io)).resolves.toBe(0);
+    expect(capture.stdout).toEqual([renderTestHelp()]);
     expect(capture.stderr).toEqual([]);
   });
 
@@ -335,6 +351,112 @@ describe("SkillPress CLI scaffold", () => {
     { args: ["check", "--json", "--json"], message: "only once" },
     { args: ["check", "extra"], message: "Unknown check argument" },
   ])("rejects invalid check arguments: $message", async ({ args, message }) => {
+    const capture = captureIo();
+
+    await expect(runCli(args, capture.io)).resolves.toBe(2);
+    expect(capture.stdout).toEqual([]);
+    expect(capture.stderr.join("")).toContain(message);
+  });
+
+  it("runs configured project tests in human and JSON modes", async () => {
+    const project = await temporaryDirectory();
+    const source = await readFile(new URL("fixtures/config/valid.yaml", import.meta.url), "utf8");
+    const config = parse(source) as SkillPressProject;
+    config.tests.commands = [
+      {
+        name: "passing command",
+        argv: [process.execPath, "-e", "process.stdout.write('ok');process.exit(0)"],
+        timeoutSeconds: 2,
+      },
+    ];
+    await writeFile(join(project, "skillpress.yaml"), stringify(config));
+
+    const human = captureIo();
+    await expect(runCli(["test", "--project", project], human.io)).resolves.toBe(0);
+    expect(human.stderr).toEqual([]);
+    expect(human.stdout[0]).toContain("Project tests: pass");
+    expect(human.stdout[0]).toContain("passing command: passed");
+    expect(human.stdout[0]).not.toContain("ok");
+
+    const json = captureIo();
+    await expect(runCli(["test", "--project", project, "--json"], json.io)).resolves.toBe(0);
+    expect(json.stderr).toEqual([]);
+    expect(JSON.parse(json.stdout[0] as string)).toMatchObject({
+      command: "test",
+      schemaVersion: 1,
+      ok: true,
+      results: [{ name: "passing command", status: "passed", stdoutBytes: 2 }],
+    });
+  });
+
+  it("returns a failed test report on stdout with exit 3", async () => {
+    const project = await temporaryDirectory();
+    const source = await readFile(new URL("fixtures/config/valid.yaml", import.meta.url), "utf8");
+    const config = parse(source) as SkillPressProject;
+    config.tests.commands = [
+      {
+        name: "failing command",
+        argv: [process.execPath, "-e", "process.exit(6)"],
+        timeoutSeconds: 2,
+      },
+    ];
+    await writeFile(join(project, "skillpress.yaml"), stringify(config));
+    const capture = captureIo();
+
+    await expect(runCli(["test", "--project", project, "--json"], capture.io)).resolves.toBe(3);
+
+    expect(capture.stderr).toEqual([]);
+    expect(JSON.parse(capture.stdout[0] as string)).toMatchObject({
+      command: "test",
+      ok: false,
+      results: [{ name: "failing command", status: "failed", exitCode: 6 }],
+    });
+
+    const human = captureIo();
+    await expect(runCli(["test", "--project", project], human.io)).resolves.toBe(3);
+    expect(human.stderr).toEqual([]);
+    expect(human.stdout[0]).toContain("Project tests: fail");
+  });
+
+  it("reports test configuration failures and output failures deterministically", async () => {
+    const invalidProject = await temporaryDirectory();
+    const invalid = captureIo();
+    await expect(runCli(["test", "--project", invalidProject, "--json"], invalid.io)).resolves.toBe(
+      3,
+    );
+    expect(JSON.parse(invalid.stderr[0] as string)).toMatchObject({
+      ok: false,
+      code: "project.invalid",
+    });
+
+    const project = await temporaryDirectory();
+    const source = await readFile(new URL("fixtures/config/valid.yaml", import.meta.url), "utf8");
+    const config = parse(source) as SkillPressProject;
+    config.tests.commands = [
+      {
+        name: "passing command",
+        argv: [process.execPath, "-e", "process.exit(0)"],
+        timeoutSeconds: 2,
+      },
+    ];
+    await writeFile(join(project, "skillpress.yaml"), stringify(config));
+
+    await expect(
+      runCli(["test", "--project", project], {
+        stdout: () => {
+          throw new Error("closed output");
+        },
+        stderr: () => undefined,
+      }),
+    ).resolves.toBe(1);
+  });
+
+  it.each([
+    { args: ["test", "--project"], message: "requires a path" },
+    { args: ["test", "--project", ".", "--project", "."], message: "only once" },
+    { args: ["test", "--json", "--json"], message: "only once" },
+    { args: ["test", "extra"], message: "Unknown test argument" },
+  ])("rejects invalid test arguments: $message", async ({ args, message }) => {
     const capture = captureIo();
 
     await expect(runCli(args, capture.io)).resolves.toBe(2);
