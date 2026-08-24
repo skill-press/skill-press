@@ -26,6 +26,20 @@ export {
   TRAINING_SUITE_PATH,
 } from "./eval/load.js";
 export type { ProjectEvaluationInputs } from "./eval/load.js";
+export {
+  createSandboxInvocation,
+  DEFAULT_SANDBOX_RESOURCE_POLICY,
+  SandboxPolicyError,
+} from "./eval/sandbox.js";
+export type {
+  SandboxBackend,
+  SandboxInvocation,
+  SandboxMount,
+  SandboxNetwork,
+  SandboxPolicyIssue,
+  SandboxResourcePolicy,
+  SandboxRunRequest,
+} from "./eval/sandbox.js";
 export { CapabilityBriefError, ProjectCreationError } from "./create/errors.js";
 export type {
   CapabilityBriefIssue,

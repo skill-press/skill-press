@@ -16,6 +16,8 @@ describe("public API", () => {
     expect(skillpress.loadEvaluationRubric).toBeTypeOf("function");
     expect(skillpress.loadProjectEvaluationInputs).toBeTypeOf("function");
     expect(skillpress.EvaluationInputError).toBeTypeOf("function");
+    expect(skillpress.createSandboxInvocation).toBeTypeOf("function");
+    expect(skillpress.SandboxPolicyError).toBeTypeOf("function");
     expect(skillpress.MAX_TEST_OUTPUT_BYTES).toBe(1024 * 1024);
     expect(skillpress.ProjectCreationError).toBeTypeOf("function");
     expect(skillpress.writeRenderedProject).toBeTypeOf("function");
