@@ -31,6 +31,7 @@ import type {
 import type { SkillPressImprovementReport } from "./generated-report.js";
 import {
   candidateFilesFromDirectory,
+  exactCanonicalSkillRoot,
   improvementEvidenceMetrics,
   improvementCandidateSha256,
   loadImprovementProjectInputs,
@@ -304,7 +305,7 @@ async function deterministicCandidate(
   if (signal.aborted || (await digestBoundedTree(candidate.root)) !== candidate.skillSha256) {
     return false;
   }
-  const canonical = await realpath(join(root, canonicalSkillPath));
+  const canonical = await exactCanonicalSkillRoot(root, canonicalSkillPath);
   const backup = join(backupsRoot, `deterministic-${randomBytes(32).toString("hex")}`);
   await rename(canonical, backup);
   let installed = false;
@@ -582,7 +583,7 @@ export async function runCommandImprovement(
       accept: async (proposal) => {
         const candidate = prepared.get(proposalKey(proposal));
         if (candidate === undefined) throw new Error("candidate was not prepared");
-        const skillRoot = await realpath(join(root, config.skill.path));
+        const skillRoot = await exactCanonicalSkillRoot(root, config.skill.path);
         const liveFiles = await candidateFilesFromDirectory(skillRoot, config.skill.name);
         if (
           improvementCandidateSha256(liveFiles) !== currentCandidateSha256 ||
@@ -597,7 +598,7 @@ export async function runCommandImprovement(
         await rename(skillRoot, backup);
         try {
           await rename(candidate.root, join(dirname(skillRoot), basename(skillRoot)));
-          const acceptedRoot = await realpath(join(root, config.skill.path));
+          const acceptedRoot = await exactCanonicalSkillRoot(root, config.skill.path);
           const acceptedFiles = await candidateFilesFromDirectory(acceptedRoot, config.skill.name);
           if (improvementCandidateSha256(acceptedFiles) !== candidate.sha256) {
             throw new Error("accepted candidate digest changed");

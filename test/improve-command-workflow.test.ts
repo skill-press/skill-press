@@ -1,7 +1,17 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
-import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdtemp,
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -340,6 +350,55 @@ describe("command improvement workflow", () => {
       ImprovementWorkflowError,
     );
   });
+
+  it.runIf(process.platform !== "win32")(
+    "rejects a canonical skill root redirected outside the project",
+    async () => {
+      const value = await fixture();
+      const canonical = join(value.root, "skills/incident-summary");
+      const external = join(value.parent, "external-skill");
+      await rename(canonical, external);
+      await symlink(external, canonical, "dir");
+
+      await expect(loadImprovementProjectInputs(value.root, value)).rejects.toMatchObject({
+        issues: [expect.objectContaining({ code: "improve.canonical.symlink" })],
+      });
+      await expect(readFile(join(external, "SKILL.md"), "utf8")).resolves.toContain(
+        "# Incident Summary",
+      );
+    },
+  );
+
+  it.runIf(process.platform !== "win32")(
+    "does not mutate an external skill when a role redirects canonical storage mid-run",
+    async () => {
+      const value = await fixture();
+      const roles = await writeRoleAdapters(value.parent);
+      const canonical = join(value.root, "skills/incident-summary");
+      const external = join(value.parent, "external-mid-run-skill");
+      const original = await readFile(join(canonical, "SKILL.md"), "utf8");
+      await writeFile(
+        roles.reviewer,
+        `import fs from "node:fs";
+const args=process.argv.slice(2); const request=JSON.parse(fs.readFileSync(args[args.indexOf("--request")+1],"utf8"));
+if (!fs.existsSync(${JSON.stringify(external)})) { fs.renameSync(${JSON.stringify(canonical)},${JSON.stringify(external)}); fs.symlinkSync(${JSON.stringify(external)},${JSON.stringify(canonical)},"dir"); }
+const response={schemaVersion:1,responseType:"skillpress.improve-adapter-response",requestId:request.requestId,operation:"review",result:{approved:true,issueCodes:[]}};
+fs.writeFileSync(args[args.indexOf("--response")+1],JSON.stringify(response));
+`,
+      );
+
+      const result = await runCommandImprovement(value.root, roleOptions(value, roles));
+
+      expect(result.changed).toBe(false);
+      expect(
+        result.report.iterations.some((entry) => entry.decision === "deterministic_failed"),
+      ).toBe(true);
+      await expect(readFile(join(external, "SKILL.md"), "utf8")).resolves.toBe(original);
+      await expect(stat(join(external, "scripts/generated.sh"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    },
+  );
 
   it("rejects invalid evidence paths, unsafe storage, unsafe files, and malformed JSON", async () => {
     const invalidPath = await fixture();

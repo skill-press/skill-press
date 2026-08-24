@@ -396,6 +396,22 @@ export function improvementCandidateSha256(files: readonly ImprovementCandidateF
   );
 }
 
+/** Resolve only a canonical skill root whose configured path and every parent are link-free. */
+export async function exactCanonicalSkillRoot(root: string, skillPath: string): Promise<string> {
+  const configured = join(root, skillPath);
+  const resolved = await realpath(configured);
+  if (resolved !== configured) {
+    throw new ImprovementWorkflowError("Canonical skill storage is unsafe.", [
+      issue(
+        "improve.canonical.symlink",
+        "/project/skill/path",
+        "canonical skill storage cannot traverse symbolic links",
+      ),
+    ]);
+  }
+  return configured;
+}
+
 /** Build initial improvement state only from current, complete paired-eval evidence. */
 export async function loadImprovementProjectInputs(
   projectDirectory: string,
@@ -408,7 +424,7 @@ export async function loadImprovementProjectInputs(
     loadEvidence(root, paths.trainingEvidencePath, "training"),
     loadEvidence(root, paths.holdoutEvidencePath, "holdout"),
   ]);
-  const skillRoot = await realpath(join(root, config.skill.path));
+  const skillRoot = await exactCanonicalSkillRoot(root, config.skill.path);
   const [skillSha256, candidateFiles] = await Promise.all([
     digestBoundedTree(skillRoot),
     candidateFilesFromDirectory(skillRoot, config.skill.name),
