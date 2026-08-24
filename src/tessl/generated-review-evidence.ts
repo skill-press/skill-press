@@ -27,9 +27,15 @@ export interface SkillPressTesslReviewEvidence {
   review: {
     passed: boolean;
     commandSha256: Digest;
+    exitCode: 0;
+    signal: null;
+    durationMs: number;
+    stdoutBytes: number;
+    stderrBytes: number;
     stdoutSha256: Digest;
     stderrSha256: Digest;
     runId: string | null;
+    workspace: string | null;
     qualityScore: number;
     validationPassed: boolean;
   };
@@ -45,6 +51,11 @@ export interface Cli {
   version: string;
   executableSha256: Digest;
   commandSha256: Digest;
+  exitCode: 0;
+  signal: null;
+  durationMs: number;
+  stdoutBytes: number;
+  stderrBytes: number;
   stdoutSha256: Digest;
   stderrSha256: Digest;
 }
@@ -55,6 +66,11 @@ export interface Cli {
 export interface Invocation {
   passed: boolean;
   commandSha256: Digest;
+  exitCode: 0;
+  signal: null;
+  durationMs: number;
+  stdoutBytes: number;
+  stderrBytes: number;
   stdoutSha256: Digest;
   stderrSha256: Digest;
 }

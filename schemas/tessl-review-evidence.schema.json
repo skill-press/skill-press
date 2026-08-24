@@ -36,18 +36,30 @@
       "required": [
         "passed",
         "commandSha256",
+        "exitCode",
+        "signal",
+        "durationMs",
+        "stdoutBytes",
+        "stderrBytes",
         "stdoutSha256",
         "stderrSha256",
         "runId",
+        "workspace",
         "qualityScore",
         "validationPassed"
       ],
       "properties": {
         "passed": { "type": "boolean" },
         "commandSha256": { "$ref": "#/definitions/digest" },
+        "exitCode": { "const": 0 },
+        "signal": { "type": "null" },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "stdoutBytes": { "type": "integer", "minimum": 0, "maximum": 4194304 },
+        "stderrBytes": { "type": "integer", "minimum": 0, "maximum": 4194304 },
         "stdoutSha256": { "$ref": "#/definitions/digest" },
         "stderrSha256": { "$ref": "#/definitions/digest" },
         "runId": { "type": ["string", "null"], "maxLength": 200 },
+        "workspace": { "type": ["string", "null"], "maxLength": 200 },
         "qualityScore": { "type": "integer", "minimum": 0, "maximum": 100 },
         "validationPassed": { "type": "boolean" }
       }
@@ -75,7 +87,18 @@
     "cli": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["version", "executableSha256", "commandSha256", "stdoutSha256", "stderrSha256"],
+      "required": [
+        "version",
+        "executableSha256",
+        "commandSha256",
+        "exitCode",
+        "signal",
+        "durationMs",
+        "stdoutBytes",
+        "stderrBytes",
+        "stdoutSha256",
+        "stderrSha256"
+      ],
       "properties": {
         "version": {
           "type": "string",
@@ -83,6 +106,11 @@
         },
         "executableSha256": { "$ref": "#/definitions/digest" },
         "commandSha256": { "$ref": "#/definitions/digest" },
+        "exitCode": { "const": 0 },
+        "signal": { "type": "null" },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "stdoutBytes": { "type": "integer", "minimum": 0, "maximum": 4194304 },
+        "stderrBytes": { "type": "integer", "minimum": 0, "maximum": 4194304 },
         "stdoutSha256": { "$ref": "#/definitions/digest" },
         "stderrSha256": { "$ref": "#/definitions/digest" }
       }
@@ -90,10 +118,25 @@
     "invocation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["passed", "commandSha256", "stdoutSha256", "stderrSha256"],
+      "required": [
+        "passed",
+        "commandSha256",
+        "exitCode",
+        "signal",
+        "durationMs",
+        "stdoutBytes",
+        "stderrBytes",
+        "stdoutSha256",
+        "stderrSha256"
+      ],
       "properties": {
         "passed": { "type": "boolean" },
         "commandSha256": { "$ref": "#/definitions/digest" },
+        "exitCode": { "const": 0 },
+        "signal": { "type": "null" },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "stdoutBytes": { "type": "integer", "minimum": 0, "maximum": 4194304 },
+        "stderrBytes": { "type": "integer", "minimum": 0, "maximum": 4194304 },
         "stdoutSha256": { "$ref": "#/definitions/digest" },
         "stderrSha256": { "$ref": "#/definitions/digest" }
       }

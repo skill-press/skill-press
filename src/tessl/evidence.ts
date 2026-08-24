@@ -14,6 +14,7 @@ import {
   type CapturedCommandResult,
 } from "../process/capture.js";
 import { validateAgentSkill } from "../validate/agent-skill.js";
+import { tesslCommandDigest } from "./command-digest.js";
 import type { SkillPressTesslEvalEvidence } from "./generated-eval-evidence.js";
 import type { SkillPressTesslReviewEvidence } from "./generated-review-evidence.js";
 import { isTrustedTesslCli } from "./trusted-cli.js";
@@ -113,10 +114,6 @@ function digest(value: string | Buffer): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function commandDigest(argv: readonly string[]): string {
-  return digest(`${JSON.stringify(argv)}\n`);
-}
-
 function isRecord(value: unknown): value is JsonRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -194,6 +191,7 @@ function validateCaptured(result: CapturedCommandResult): void {
     !Buffer.isBuffer(result.stderr) ||
     result.stdoutBytes < result.stdout.byteLength ||
     result.stderrBytes < result.stderr.byteLength ||
+    (result.status === "passed" && (result.exitCode !== 0 || result.signal !== null)) ||
     result.stdoutSha256 !== digest(result.stdout) ||
     result.stderrSha256 !== digest(result.stderr)
   ) {
@@ -294,10 +292,16 @@ async function writeRaw(
 function invocation(
   argv: readonly string[],
   result: CapturedCommandResult,
+  executableSha256: string,
 ): SkillPressTesslReviewEvidence["lint"] {
   return {
     passed: result.status === "passed",
-    commandSha256: commandDigest(argv),
+    commandSha256: tesslCommandDigest(executableSha256, argv.slice(1)),
+    exitCode: 0,
+    signal: null,
+    durationMs: result.durationMs,
+    stdoutBytes: result.stdoutBytes,
+    stderrBytes: result.stderrBytes,
     stdoutSha256: result.stdoutSha256,
     stderrSha256: result.stderrSha256,
   };
@@ -433,7 +437,12 @@ async function commonContext(
     cli: {
       version,
       executableSha256,
-      commandSha256: commandDigest(versionArgv),
+      commandSha256: tesslCommandDigest(executableSha256, versionArgv.slice(1)),
+      exitCode: 0,
+      signal: null,
+      durationMs: versionResult.durationMs,
+      stdoutBytes: versionResult.stdoutBytes,
+      stderrBytes: versionResult.stderrBytes,
       stdoutSha256: versionResult.stdoutSha256,
       stderrSha256: versionResult.stderrSha256,
     },
@@ -618,10 +627,11 @@ export async function captureTesslReviewEvidence(
     projectConfigSha256: context.configSha256,
     skillSha256: context.skillSha256,
     cli: context.cli,
-    lint: invocation(lintArgv, lintResult),
+    lint: invocation(lintArgv, lintResult, context.executableSha256),
     review: {
-      ...invocation(reviewArgv, reviewResult),
+      ...invocation(reviewArgv, reviewResult, context.executableSha256),
       runId,
+      workspace: options.workspace ?? null,
       qualityScore,
       validationPassed: validation.overallPassed,
     },
@@ -888,6 +898,7 @@ export async function captureTesslEvalEvidence(
     runId,
     agent: options.agent,
     model: options.model,
+    runs,
     impactScore,
     baselineScore,
     impactDelta,
@@ -896,8 +907,8 @@ export async function captureTesslEvalEvidence(
         ? null
         : Math.round((impactScore / baselineScore) * 1_000_000) / 1_000_000,
     scenarios: parsed.scenarios,
-    start: invocation(startArgv, startResult),
-    result: invocation(viewArgv, finalResult),
+    start: invocation(startArgv, startResult, context.executableSha256),
+    result: invocation(viewArgv, finalResult, context.executableSha256),
     storagePath: context.storagePath,
     evidenceEligible: reasons.length === 0,
     ineligibilityReasons: reasons,

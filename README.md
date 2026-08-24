@@ -75,6 +75,11 @@ official Tessl CLI 0.99.0. Authenticate it with `tessl auth login`, then confirm
 `tessl auth whoami --json`. See [the Tessl evidence contract](docs/TESSL.md) for the exact commands,
 pin update procedure, and failure boundaries.
 
+Before packaging, `checkTesslReleaseGate` reopens the private evidence and raw streams, reparses the
+provider results, and rebinds them to current clean Git inputs and configured thresholds. See
+[the release-gate contract](docs/RELEASE_GATES.md). Packaging and publication adapters consume this
+report; they do not accept score flags.
+
 The library export `runBoundedImprovement` coordinates the improvement lifecycle for an author
 adapter. The adapter receives only frozen training scenarios, measured training failures, and
 remaining budgets. A proposal is a complete canonical-skill snapshot limited to `SKILL.md`,

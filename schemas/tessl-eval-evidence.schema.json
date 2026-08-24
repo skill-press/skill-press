@@ -18,6 +18,7 @@
     "runId",
     "agent",
     "model",
+    "runs",
     "impactScore",
     "baselineScore",
     "impactDelta",
@@ -42,6 +43,7 @@
     "runId": { "type": "string", "minLength": 1, "maxLength": 200 },
     "agent": { "type": "string", "minLength": 1, "maxLength": 100 },
     "model": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "runs": { "type": "integer", "minimum": 1, "maximum": 10 },
     "impactScore": { "type": "integer", "minimum": 0, "maximum": 100 },
     "baselineScore": { "type": "integer", "minimum": 0, "maximum": 100 },
     "impactDelta": { "type": "integer", "minimum": -100, "maximum": 100 },
@@ -94,7 +96,18 @@
     "cli": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["version", "executableSha256", "commandSha256", "stdoutSha256", "stderrSha256"],
+      "required": [
+        "version",
+        "executableSha256",
+        "commandSha256",
+        "exitCode",
+        "signal",
+        "durationMs",
+        "stdoutBytes",
+        "stderrBytes",
+        "stdoutSha256",
+        "stderrSha256"
+      ],
       "properties": {
         "version": {
           "type": "string",
@@ -102,6 +115,11 @@
         },
         "executableSha256": { "$ref": "#/definitions/digest" },
         "commandSha256": { "$ref": "#/definitions/digest" },
+        "exitCode": { "const": 0 },
+        "signal": { "type": "null" },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "stdoutBytes": { "type": "integer", "minimum": 0, "maximum": 4194304 },
+        "stderrBytes": { "type": "integer", "minimum": 0, "maximum": 4194304 },
         "stdoutSha256": { "$ref": "#/definitions/digest" },
         "stderrSha256": { "$ref": "#/definitions/digest" }
       }
@@ -109,10 +127,25 @@
     "invocation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["passed", "commandSha256", "stdoutSha256", "stderrSha256"],
+      "required": [
+        "passed",
+        "commandSha256",
+        "exitCode",
+        "signal",
+        "durationMs",
+        "stdoutBytes",
+        "stderrBytes",
+        "stdoutSha256",
+        "stderrSha256"
+      ],
       "properties": {
         "passed": { "type": "boolean" },
         "commandSha256": { "$ref": "#/definitions/digest" },
+        "exitCode": { "const": 0 },
+        "signal": { "type": "null" },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "stdoutBytes": { "type": "integer", "minimum": 0, "maximum": 4194304 },
+        "stderrBytes": { "type": "integer", "minimum": 0, "maximum": 4194304 },
         "stdoutSha256": { "$ref": "#/definitions/digest" },
         "stderrSha256": { "$ref": "#/definitions/digest" }
       }

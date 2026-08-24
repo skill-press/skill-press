@@ -22,6 +22,12 @@ export type {
 } from "./tessl/evidence.js";
 export type { SkillPressTesslEvalEvidence } from "./tessl/generated-eval-evidence.js";
 export type { SkillPressTesslReviewEvidence } from "./tessl/generated-review-evidence.js";
+export { checkTesslReleaseGate, TesslReleaseGateError } from "./release/tessl-gate.js";
+export type {
+  TesslReleaseGateIssue,
+  TesslReleaseGateOptions,
+  TesslReleaseGateReport,
+} from "./release/tessl-gate.js";
 export { checkProject } from "./check/project.js";
 export type {
   ProjectCheckDiagnostic,
