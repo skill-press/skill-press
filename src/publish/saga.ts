@@ -28,12 +28,18 @@ export interface PublicationContext {
   readonly artifactSha256: string;
   readonly artifactsPath: string;
   readonly artifacts: {
-    readonly skillArchive: string;
-    readonly zipArchive: string;
-    readonly checksums: string;
-    readonly provenance: string;
+    readonly skillArchive: PublicationArtifact;
+    readonly zipArchive: PublicationArtifact;
+    readonly checksums: PublicationArtifact;
+    readonly provenance: PublicationArtifact;
   };
   readonly idempotencyKey: string;
+}
+
+export interface PublicationArtifact {
+  readonly name: string;
+  readonly sha256: string;
+  readonly bytes: number;
 }
 
 export interface PublicationPreflight {
@@ -349,10 +355,26 @@ export async function runPublicationSaga(
     artifactSha256: artifacts.artifactSha256,
     artifactsPath: artifacts.artifactsPath,
     artifacts: Object.freeze({
-      skillArchive: artifacts.skillArchive,
-      zipArchive: artifacts.zipArchive,
-      checksums: artifacts.checksums,
-      provenance: artifacts.provenance,
+      skillArchive: Object.freeze({
+        name: artifacts.skillArchive,
+        sha256: artifacts.artifactSha256,
+        bytes: artifacts.artifactBytes,
+      }),
+      zipArchive: Object.freeze({
+        name: artifacts.zipArchive,
+        sha256: artifacts.artifactSha256,
+        bytes: artifacts.artifactBytes,
+      }),
+      checksums: Object.freeze({
+        name: artifacts.checksums,
+        sha256: artifacts.checksumsSha256,
+        bytes: artifacts.checksumsBytes,
+      }),
+      provenance: Object.freeze({
+        name: artifacts.provenance,
+        sha256: artifacts.provenanceSha256,
+        bytes: artifacts.provenanceBytes,
+      }),
     }),
     idempotencyKey,
   });

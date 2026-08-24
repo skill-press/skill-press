@@ -43,6 +43,7 @@ export type { SkillPressPackageProvenance } from "./package/generated-provenance
 export { PublicationSagaError, runPublicationSaga } from "./publish/saga.js";
 export type {
   PublicationAdapter,
+  PublicationArtifact,
   PublicationCapability,
   PublicationContext,
   PublicationPreflight,
@@ -55,6 +56,11 @@ export type {
   PublicationTargetStatus,
   PublicationVerification,
 } from "./publish/saga.js";
+export { createGitHubPublicationAdapter } from "./publish/adapters/github.js";
+export type {
+  PublicationAdapterRuntime,
+  PublicationCommandExecutor,
+} from "./publish/adapters/command.js";
 export { checkProject } from "./check/project.js";
 export type {
   ProjectCheckDiagnostic,

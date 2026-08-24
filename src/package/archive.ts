@@ -18,6 +18,9 @@ export interface SkillPackageArtifacts {
   readonly checksums: string;
   readonly provenance: string;
   readonly provenanceSha256: string;
+  readonly provenanceBytes: number;
+  readonly checksumsSha256: string;
+  readonly checksumsBytes: number;
   readonly artifactSha256: string;
   readonly artifactBytes: number;
 }
@@ -244,14 +247,14 @@ export async function packageStagedSkill(
     flag: "wx",
     mode: 0o600,
   });
-  await writeFile(
-    join(output, checksumName),
+  const checksumBytes = Buffer.from(
     `${[
       ...artifacts.map((entry) => `${entry.sha256}  ${entry.name}`),
       `${provenanceSha256}  ${provenanceName}`,
     ].join("\n")}\n`,
-    { flag: "wx", mode: 0o600 },
   );
+  const checksumsSha256 = sha256(checksumBytes);
+  await writeFile(join(output, checksumName), checksumBytes, { flag: "wx", mode: 0o600 });
   for (const name of [skillArchive, zipArchive, checksumName, provenanceName]) {
     await chmod(join(output, name), 0o600);
   }
@@ -263,6 +266,9 @@ export async function packageStagedSkill(
     checksums: checksumName,
     provenance: provenanceName,
     provenanceSha256,
+    provenanceBytes: provenanceBytes.byteLength,
+    checksumsSha256,
+    checksumsBytes: checksumBytes.byteLength,
     artifactSha256: archiveSha256,
     artifactBytes: archive.byteLength,
   });

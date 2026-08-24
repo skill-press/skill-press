@@ -64,6 +64,9 @@ describe("deterministic package archives", () => {
     expect(firstBytes.readUInt32LE(0)).toBe(0x04034b50);
     expect(first.artifactSha256).toMatch(/^[a-f0-9]{64}$/u);
     expect(first.provenanceSha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(first.checksumsSha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(first.provenanceBytes).toBeGreaterThan(0);
+    expect(first.checksumsBytes).toBeGreaterThan(0);
     const provenance = JSON.parse(
       await readFile(join(root, first.artifactsPath, first.provenance), "utf8"),
     );
