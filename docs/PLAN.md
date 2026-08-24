@@ -291,10 +291,11 @@ format-only churn with behavior changes.
 Current delivery note (2026-08-24): the complete ten-command CLI, typed APIs, hermetic tests,
 self-host checks, deterministic artifacts, provider adapters, CI, and trusted-release workflow are
 implemented locally. Public release remains fail-closed because current official Tessl 90/90
-evidence, provider identities/approvals, npm trusted-publisher configuration, and GitHub workflow
-push authority are external prerequisites. A primary-agent adversarial audit was completed; the
-active collaboration policy did not permit commissioning a fresh independent reviewer for the
-final CLI slice, so that slice is not represented as independently reviewed.
+evidence, provider identities/approvals, npm trusted-publisher configuration, and GitHub release
+protections are external prerequisites. Three independent reviewers audited exact clean commit
+`7d77b4a8a5a74d6766040da06db712ebcb77aba1` across implementation/security,
+release/supply-chain, and macOS/Linux test portability; all returned PASS with no release-blocking
+code finding.
 
 ### Phase 0: remote and reviewed plan
 
@@ -333,11 +334,10 @@ it never falls back to the occupied unscoped package name.
 
 ## Known external prerequisites
 
-- The public repository exists and earlier implementation is visible remotely. The current local
-  GitHub CLI token has repository access but lacks the `workflow` scope required to push new or
-  changed workflow files; SSH authentication is unavailable in this environment. The remaining
-  local commits therefore cannot be pushed until GitHub authorization is refreshed.
-- Tessl scoring/publication needs a logged-in Tessl CLI, a publisher workspace, and public approval.
+- The public repository exists and GitHub CLI authorization includes workflow-file access. The
+  exact reviewed source still must be present on public `main` and pass CI before any release saga.
+- Tessl scoring/publication needs a short-lived publisher API key inherited by the SkillPress
+  process, a publisher workspace, current official evidence, and public approval.
 - npm trusted publishing requires owner-side GitHub environment and npm publisher configuration.
 - askill, Agent Skill Hub, the catalog, and ClawHub execution require provider-specific authority,
   identity, token, pull-request, or license confirmation discovered during preflight.

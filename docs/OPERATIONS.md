@@ -89,7 +89,8 @@ launches SkillPress (or Codex); never paste it into chat, `skillpress.yaml`, or 
 ```bash
 tessl login
 tessl auth whoami --json
-tessl auth token --expiry-date <YYYY-MM-DD>
+tessl api-key create --workspace <workspace> --name skillpress-release-<YYYYMMDD> \
+  --role publisher --expiry-date <YYYY-MM-DDT00:00:00Z>
 export TESSL_TOKEN='<value-shown-once>'
 node dist/bin.js tessl review --project . --workspace <workspace> --json
 node dist/bin.js tessl eval --project . --source <tessl-eval-source> \

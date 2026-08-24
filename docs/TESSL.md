@@ -12,9 +12,10 @@ tessl login
 tessl auth whoami --json
 ```
 
-For a non-interactive SkillPress run, create a bounded-lifetime API key with
-`tessl auth token --expiry-date <YYYY-MM-DD>` and export it as `TESSL_TOKEN` in the shell that
-starts SkillPress.
+For a non-interactive SkillPress run, the pinned 0.99.0 CLI creates a bounded-lifetime publisher
+key with `tessl api-key create --workspace <workspace> --name <name> --role publisher
+--expiry-date <ISO-8601>`; export the value shown once as `TESSL_TOKEN` in the shell that starts
+SkillPress. Do not use the newer documentation's `tessl auth token` spelling with the pinned CLI.
 This is the only ambient credential variable forwarded to the provider subprocess; the interactive
 login store and home directory are intentionally not forwarded. Interactive login remains useful
 for direct Tessl CLI administration. Never paste the value into chat or commit it; rotate it after

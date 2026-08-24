@@ -439,7 +439,7 @@ else process.exit(2);
     ).resolves.toBe(1);
   });
 
-  it("classifies Tessl project, executable, and default eval failures", async () => {
+  it("classifies Tessl project, executable, and eval failures hermetically", async () => {
     const missing = await temporaryDirectory();
     const projectFailure = captureIo();
     await expect(
@@ -469,9 +469,13 @@ else process.exit(2);
       ],
       { cwd: project },
     );
+    const missingExecutable = join(parent, "missing-tessl");
     const cliFailure = captureIo();
     await expect(
-      runCli(["tessl", "review", "--project", project, "--json"], cliFailure.io),
+      runCli(
+        ["tessl", "review", "--project", project, "--executable", missingExecutable, "--json"],
+        cliFailure.io,
+      ),
     ).resolves.toBe(3);
     expect(JSON.parse(cliFailure.stderr[0] as string)).toMatchObject({
       code: "tessl.invalid",
@@ -492,6 +496,8 @@ else process.exit(2);
           "codex",
           "--model",
           "model",
+          "--executable",
+          missingExecutable,
           "--json",
         ],
         evalDefaults.io,

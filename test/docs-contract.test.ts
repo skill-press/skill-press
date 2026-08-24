@@ -7,7 +7,13 @@ import { describe, expect, it } from "vitest";
 import { loadProjectConfig } from "../src/config/load.js";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const documents = ["README.md", "docs/OPERATIONS.md", "docs/SECURITY.md", "docs/REGISTRIES.md"];
+const documents = [
+  "README.md",
+  "docs/OPERATIONS.md",
+  "docs/SECURITY.md",
+  "docs/REGISTRIES.md",
+  "docs/TESSL.md",
+];
 
 async function source(path: string): Promise<string> {
   return readFile(resolve(root, path), "utf8");
@@ -33,6 +39,7 @@ describe("operating documentation contracts", () => {
     const operations = await source("docs/OPERATIONS.md");
     const security = await source("docs/SECURITY.md");
     const registries = await source("docs/REGISTRIES.md");
+    const tessl = await source("docs/TESSL.md");
     const config = await loadProjectConfig(root);
 
     expect(readme).toContain("docs/OPERATIONS.md");
@@ -57,6 +64,9 @@ describe("operating documentation contracts", () => {
     expect(operations).toContain("checkTesslReleaseGate");
     expect(operations).toContain("resumeReceiptPath");
     expect(operations).toContain("npm run package:verify");
+    expect(operations).toContain("tessl api-key create");
+    expect(tessl).toContain("tessl api-key create");
+    expect(operations).not.toContain("tessl auth token");
     for (const target of config.publish.targets) expect(registries).toContain(`\`${target}\``);
     for (const descriptor of [
       "GH_TOKEN",
