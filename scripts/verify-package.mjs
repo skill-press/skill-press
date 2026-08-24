@@ -164,24 +164,46 @@ try {
   if (releaseOutput !== undefined) {
     if (!isAbsolute(releaseOutput)) fail("release output directory must be absolute");
     const destination = resolve(releaseOutput);
+    const sourceCommit = (await run("git", ["rev-parse", "HEAD"])).stdout.trim();
+    if (!/^[a-f0-9]{40}$/u.test(sourceCommit)) fail("source commit is invalid");
+    const sourceStatus = (
+      await run("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"])
+    ).stdout;
+    if (sourceStatus.length !== 0) fail("release source is not clean");
     await mkdir(destination, { mode: 0o700 });
     const outputTarball = join(destination, packed.filename);
     await copyFile(tarball, outputTarball, constants.COPYFILE_EXCL);
-    const sourceCommit = (await run("git", ["rev-parse", "HEAD"])).stdout.trim();
-    if (!/^[a-f0-9]{40}$/u.test(sourceCommit)) fail("source commit is invalid");
+    const verifierFilename = "verify-npm-registry-release.mjs";
+    const verifierSource = join(root, "scripts", verifierFilename);
+    const verifierBytes = await readFile(verifierSource);
+    await copyFile(verifierSource, join(destination, verifierFilename), constants.COPYFILE_EXCL);
+    const repositoryUrl = packageJson.repository?.url;
+    const repositoryMatch =
+      typeof repositoryUrl === "string"
+        ? /^git\+(https:\/\/github[.]com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)[.]git$/u.exec(
+            repositoryUrl,
+          )
+        : null;
+    if (repositoryMatch === null) fail("repository URL is not canonical GitHub HTTPS");
     await writeFile(
       join(destination, "manifest.json"),
       `${JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 2,
         package: packed.id,
         name: packed.name,
         version: packed.version,
+        repository: repositoryMatch[1],
         filename: packed.filename,
         bytes: packed.size,
         shasum: packed.shasum,
         integrity: packed.integrity,
         sha256: digest("sha256", bytes),
         sourceCommit,
+        verifier: {
+          filename: verifierFilename,
+          bytes: verifierBytes.byteLength,
+          sha256: digest("sha256", verifierBytes),
+        },
       })}\n`,
       { flag: "wx", mode: 0o600 },
     );

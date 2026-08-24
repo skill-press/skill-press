@@ -277,6 +277,9 @@ describe("command improvement workflow", () => {
       for (const run of scenario.runs) run.withSkill.activated = false;
     }
     expect(improvementMetrics(evidence).activationPrecision).toBe(0);
+
+    for (const scenario of evidence.scenarioResults) scenario.expectedActivation = false;
+    expect(improvementMetrics(evidence).activationPrecision).toBe(1);
   });
 
   it("rejects evidence whose aggregate summary disagrees with individual runs", async () => {

@@ -516,13 +516,23 @@ export async function loadPackagedSkill(
     config.skill.name,
   );
   const stagedCanonicalRoot = await realpath(stagedCanonicalPath);
-  const currentCanonicalRoot = await realpath(join(root, config.skill.path));
+  const currentCanonicalPath = join(root, config.skill.path);
+  const currentCanonicalRoot = await realpath(currentCanonicalPath);
   if (stagedCanonicalRoot !== stagedCanonicalPath) {
     throw new SkillPackageError("Staged canonical storage is unsafe.", [
       issue(
         "package.load.canonical",
         "/artifacts",
         "staged canonical storage cannot traverse symbolic links",
+      ),
+    ]);
+  }
+  if (currentCanonicalRoot !== currentCanonicalPath) {
+    throw new SkillPackageError("Current canonical storage is unsafe.", [
+      issue(
+        "package.load.canonical",
+        "/artifacts",
+        "current canonical storage cannot traverse symbolic links",
       ),
     ]);
   }

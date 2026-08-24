@@ -268,4 +268,21 @@ describe("deterministic package archives", () => {
       );
     },
   );
+
+  it.runIf(process.platform !== "win32")(
+    "rejects a current canonical root redirected through a symbolic link",
+    async () => {
+      const root = await project();
+      const staged = await stageCanonicalSkill(root);
+      const packaged = await packageStagedSkill(root, staged);
+      const canonical = join(root, "skills/incident-summary");
+      const redirected = join(root, "skills/redirected-incident-summary");
+      await rename(canonical, redirected);
+      await symlink(redirected, canonical, "dir");
+
+      await expect(loadPackagedSkill(root, packaged.artifactsPath)).rejects.toBeInstanceOf(
+        SkillPackageError,
+      );
+    },
+  );
 });

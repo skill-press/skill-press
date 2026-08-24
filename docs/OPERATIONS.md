@@ -157,7 +157,15 @@ capability, authentication, and remote collisions.
 
 The CLI constructs exactly one adapter for each entry in `publish.targets`, in the same order.
 Adapter options bind provider identities; credentials stay in the provider's login store or named
-environment variable. Start with a dry run:
+environment variable.
+
+Freeze the clean release candidate, capture current Tessl evidence, package that exact commit,
+then push the candidate commit to the public GitHub `main` branch and wait for every required CI
+check to pass before starting the publication dry run. This first source-publication phase is not
+a tag or formal Release. It is intentional: `skills-sh` and the import targets must be able to
+prove that public `main` already equals `sourceCommit` during the all-target preflight.
+
+Start with a dry run only after that public-source/CI checkpoint:
 
 ```bash
 node dist/bin.js publish --project . --artifacts <artifacts-directory> \
@@ -193,10 +201,12 @@ const adapters = [
 const plan = await runPublicationSaga(projectRoot, artifacts, adapters);
 ```
 
-This order matches the self-host configuration: GitHub is last so a formal Release cannot trigger
-npm until the other six targets and the derived skills.sh state have been verified. npm remains an
-exported adapter for integrations, but it is not a member of this production saga because trusted
-publishing requires the protected GitHub workflow context.
+This order matches the self-host configuration: GitHub is last, and its `publish-source` step is
+expected to be a verified no-op after the public-source checkpoint. Its final step creates the tag
+and formal Release only after the other six targets and the derived skills.sh state have been
+verified, so npm cannot start early. npm remains an exported adapter for integrations, but it is
+not a member of this production saga because trusted publishing requires the protected GitHub
+workflow context.
 
 Dry run is the default. Inspect every target's `preflight`, `capability`, `auth`, steps, and
 rollback statement. A failed preflight blocks the complete mutation run; resolve it without
@@ -254,9 +264,14 @@ closed instead of retrying blindly.
 The repository's `release.yml` workflow publishes only a formal, non-prerelease GitHub Release
 whose tag is exactly `v<package-version>`. The unprivileged `verify` job checks out that tag,
 reopens the exact four GitHub Release assets, reruns all gates and the production audit, produces
-one npm tarball, verifies it, and uploads that exact tarball plus its digest manifest. Only the
-protected `publish` job can request OIDC; after approval it downloads and rehashes those two files,
-publishes that exact tarball, verifies registry integrity/provenance, and preserves a receipt.
+one npm tarball, verifies it, and uploads that exact tarball plus its digest manifest and
+digest-bound registry verifier. Only the protected `publish` job can request OIDC; after approval
+it rehashes those three files, establishes whether the immutable version is explicitly absent or
+already an exact match, publishes only when absent, verifies the registry DSSE/SLSA subject,
+repository, commit, builder, and integrity, then uses `npm audit signatures` to cryptographically
+verify registry signatures and provenance attestations before preserving a receipt. This
+exact-existing branch makes a rerun safe after npm accepted the package but a later workflow step
+failed.
 
 Trusted publishing can be attached only after the package exists. Bootstrap the package name once
 under the npm account that owns the `@mushanyoung` scope:
@@ -279,7 +294,8 @@ Configure the release identity and approval boundary next:
    narrowest practical bypass list.
 3. In npm package **Settings → Trusted publishing**, choose GitHub Actions and enter organization
    or user `mushanyoung`, repository `skillpress`, workflow filename `release.yml` (filename only),
-   environment `npm`, and allowed action `npm publish`. The npm 11 CLI equivalent is:
+   environment `npm`, and allowed action `npm publish`. With npm 11.15.0 or newer, the CLI
+   equivalent is:
 
    ```bash
    npm trust github @mushanyoung/skillpress --repo mushanyoung/skillpress \
@@ -310,6 +326,13 @@ When a run stops:
    treat it as a new release.
 7. Use the provider-specific rollback statement in [the registry guide](REGISTRIES.md); never
    claim deletion or reversal that the provider does not guarantee.
+
+For an npm workflow failure after the GitHub Release was published, fix only the external approval
+or service condition and rerun the original GitHub Actions workflow run. Do not recreate, edit, or
+republish the Release to manufacture another `release.published` event. The workflow re-verifies
+the immutable release bundle; if npm already contains the exact version with exact provenance, it
+skips `npm publish` and recovers the receipt. A conflict or unavailable registry state still fails
+closed.
 
 Private evidence and receipts are ignored working state, not disposable cache. Back them up with
 the same confidentiality as build logs and delete only an explicitly identified run after its

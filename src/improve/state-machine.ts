@@ -458,6 +458,34 @@ async function withinWallBudget<T>(
   }
 }
 
+async function withinAtomicWallBudget<T>(
+  options: ImprovementLoopOptions,
+  startedMs: number,
+  now: () => number,
+  callback: (signal: AbortSignal) => Promise<T>,
+): Promise<{ readonly value: T; readonly deadlineExceeded: boolean }> {
+  const remainingMs = Math.max(
+    0,
+    options.budgets.maxWallMinutes * 60_000 - Math.max(0, now() - startedMs),
+  );
+  if (remainingMs === 0) throw new ImprovementDeadlineError();
+  const controller = new AbortController();
+  let deadlineExceeded = false;
+  const timer = setTimeout(() => {
+    deadlineExceeded = true;
+    controller.abort(new ImprovementDeadlineError());
+  }, remainingMs);
+  try {
+    const value = await callback(controller.signal);
+    return Object.freeze({ value, deadlineExceeded });
+  } catch (error) {
+    if (deadlineExceeded) throw new ImprovementDeadlineError();
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Run an author/review/eval state machine that never discloses holdout cases to the author. */
 export async function runBoundedImprovement(
   options: ImprovementLoopOptions,
@@ -884,10 +912,12 @@ export async function runBoundedImprovement(
       );
     }
 
+    let acceptDeadlineExceeded = false;
     try {
-      await withinWallBudget(options, startedMs, now, (signal) =>
+      const accepted = await withinAtomicWallBudget(options, startedMs, now, (signal) =>
         options.callbacks.accept(proposal, signal),
       );
+      acceptDeadlineExceeded = accepted.deadlineExceeded;
     } catch (error) {
       if (error instanceof ImprovementDeadlineError) {
         return wallFailure(iteration, valid, training.metrics, holdout.metrics);
@@ -933,6 +963,19 @@ export async function runBoundedImprovement(
     currentHoldout = holdout.metrics;
     seenCandidates.add(currentCandidate);
     noImprovement = 0;
+    if (acceptDeadlineExceeded) {
+      return finish(
+        options,
+        startedMs,
+        now(),
+        false,
+        "wall_time_budget",
+        currentCandidate,
+        tokensUsed,
+        costUsd,
+        iterations,
+      );
+    }
     if (
       allAtTarget(currentTraining, options.minimumSuccessRate) &&
       allAtTarget(currentHoldout, options.minimumSuccessRate)

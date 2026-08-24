@@ -56,7 +56,7 @@ jobs:
       - name: Bind the release manifest output
         id: release-manifest
         run: node --input-type=module --eval 'import {readFile,appendFile} from "node:fs/promises"; import {join} from "node:path"; const m=JSON.parse(await readFile(join(process.env.RUNNER_TEMP,"npm-release/manifest.json"),"utf8")); if(!/^[a-f0-9]{40}$/.test(m.sourceCommit)) throw new Error("invalid source commit"); await appendFile(process.env.GITHUB_OUTPUT, `source_commit=${m.sourceCommit}\n`)'
-      - name: Preserve the exact verified tarball
+      - name: Preserve the exact verified release bundle
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: npm-tarball-${{ github.event.release.tag_name }}
@@ -81,48 +81,110 @@ jobs:
           node-version: 26
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
-      - name: Download the verified tarball only
+      - name: Download the verified release bundle only
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           name: npm-tarball-${{ github.event.release.tag_name }}
           path: ${{ runner.temp }}/npm-release
-      - name: Recheck the downloaded tarball binding
+      - name: Recheck the downloaded release bundle binding
         env:
           RELEASE_SOURCE_COMMIT: ${{ needs.verify.outputs.source_commit }}
         run: |
           node --input-type=module <<'NODE'
           import { createHash } from "node:crypto";
-          import { readFile, readdir, stat } from "node:fs/promises";
+          import { lstat, readFile, readdir } from "node:fs/promises";
           import { join } from "node:path";
           const root = join(process.env.RUNNER_TEMP, "npm-release");
-          const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8"));
-          const names = await readdir(root);
-          if (names.length !== 2 || !names.includes(manifest.filename)) throw new Error("unexpected release artifact inventory");
+          const manifestPath = join(root, "manifest.json");
+          const manifestMetadata = await lstat(manifestPath);
+          if (!manifestMetadata.isFile() || manifestMetadata.size > 64 * 1024) throw new Error("release manifest storage changed");
+          const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+          if (manifest.schemaVersion !== 2 || manifest.name !== "@mushanyoung/skillpress" || manifest.package !== `${manifest.name}@${manifest.version}` || manifest.repository !== "https://github.com/mushanyoung/skillpress") throw new Error("release manifest identity changed");
+          if (!/^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/.test(manifest.version) || manifest.filename !== `mushanyoung-skillpress-${manifest.version}.tgz`) throw new Error("release manifest version changed");
+          if (!/^[a-f0-9]{40}$/.test(manifest.sourceCommit) || !/^[a-f0-9]{40}$/.test(manifest.shasum) || !/^[a-f0-9]{64}$/.test(manifest.sha256) || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(manifest.integrity)) throw new Error("release manifest digest changed");
+          if (manifest.verifier?.filename !== "verify-npm-registry-release.mjs" || !Number.isSafeInteger(manifest.verifier.bytes) || manifest.verifier.bytes < 1 || !/^[a-f0-9]{64}$/.test(manifest.verifier.sha256)) throw new Error("release verifier identity changed");
+          const names = (await readdir(root)).sort();
+          const expected = ["manifest.json", manifest.filename, manifest.verifier.filename].sort();
+          if (names.length !== expected.length || names.some((name, index) => name !== expected[index])) throw new Error("unexpected release artifact inventory");
           const tarball = join(root, manifest.filename);
+          const verifier = join(root, manifest.verifier.filename);
           const bytes = await readFile(tarball);
-          if (!(await stat(tarball)).isFile() || bytes.byteLength !== manifest.bytes) throw new Error("tarball size changed");
+          const verifierBytes = await readFile(verifier);
+          if (!(await lstat(tarball)).isFile() || !Number.isSafeInteger(manifest.bytes) || bytes.byteLength !== manifest.bytes) throw new Error("tarball size changed");
+          if (!(await lstat(verifier)).isFile() || verifierBytes.byteLength !== manifest.verifier.bytes) throw new Error("registry verifier size changed");
           const digest = (algorithm, encoding) => createHash(algorithm).update(bytes).digest(encoding);
-          if (digest("sha256", "hex") !== manifest.sha256 || `sha512-${digest("sha512", "base64")}` !== manifest.integrity) throw new Error("tarball digest changed");
+          if (digest("sha1", "hex") !== manifest.shasum || digest("sha256", "hex") !== manifest.sha256 || `sha512-${digest("sha512", "base64")}` !== manifest.integrity) throw new Error("tarball digest changed");
+          if (createHash("sha256").update(verifierBytes).digest("hex") !== manifest.verifier.sha256) throw new Error("registry verifier digest changed");
           if (manifest.sourceCommit !== process.env.RELEASE_SOURCE_COMMIT) throw new Error("release commit changed");
           NODE
-      - name: Publish with npm trusted publishing
-        run: npm publish "${RUNNER_TEMP}/npm-release/"*.tgz --access public
-      - name: Verify registry integrity and write receipt
+      - name: Establish immutable registry state before publication
+        id: registry-before
         run: |
-          PACKAGE_SPEC=$(node --input-type=module --eval 'import {readFile} from "node:fs/promises"; import {join} from "node:path"; const m=JSON.parse(await readFile(join(process.env.RUNNER_TEMP,"npm-release/manifest.json"),"utf8")); process.stdout.write(m.package)')
+          node "${RUNNER_TEMP}/npm-release/verify-npm-registry-release.mjs" "${RUNNER_TEMP}/npm-release/manifest.json" > "${RUNNER_TEMP}/npm-registry-before.json"
+          node --input-type=module <<'NODE'
+          import { appendFile, readFile } from "node:fs/promises";
+          import { join } from "node:path";
+          const state = JSON.parse(await readFile(join(process.env.RUNNER_TEMP, "npm-registry-before.json"), "utf8"));
+          if (state.status !== "absent" && state.status !== "match") throw new Error("unexpected registry state");
+          await appendFile(process.env.GITHUB_OUTPUT, `publish_required=${state.status === "absent"}\n`);
+          NODE
+      - name: Publish with npm trusted publishing
+        if: steps.registry-before.outputs.publish_required == 'true'
+        run: npm publish "${RUNNER_TEMP}/npm-release/"*.tgz --access public
+      - name: Wait for exact registry provenance
+        run: |
+          verified=false
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            npm view "$PACKAGE_SPEC" name version dist --json > "${RUNNER_TEMP}/npm-registry.json" && break
+            if node "${RUNNER_TEMP}/npm-release/verify-npm-registry-release.mjs" "${RUNNER_TEMP}/npm-release/manifest.json" > "${RUNNER_TEMP}/npm-registry.json"; then
+              status=$(node --input-type=module --eval 'import {readFile} from "node:fs/promises"; const v=JSON.parse(await readFile(process.argv[1],"utf8")); process.stdout.write(typeof v.status === "string" ? v.status : "")' "${RUNNER_TEMP}/npm-registry.json")
+              if [ "$status" = "match" ]; then
+                verified=true
+                break
+              fi
+            fi
             sleep 3
           done
+          if [ "$verified" != "true" ]; then
+            echo "exact npm registry provenance did not become available" >&2
+            exit 1
+          fi
+      - name: Cryptographically verify npm signatures and attestations
+        run: |
+          PACKAGE_SPEC=$(node --input-type=module --eval 'import {readFile} from "node:fs/promises"; import {join} from "node:path"; const m=JSON.parse(await readFile(join(process.env.RUNNER_TEMP,"npm-release/manifest.json"),"utf8")); process.stdout.write(m.package)')
+          AUDIT_ROOT="${RUNNER_TEMP}/npm-signature-audit"
+          mkdir --mode=700 "$AUDIT_ROOT"
+          node --input-type=module <<'NODE'
+          import { readFile, writeFile } from "node:fs/promises";
+          import { join } from "node:path";
+          const manifest = JSON.parse(await readFile(join(process.env.RUNNER_TEMP, "npm-release/manifest.json"), "utf8"));
+          const packageJson = {name:"skillpress-npm-signature-audit",private:true,dependencies:{[manifest.name]:manifest.version}};
+          await writeFile(join(process.env.RUNNER_TEMP, "npm-signature-audit/package.json"), `${JSON.stringify(packageJson)}\n`, {mode:0o600});
+          NODE
+          npm install --prefix "$AUDIT_ROOT" --ignore-scripts --no-audit --no-fund --save-exact "$PACKAGE_SPEC"
+          npm audit signatures --prefix "$AUDIT_ROOT" --json --include-attestations > "${RUNNER_TEMP}/npm-signature-audit.json"
+          node --input-type=module <<'NODE'
+          import { readFile, stat } from "node:fs/promises";
+          import { join } from "node:path";
+          const root = process.env.RUNNER_TEMP;
+          const manifest = JSON.parse(await readFile(join(root, "npm-release/manifest.json"), "utf8"));
+          const auditPath = join(root, "npm-signature-audit.json");
+          if ((await stat(auditPath)).size > 16 * 1024 * 1024) throw new Error("npm signature audit output is oversized");
+          const lock = JSON.parse(await readFile(join(root, "npm-signature-audit/package-lock.json"), "utf8"));
+          const installed = lock.packages?.[`node_modules/${manifest.name}`];
+          if (lock.packages?.[""]?.dependencies?.[manifest.name] !== manifest.version || installed?.version !== manifest.version || installed?.integrity !== manifest.integrity) throw new Error("npm signature audit did not bind the exact package");
+          NODE
+          node "${RUNNER_TEMP}/npm-release/verify-npm-registry-release.mjs" "${RUNNER_TEMP}/npm-release/manifest.json" "${RUNNER_TEMP}/npm-signature-audit.json" > "${RUNNER_TEMP}/npm-signature-verification.json"
+          node --input-type=module --eval 'import {readFile} from "node:fs/promises"; const v=JSON.parse(await readFile(process.argv[1],"utf8")); if(v.status !== "audit-match") throw new Error("npm cryptographic audit binding failed")' "${RUNNER_TEMP}/npm-signature-verification.json"
+      - name: Write the verified npm publication receipt
+        run: |
           node --input-type=module <<'NODE'
           import { readFile, writeFile } from "node:fs/promises";
           import { join } from "node:path";
           const root = process.env.RUNNER_TEMP;
           const manifest = JSON.parse(await readFile(join(root, "npm-release/manifest.json"), "utf8"));
           const remote = JSON.parse(await readFile(join(root, "npm-registry.json"), "utf8"));
-          if (remote.name !== manifest.name || remote.version !== manifest.version || remote.dist?.integrity !== manifest.integrity) throw new Error("registry package does not match verified tarball");
-          if (!remote.dist?.attestations?.url || remote.dist?.attestations?.provenance?.predicateType !== "https://slsa.dev/provenance/v1") throw new Error("registry provenance is unavailable");
-          const receipt = {schemaVersion:1,receiptType:"skillpress.npm-trusted-release",status:"verified",package:manifest.package,sourceCommit:manifest.sourceCommit,tarballSha256:manifest.sha256,integrity:manifest.integrity,registryIntegrity:remote.dist.integrity,provenanceUrl:remote.dist.attestations.url,runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT};
+          if (remote.status !== "match" || remote.package !== manifest.package || remote.integrity !== manifest.integrity || typeof remote.provenanceUrl !== "string") throw new Error("verified registry result changed");
+          const receipt = {schemaVersion:1,receiptType:"skillpress.npm-trusted-release",status:"verified",package:manifest.package,sourceCommit:manifest.sourceCommit,tarballSha256:manifest.sha256,integrity:manifest.integrity,registryIntegrity:remote.integrity,provenanceUrl:remote.provenanceUrl,runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT};
           await writeFile(join(root, "npm-publication-receipt.json"), `${JSON.stringify(receipt)}\n`, {mode:0o600});
           NODE
       - name: Preserve the npm publication receipt

@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import type { CapturedCommandResult } from "../../process/capture.js";
 import type {
   PublicationAdapter,
   PublicationContext,
@@ -25,7 +26,7 @@ interface NpmPackage {
 }
 
 type NpmInspection =
-  | { readonly status: "absent" | "conflict" }
+  | { readonly status: "absent" | "conflict" | "unavailable" }
   | { readonly status: "match"; readonly verification: PublicationVerification };
 
 function npmEnvironment(): Readonly<Record<string, string>> {
@@ -132,6 +133,19 @@ function record(value: unknown): Readonly<Record<string, unknown>> | null {
     : null;
 }
 
+function npmPackageNotFound(result: CapturedCommandResult): boolean {
+  if (result.status !== "failed" || result.exitCode === 0 || result.signal !== null) return false;
+  for (const bytes of [result.stdout, result.stderr]) {
+    try {
+      const value = record(JSON.parse(bytes.toString("utf8")));
+      if (record(value?.error)?.code === "E404") return true;
+    } catch {
+      // npm may emit its JSON error on either stream; inspect the other complete stream.
+    }
+  }
+  return false;
+}
+
 function attestationUrlMatches(url: string, contract: NpmPackage): boolean {
   try {
     const parsed = new URL(url);
@@ -139,6 +153,11 @@ function attestationUrlMatches(url: string, contract: NpmPackage): boolean {
     return (
       parsed.protocol === "https:" &&
       parsed.hostname === "registry.npmjs.org" &&
+      parsed.port === "" &&
+      parsed.username === "" &&
+      parsed.password === "" &&
+      parsed.search === "" &&
+      parsed.hash === "" &&
       parsed.pathname.startsWith(prefix) &&
       decodeURIComponent(parsed.pathname.slice(prefix.length)) === packageSpec(contract)
     );
@@ -191,6 +210,8 @@ function sourceAttestationMatches(
     const tlog = verification?.tlogEntries;
     const signatures = envelope?.signatures;
     return (
+      envelope?.payloadType === "application/vnd.in-toto+json" &&
+      payload?._type === "https://in-toto.io/Statement/v1" &&
       payload?.predicateType === "https://slsa.dev/provenance/v1" &&
       subjectMatches &&
       workflow?.repository === context.project.repository &&
@@ -249,14 +270,14 @@ async function inspectNpm(
   contract: NpmPackage,
   runtime: PublicationAdapterRuntime,
 ): Promise<NpmInspection> {
-  const value = jsonRecord(
-    await runNpm(
-      context.root,
-      ["npm", "view", packageSpec(contract), "name", "version", "dist", "--json"],
-      runtime,
-    ),
+  const result = await runNpm(
+    context.root,
+    ["npm", "view", packageSpec(contract), "name", "version", "dist", "--json"],
+    runtime,
   );
-  if (value === null) return Object.freeze({ status: "absent" });
+  if (npmPackageNotFound(result)) return Object.freeze({ status: "absent" });
+  const value = jsonRecord(result);
+  if (value === null) return Object.freeze({ status: "unavailable" });
   const verification = await verifyNpm(context, contract, {
     ...runtime,
     executor: async () => {
@@ -357,6 +378,13 @@ export function createNpmPublicationAdapter(
           message: "npm version exists but does not match trusted source provenance",
         });
       }
+      if (inspected.status === "unavailable") {
+        return Object.freeze({
+          ok: false,
+          code: "provider_unavailable",
+          message: "npm registry state could not be established safely",
+        });
+      }
       if (!trustedPublishingContext(context)) {
         return Object.freeze({
           ok: false,
@@ -396,6 +424,7 @@ export function createNpmPublicationAdapter(
       if (contract === null) throw new Error("npm package contract disappeared");
       const existing = await inspectNpm(context, contract, runtime);
       if (existing.status === "conflict") throw new Error("npm immutable version conflicts");
+      if (existing.status === "unavailable") throw new Error("npm registry state is unavailable");
       if (existing.status === "absent") {
         if (!trustedPublishingContext(context) || !(await sourceIsCurrent(context, runtime))) {
           throw new Error("npm trusted publication source is unavailable");

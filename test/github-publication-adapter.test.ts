@@ -49,13 +49,28 @@ function result(stdout: string, ok = true): CapturedCommandResult {
   };
 }
 
-function releaseJson(): string {
+function failedResult(stdout: string, exitCode: number, stderr = ""): CapturedCommandResult {
+  const base = result(stdout, false);
+  const stderrBytes = Buffer.from(stderr);
+  return {
+    ...base,
+    exitCode,
+    stderr: stderrBytes,
+    stderrBytes: stderrBytes.byteLength,
+  };
+}
+
+function missingReference(): CapturedCommandResult {
+  return failedResult("", 2);
+}
+
+function releaseRecord(): Readonly<Record<string, unknown>> {
   const asset = (name: string, digest: string, size: number) => ({
     name,
     digest: `sha256:${digest}`,
     size,
   });
-  return JSON.stringify({
+  return {
     assets: [
       asset("skillpress-0.1.0.skill", "a".repeat(64), 10),
       asset("skillpress-0.1.0.zip", "a".repeat(64), 10),
@@ -66,7 +81,28 @@ function releaseJson(): string {
     isPrerelease: false,
     tagName: "v0.1.0",
     url: "https://github.com/mushanyoung/skillpress/releases/tag/v0.1.0",
-  });
+  };
+}
+
+function releaseResponse(overrides: Readonly<Record<string, unknown>> = {}): CapturedCommandResult {
+  const value = { ...releaseRecord(), ...overrides };
+  return result(
+    `HTTP/2.0 200 OK\ncontent-type: application/json\n\n${JSON.stringify({
+      assets: value.assets,
+      draft: value.isDraft,
+      prerelease: value.isPrerelease,
+      tag_name: value.tagName,
+      html_url: value.url,
+    })}\n`,
+  );
+}
+
+function missingRelease(): CapturedCommandResult {
+  return failedResult(
+    'HTTP/2.0 404 Not Found\ncontent-type: application/json\n\n{"message":"Not Found","status":"404"}\n',
+    1,
+    "gh: Not Found (HTTP 404)\n",
+  );
 }
 
 describe("GitHub publication adapter", () => {
@@ -74,8 +110,17 @@ describe("GitHub publication adapter", () => {
     const calls: CapturedCommand[] = [];
     const outputs = [
       result("{}"),
-      result(JSON.stringify({ isPrivate: false, nameWithOwner: "mushanyoung/skillpress" })),
+      result(
+        JSON.stringify({
+          isPrivate: false,
+          nameWithOwner: "mushanyoung/skillpress",
+          url: context.project.repository,
+        }),
+      ),
       result(""),
+      missingReference(),
+      result(""),
+      missingRelease(),
       result("valid"),
     ];
     const adapter = createGitHubPublicationAdapter({
@@ -103,8 +148,52 @@ describe("GitHub publication adapter", () => {
         "https://github.com/mushanyoung/skillpress.git",
         `${commit}:refs/heads/main`,
       ],
+      [
+        "git",
+        "ls-remote",
+        "--exit-code",
+        "https://github.com/mushanyoung/skillpress.git",
+        "refs/tags/v0.1.0",
+      ],
+      [
+        "git",
+        "-c",
+        "credential.helper=",
+        "-c",
+        "credential.helper=!gh auth git-credential",
+        "push",
+        "--dry-run",
+        "https://github.com/mushanyoung/skillpress.git",
+        `${commit}:refs/tags/v0.1.0`,
+      ],
+      ["gh", "api", "--include", "repos/mushanyoung/skillpress/releases/tags/v0.1.0"],
       ["gh", "skill", "publish", "--dry-run", root],
     ]);
+
+    const exactTagCalls: CapturedCommand[] = [];
+    const exactTag = createGitHubPublicationAdapter({
+      executor: async (command) => {
+        exactTagCalls.push(command);
+        if (command.argv[1] === "repo") {
+          return result(
+            JSON.stringify({
+              isPrivate: false,
+              nameWithOwner: "mushanyoung/skillpress",
+              url: context.project.repository,
+            }),
+          );
+        }
+        if (command.argv[0] === "git" && command.argv[1] === "ls-remote") {
+          return result(`${commit}\trefs/tags/v0.1.0\n`);
+        }
+        if (command.argv[1] === "api" && command.argv[2] === "--include") {
+          return missingRelease();
+        }
+        return result("{}");
+      },
+    });
+    await expect(exactTag.preflight(context)).resolves.toMatchObject({ ok: true });
+    expect(exactTagCalls.filter((call) => call.argv.includes("--dry-run"))).toHaveLength(2);
   });
 
   it("projects GitHub tokens without unrelated credentials", async () => {
@@ -143,11 +232,11 @@ describe("GitHub publication adapter", () => {
       executor: async (command) => {
         calls.push(command);
         const argv = command.argv;
-        if (argv[0] === "git" && argv[1] === "ls-remote") return result("", false);
-        if (argv[0] === "gh" && argv[1] === "release" && argv[2] === "view") {
-          return calls.filter((call) => call.argv[2] === "view").length === 1
-            ? result("", false)
-            : result(releaseJson());
+        if (argv[0] === "git" && argv[1] === "ls-remote") return missingReference();
+        if (argv[0] === "gh" && argv[1] === "api" && argv[2] === "--include") {
+          return calls.filter((call) => call.argv[2] === "--include").length === 1
+            ? missingRelease()
+            : releaseResponse();
         }
         return result("");
       },
@@ -157,8 +246,8 @@ describe("GitHub publication adapter", () => {
     await adapter.execute?.(context, "publish-release");
     expect(calls.some((call) => call.argv.includes(`${commit}:refs/heads/main`))).toBe(true);
     const create = calls.find((call) => call.argv[2] === "create");
-    expect(create?.argv).toContain("--target");
-    expect(create?.argv).toContain(commit);
+    expect(create?.argv).toContain("--verify-tag");
+    expect(create?.argv).not.toContain("--target");
     expect(create?.argv.some((value) => value.endsWith("/provenance.json"))).toBe(true);
     expect(create?.env).not.toHaveProperty("NPM_TOKEN");
   });
@@ -170,7 +259,9 @@ describe("GitHub publication adapter", () => {
           const reference = command.argv.at(-1) as string;
           return result(`${commit}\t${reference}\n`);
         }
-        if (command.argv[1] === "release") return result(releaseJson());
+        if (command.argv[1] === "api" && command.argv[2] === "--include") {
+          return releaseResponse();
+        }
         return result(
           JSON.stringify({ repositoryTopics: ["agent-skills"], url: context.project.repository }),
         );
@@ -189,9 +280,15 @@ describe("GitHub publication adapter", () => {
 
     const privateRepo = createGitHubPublicationAdapter({
       executor: async (command) =>
-        command.argv[1] === "api"
+        command.argv[1] === "api" && command.argv[2] === "user"
           ? result("{}")
-          : result(JSON.stringify({ isPrivate: true, nameWithOwner: "mushanyoung/skillpress" })),
+          : result(
+              JSON.stringify({
+                isPrivate: true,
+                nameWithOwner: "mushanyoung/skillpress",
+                url: context.project.repository,
+              }),
+            ),
     });
     await expect(privateRepo.preflight(context)).resolves.toMatchObject({
       code: "repository_unavailable",
@@ -204,7 +301,11 @@ describe("GitHub publication adapter", () => {
         if (pushCalls === 1) return result("{}");
         if (pushCalls === 2) {
           return result(
-            JSON.stringify({ isPrivate: false, nameWithOwner: "mushanyoung/skillpress" }),
+            JSON.stringify({
+              isPrivate: false,
+              nameWithOwner: "mushanyoung/skillpress",
+              url: context.project.repository,
+            }),
           );
         }
         return result("", false);
@@ -214,31 +315,34 @@ describe("GitHub publication adapter", () => {
       code: "push_unavailable",
     });
 
-    let calls = 0;
     const invalid = createGitHubPublicationAdapter({
-      executor: async () => {
-        calls += 1;
-        return calls === 4
-          ? result("", false)
-          : result(
-              calls === 2
-                ? JSON.stringify({ isPrivate: false, nameWithOwner: "mushanyoung/skillpress" })
-                : "{}",
-            );
+      executor: async (command) => {
+        if (command.argv[1] === "repo") {
+          return result(
+            JSON.stringify({
+              isPrivate: false,
+              nameWithOwner: "mushanyoung/skillpress",
+              url: context.project.repository,
+            }),
+          );
+        }
+        if (command.argv[0] === "git" && command.argv[1] === "ls-remote") {
+          return missingReference();
+        }
+        if (command.argv[1] === "api" && command.argv[2] === "--include") {
+          return missingRelease();
+        }
+        if (command.argv[1] === "skill") return result("", false);
+        return result("{}");
       },
     });
     await expect(invalid.preflight(context)).resolves.toMatchObject({ code: "skill_invalid" });
 
     const conflict = createGitHubPublicationAdapter({
-      executor: async () =>
-        result(
-          JSON.stringify({
-            assets: [],
-            isDraft: false,
-            isPrerelease: false,
-            tagName: "v0.1.0",
-          }),
-        ),
+      executor: async (command) =>
+        command.argv[0] === "git"
+          ? result(`${commit}\trefs/tags/v0.1.0\n`)
+          : releaseResponse({ assets: [] }),
     });
     await expect(conflict.execute?.(context, "publish-release")).rejects.toThrow(/conflicts/u);
   });
@@ -257,27 +361,23 @@ describe("GitHub publication adapter", () => {
           ? result("not-a-remote-line")
           : result("", false),
     });
-    await expect(failed.execute?.(context, "publish-source")).rejects.toThrow(/push failed/u);
+    await expect(failed.execute?.(context, "publish-source")).rejects.toThrow(/unavailable/u);
     await expect(failed.execute?.(context, "configure-discovery")).rejects.toThrow(
       /configuration failed/u,
     );
     await expect(failed.execute?.(context, "unknown")).rejects.toThrow(/Unknown/u);
-    await expect(failed.execute?.(context, "publish-release")).rejects.toThrow(/creation failed/u);
+    await expect(failed.execute?.(context, "publish-release")).rejects.toThrow(/unavailable/u);
   });
 
   it("does not verify malformed asset metadata, topic data, refs, or absent URLs", async () => {
     const malformed = createGitHubPublicationAdapter({
       executor: async (command) => {
         if (command.argv[0] === "git") return result(`bad\t${command.argv.at(-1)}\n`);
-        if (command.argv[1] === "release") {
-          return result(
-            JSON.stringify({
-              assets: [null, [], { name: 1 }, { name: "SHA256SUMS", digest: 2, size: "x" }],
-              isDraft: false,
-              isPrerelease: false,
-              tagName: "v0.1.0",
-            }),
-          );
+        if (command.argv[1] === "api" && command.argv[2] === "--include") {
+          return releaseResponse({
+            assets: [null, [], { name: 1 }, { name: "SHA256SUMS", digest: 2, size: "x" }],
+            url: undefined,
+          });
         }
         return result(JSON.stringify({ repositoryTopics: [{ name: "agent-skills" }] }));
       },
@@ -285,17 +385,176 @@ describe("GitHub publication adapter", () => {
     await expect(malformed.verify(context)).resolves.toEqual({ ok: false });
   });
 
-  it("reuses a fully matching release and rejects a failed release lookup as absent", async () => {
+  it("rejects releases with extra or duplicate assets even when expected assets are present", async () => {
+    const exact = releaseRecord() as { assets: Array<Record<string, unknown>> };
+    const inventories = [
+      [...exact.assets, { name: "unexpected.txt", digest: `sha256:${"f".repeat(64)}`, size: 1 }],
+      [...exact.assets, exact.assets[0] as Record<string, unknown>],
+    ];
+    for (const releaseAssets of inventories) {
+      const adapter = createGitHubPublicationAdapter({
+        executor: async (command) => {
+          if (command.argv[0] === "git") {
+            const reference = command.argv.at(-1) as string;
+            return result(`${commit}\t${reference}\n`);
+          }
+          if (command.argv[1] === "api" && command.argv[2] === "--include") {
+            return releaseResponse({ assets: releaseAssets });
+          }
+          return result(JSON.stringify({ repositoryTopics: ["agent-skills"] }));
+        },
+      });
+      await expect(adapter.verify(context)).resolves.toMatchObject({ ok: false });
+      await expect(adapter.execute?.(context, "publish-release")).rejects.toThrow(/conflicts/u);
+    }
+  });
+
+  it("reuses a fully matching release", async () => {
     const calls: CapturedCommand[] = [];
     const existing = createGitHubPublicationAdapter({
       executor: async (command) => {
         calls.push(command);
-        return command.argv[1] === "release" ? result(releaseJson()) : result("");
+        if (command.argv[0] === "git") return result(`${commit}\trefs/tags/v0.1.0\n`);
+        return releaseResponse();
       },
     });
     await expect(existing.execute?.(context, "publish-release")).resolves.toMatchObject({
       remoteId: "mushanyoung/skillpress@v0.1.0",
     });
     expect(calls.some((call) => call.argv[2] === "create")).toBe(false);
+  });
+
+  it("fails closed on unavailable release state and a conflicting existing tag", async () => {
+    const unavailable = createGitHubPublicationAdapter({
+      executor: async (command) =>
+        command.argv[0] === "git" ? result(`${commit}\trefs/tags/v0.1.0\n`) : result("", false),
+    });
+    await expect(unavailable.execute?.(context, "publish-release")).rejects.toThrow(
+      /release state is unavailable/u,
+    );
+
+    const conflict = createGitHubPublicationAdapter({
+      executor: async () => result(`${"f".repeat(40)}\trefs/tags/v0.1.0\n`),
+    });
+    await expect(conflict.execute?.(context, "publish-release")).rejects.toThrow(/tag conflicts/u);
+  });
+
+  it("blocks preflight on unavailable or conflicting immutable release state", async () => {
+    const executeUntilReleaseState = async (
+      command: CapturedCommand,
+      tagResult: CapturedCommandResult,
+      releaseResult: CapturedCommandResult,
+    ) => {
+      if (command.argv[1] === "repo") {
+        return result(
+          JSON.stringify({
+            isPrivate: false,
+            nameWithOwner: "mushanyoung/skillpress",
+            url: context.project.repository,
+          }),
+        );
+      }
+      if (command.argv[0] === "git" && command.argv[1] === "ls-remote") return tagResult;
+      if (command.argv[1] === "api" && command.argv[2] === "--include") return releaseResult;
+      return result("{}");
+    };
+
+    const unavailableTag = createGitHubPublicationAdapter({
+      executor: async (command) =>
+        executeUntilReleaseState(command, result("", false), missingRelease()),
+    });
+    await expect(unavailableTag.preflight(context)).resolves.toMatchObject({
+      code: "tag_unavailable",
+    });
+
+    const conflictingTag = createGitHubPublicationAdapter({
+      executor: async (command) =>
+        executeUntilReleaseState(
+          command,
+          result(`${"f".repeat(40)}\trefs/tags/v0.1.0\n`),
+          missingRelease(),
+        ),
+    });
+    await expect(conflictingTag.preflight(context)).resolves.toMatchObject({
+      code: "tag_conflict",
+    });
+
+    const unavailableRelease = createGitHubPublicationAdapter({
+      executor: async (command) =>
+        executeUntilReleaseState(command, missingReference(), result("", false)),
+    });
+    await expect(unavailableRelease.preflight(context)).resolves.toMatchObject({
+      code: "release_unavailable",
+    });
+
+    const conflictingRelease = createGitHubPublicationAdapter({
+      executor: async (command) =>
+        executeUntilReleaseState(command, missingReference(), releaseResponse({ assets: [] })),
+    });
+    await expect(conflictingRelease.preflight(context)).resolves.toMatchObject({
+      code: "release_conflict",
+    });
+
+    let dryPushes = 0;
+    const deniedTagPush = createGitHubPublicationAdapter({
+      executor: async (command) => {
+        if (command.argv[1] === "repo") {
+          return result(
+            JSON.stringify({
+              isPrivate: false,
+              nameWithOwner: "mushanyoung/skillpress",
+              url: context.project.repository,
+            }),
+          );
+        }
+        if (command.argv[0] === "git" && command.argv[1] === "ls-remote") {
+          return missingReference();
+        }
+        if (command.argv[0] === "git" && command.argv.includes("--dry-run")) {
+          dryPushes += 1;
+          return result("", dryPushes === 1);
+        }
+        return result("{}");
+      },
+    });
+    await expect(deniedTagPush.preflight(context)).resolves.toMatchObject({
+      code: "tag_push_unavailable",
+    });
+  });
+
+  it("requires exact repository and release URLs during verification", async () => {
+    for (const wrongReleaseUrl of ["https://example.com/release", undefined]) {
+      const adapter = createGitHubPublicationAdapter({
+        executor: async (command) => {
+          if (command.argv[0] === "git") {
+            const reference = command.argv.at(-1) as string;
+            return result(`${commit}\t${reference}\n`);
+          }
+          if (command.argv[1] === "api" && command.argv[2] === "--include") {
+            return releaseResponse({ url: wrongReleaseUrl });
+          }
+          return result(
+            JSON.stringify({ repositoryTopics: ["agent-skills"], url: context.project.repository }),
+          );
+        },
+      });
+      await expect(adapter.verify(context)).resolves.toMatchObject({ ok: false });
+    }
+
+    const wrongRepository = createGitHubPublicationAdapter({
+      executor: async (command) => {
+        if (command.argv[0] === "git") {
+          const reference = command.argv.at(-1) as string;
+          return result(`${commit}\t${reference}\n`);
+        }
+        if (command.argv[1] === "api" && command.argv[2] === "--include") {
+          return releaseResponse();
+        }
+        return result(
+          JSON.stringify({ repositoryTopics: ["agent-skills"], url: "https://example.com/repo" }),
+        );
+      },
+    });
+    await expect(wrongRepository.verify(context)).resolves.toMatchObject({ ok: false });
   });
 });

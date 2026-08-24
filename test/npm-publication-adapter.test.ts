@@ -76,6 +76,18 @@ function result(stdout: string, ok = true): CapturedCommandResult {
   };
 }
 
+function missingPackage(onStderr = false): CapturedCommandResult {
+  const bytes = Buffer.from(JSON.stringify({ error: { code: "E404" } }));
+  const base = result("", false);
+  return {
+    ...base,
+    stdout: onStderr ? Buffer.alloc(0) : bytes,
+    stderr: onStderr ? bytes : Buffer.alloc(0),
+    stdoutBytes: onStderr ? 0 : bytes.byteLength,
+    stderrBytes: onStderr ? bytes.byteLength : 0,
+  };
+}
+
 function publishedPackage(overrides: Readonly<Record<string, unknown>> = {}): string {
   return JSON.stringify({
     name: "@mushanyoung/skillpress",
@@ -96,6 +108,7 @@ function publishedPackage(overrides: Readonly<Record<string, unknown>> = {}): st
 
 function attestationBody(commit = sourceCommit): string {
   const payload = {
+    _type: "https://in-toto.io/Statement/v1",
     predicateType: "https://slsa.dev/provenance/v1",
     subject: [
       {
@@ -120,6 +133,7 @@ function attestationBody(commit = sourceCommit): string {
         bundle: {
           verificationMaterial: { tlogEntries: [{}] },
           dsseEnvelope: {
+            payloadType: "application/vnd.in-toto+json",
             payload: Buffer.from(JSON.stringify(payload)).toString("base64"),
             signatures: [{}],
           },
@@ -135,7 +149,7 @@ describe("npm publication adapter", () => {
     const adapter = createNpmPublicationAdapter({
       executor: async (command) => {
         calls.push(command);
-        return result("", false);
+        return missingPackage(true);
       },
     });
     await expect(adapter.preflight(context)).resolves.toEqual({
@@ -152,7 +166,7 @@ describe("npm publication adapter", () => {
     trustedEnvironment();
     const calls: CapturedCommand[] = [];
     const outputs = [
-      result("", false),
+      missingPackage(),
       result(`${sourceCommit}\n`),
       result(""),
       result("11.5.1\n"),
@@ -232,7 +246,7 @@ describe("npm publication adapter", () => {
           return result(`${sourceCommit}\n`);
         }
         if (command.argv[0] === "git") return result("");
-        return command.argv[1] === "publish" ? result("published") : result("", false);
+        return command.argv[1] === "publish" ? result("published") : missingPackage();
       },
     });
     await expect(publishing.execute?.(context, "publish-package")).resolves.toMatchObject({
@@ -246,7 +260,7 @@ describe("npm publication adapter", () => {
           return result(`${sourceCommit}\n`);
         }
         if (command.argv[0] === "git") return result("");
-        return result("", false);
+        return command.argv[1] === "view" ? missingPackage() : result("", false);
       },
     });
     await expect(failing.execute?.(context, "publish-package")).rejects.toThrow(/publication/u);
@@ -262,7 +276,7 @@ describe("npm publication adapter", () => {
             return result(`${sourceCommit}\n`);
           }
           if (command.argv[0] === "git") return result("");
-          return command.argv[1] === "--version" ? result(version) : result("", false);
+          return command.argv[1] === "--version" ? result(version) : missingPackage();
         },
       });
       await expect(adapter.preflight(context)).resolves.toMatchObject({
@@ -278,7 +292,7 @@ describe("npm publication adapter", () => {
           }
           if (command.argv[0] === "git") return result("");
           npmChecks += 1;
-          if (npmChecks === 1) return result("", false);
+          if (npmChecks === 1) return missingPackage();
           if (npmChecks === 2) return result("12.0.0");
           return result("{}", npmChecks !== failAt);
         },
@@ -287,6 +301,20 @@ describe("npm publication adapter", () => {
         code: "npm_preflight_failed",
       });
     }
+  });
+
+  it("does not confuse provider failures or malformed output with an absent version", async () => {
+    for (const unavailable of [result("", false), result("not-json"), result("[]")]) {
+      const adapter = createNpmPublicationAdapter({ executor: async () => unavailable });
+      await expect(adapter.preflight(context)).resolves.toEqual({
+        ok: false,
+        code: "provider_unavailable",
+        message: "npm registry state could not be established safely",
+      });
+    }
+
+    const unavailable = createNpmPublicationAdapter({ executor: async () => result("", false) });
+    await expect(unavailable.execute?.(context, "publish-package")).rejects.toThrow(/unavailable/u);
   });
 
   it("rejects malformed package metadata and incomplete registry attestations", async () => {

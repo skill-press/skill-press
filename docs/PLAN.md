@@ -195,6 +195,10 @@ candidate digest and before/after metrics so a score cannot be optimized by sile
 scenarios. Final Quality and Impact still come from Tessl; SkillPress iterates until both are at
 least 90 or reports a truthful blocked result.
 
+Activation precision is recomputed as `true positives / (true positives + false positives)`. If a
+candidate predicts no activations, precision is `0` when positive runs exist and `1` only for an
+all-negative suite; this prevents silence from looking precise on a mixed suite.
+
 ## Quality model
 
 The default local readiness rubric is diagnostic and intentionally conservative:

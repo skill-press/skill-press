@@ -30,7 +30,11 @@ and provenance artifacts. Verification binds branch, tag, release metadata, ever
 and topic.
 
 Repository creation is deliberately outside the adapter: create it with explicit owner authority
-before dry run. Existing tags/releases are reused only if every immutable fact matches. See the
+before dry run. Before the all-target dry run, push the clean candidate commit to public `main` and
+wait for required CI; do not create the version tag or Release. The GitHub adapter runs last, so
+its source step should then be a no-op and its final step creates the exact tag/Release only after
+the first six targets verify. Existing tags/releases are reused only if every immutable fact
+matches. See the
 [GitHub CLI manual](https://cli.github.com/manual/) and
 [GitHub release documentation](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases).
 
@@ -43,6 +47,13 @@ tarball; its separately approved job receives OIDC, publishes that unchanged tar
 registry integrity and provenance. The exported adapter still fails closed on a conflicting
 existing version, but it is not used as a second production publish path.
 
+The protected job first distinguishes an explicit 404 from an exact existing version and from
+conflicting or unavailable state. It publishes only the explicit-absent case. The exact-existing
+case revalidates the remote DSSE/SLSA subject digest, repository, source commit, GitHub-hosted
+builder, and transparency-log presence, then runs npm's cryptographic `npm audit signatures`
+verification before recovering the receipt. If a post-publish step fails, rerun the original
+workflow run; never recreate or edit the GitHub Release to retrigger it.
+
 npm requires the package to exist before a trusted publisher can be configured. Claim the package
 once with a 2FA-approved `0.0.0` bootstrap version under the `bootstrap` dist-tag, then bind GitHub
 owner `mushanyoung`, repository `skillpress`, workflow filename `release.yml`, environment `npm`,
@@ -53,7 +64,9 @@ bind to the same source commit.
 Configure npm's trusted publisher with workflow filename `release.yml` and GitHub environment
 `npm`. Trusted publication of a public package from a public repository automatically generates
 provenance. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/) and
-[npm provenance](https://docs.npmjs.com/generating-provenance-statements/).
+[npm provenance](https://docs.npmjs.com/generating-provenance-statements/). The protected job also
+uses npm's documented
+[signature audit](https://docs.npmjs.com/cli/v11/commands/npm-audit/#audit-signatures).
 
 ## Tessl (`tessl`)
 
@@ -138,6 +151,10 @@ The saga preflights every configured target before the first mutation and proces
 configuration order. It stops on the first execution or verification failure. Every completed step
 is persisted before advancing, so resume can skip exact verified work and retry only unfinished
 steps.
+
+The production sequence has two explicit checkpoints: first publish the clean candidate commit to
+public GitHub `main` and wait for CI; then run the seven-target saga. This lets every source-derived
+preflight bind public `main` while keeping the formal GitHub Release last.
 
 Never reorder adapters, edit a receipt, rebuild the artifact, or change the source commit during
 resume. Preserve the original private storage and use `resumeReceiptPath`. See

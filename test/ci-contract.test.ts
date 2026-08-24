@@ -112,9 +112,20 @@ describe("GitHub Actions release contracts", () => {
       "registry-url": "https://registry.npmjs.org",
       "package-manager-cache": false,
     });
-    expect(publish?.steps?.map((step) => step.run).filter(Boolean)).toHaveLength(3);
+    expect(publish?.steps?.map((step) => step.run).filter(Boolean)).toHaveLength(6);
+    const publishStep = publish?.steps?.find((step) => step.run?.includes("npm publish"));
+    expect(publishStep?.if).toBe("steps.registry-before.outputs.publish_required == 'true'");
     expect(source).toContain(`npm publish "${runnerTemp}/npm-release/"*.tgz --access public`);
+    expect(source).toContain("verify-npm-registry-release.mjs");
+    expect(source).toContain('state.status !== "absent" && state.status !== "match"');
+    expect(source).toContain("manifest.verifier.sha256");
+    expect(source).toContain('remote.status !== "match"');
+    expect(source).toContain("npm audit signatures");
+    expect(source).toContain("--include-attestations");
+    expect(source).toContain("installed?.integrity !== manifest.integrity");
+    expect(source).toContain('v.status !== "audit-match"');
     expect(source).toContain("skillpress.npm-trusted-release");
+    expect(source).not.toContain("npm view");
     expect(source).not.toMatch(/(?:NODE_AUTH_TOKEN|NPM_TOKEN|secrets\.)/u);
     expect(source).not.toContain("workflow_dispatch");
   });

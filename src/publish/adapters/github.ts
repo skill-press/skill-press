@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import type { CapturedCommandResult } from "../../process/capture.js";
 import type {
   PublicationAdapter,
   PublicationContext,
@@ -66,7 +67,16 @@ function tag(context: PublicationContext): string {
   return `v${context.project.version}`;
 }
 
-function pushArguments(context: PublicationContext, target: GitHubRepository, dryRun: boolean) {
+function releaseUrl(context: PublicationContext, target: GitHubRepository): string {
+  return `${target.url}/releases/tag/${encodeURIComponent(tag(context))}`;
+}
+
+function pushArguments(
+  context: PublicationContext,
+  target: GitHubRepository,
+  reference: string,
+  dryRun: boolean,
+) {
   return [
     "git",
     "-c",
@@ -76,7 +86,7 @@ function pushArguments(context: PublicationContext, target: GitHubRepository, dr
     "push",
     ...(dryRun ? ["--dry-run"] : []),
     `${target.url}.git`,
-    `${context.sourceCommit}:refs/heads/main`,
+    `${context.sourceCommit}:${reference}`,
   ] as [string, ...string[]];
 }
 
@@ -97,53 +107,130 @@ function assetPaths(context: PublicationContext): readonly string[] {
   return assetNames(context).map((name) => join(context.root, context.artifactsPath, name));
 }
 
-async function remoteCommit(
+type RemoteReference =
+  | { readonly status: "absent" | "unavailable" }
+  | { readonly status: "present"; readonly commit: string };
+
+async function remoteReference(
   context: PublicationContext,
   target: GitHubRepository,
   reference: string,
   runtime: PublicationAdapterRuntime,
-): Promise<string | null> {
+): Promise<RemoteReference> {
   const result = await runProviderCommand(
     context.root,
     ["git", "ls-remote", "--exit-code", `${target.url}.git`, reference],
     runtime,
   );
-  if (!passed(result)) return null;
-  const [commit, returnedReference] = text(result).split(/\s+/u);
-  return returnedReference === reference && /^[a-f0-9]{40}$/u.test(commit ?? "")
-    ? (commit as string)
-    : null;
+  if (
+    result.status === "failed" &&
+    result.exitCode === 2 &&
+    result.signal === null &&
+    result.stdoutBytes === 0
+  ) {
+    return Object.freeze({ status: "absent" });
+  }
+  if (!passed(result)) return Object.freeze({ status: "unavailable" });
+  const lines = text(result).split(/\r?\n/u).filter(Boolean);
+  if (lines.length !== 1) return Object.freeze({ status: "unavailable" });
+  const fields = lines[0]?.split(/\s+/u) ?? [];
+  const [commit, returnedReference] = fields;
+  return fields.length === 2 &&
+    returnedReference === reference &&
+    /^[a-f0-9]{40}$/u.test(commit ?? "")
+    ? Object.freeze({ status: "present", commit: commit as string })
+    : Object.freeze({ status: "unavailable" });
 }
 
-async function release(
+type ReleaseInspection =
+  | { readonly status: "absent" | "unavailable" }
+  | { readonly status: "present"; readonly value: Readonly<Record<string, unknown>> };
+
+function includedResponse(result: CapturedCommandResult): {
+  readonly status: number;
+  readonly body: Readonly<Record<string, unknown>>;
+} | null {
+  const output = result.stdout.toString("utf8");
+  const separator = /\r?\n\r?\n/u.exec(output);
+  if (separator === null) return null;
+  const headers = output.slice(0, separator.index);
+  const statusLine = headers.split(/\r?\n/u)[0] ?? "";
+  const match = /^HTTP\/[0-9.]+ ([0-9]{3})(?: |$)/u.exec(statusLine);
+  if (match === null) return null;
+  try {
+    const value: unknown = JSON.parse(output.slice(separator.index + separator[0].length).trim());
+    return value !== null && typeof value === "object" && !Array.isArray(value)
+      ? Object.freeze({
+          status: Number(match[1]),
+          body: value as Readonly<Record<string, unknown>>,
+        })
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function inspectRelease(
   context: PublicationContext,
   target: GitHubRepository,
   runtime: PublicationAdapterRuntime,
-): Promise<Readonly<Record<string, unknown>> | null> {
+): Promise<ReleaseInspection> {
   const result = await runProviderCommand(
     context.root,
     [
       "gh",
-      "release",
-      "view",
-      tag(context),
-      "--repo",
-      target.slug,
-      "--json",
-      "assets,isDraft,isPrerelease,tagName,url",
+      "api",
+      "--include",
+      `repos/${target.slug}/releases/tags/${encodeURIComponent(tag(context))}`,
     ],
     runtime,
   );
-  return jsonRecord(result);
+  const response = includedResponse(result);
+  if (
+    result.status === "failed" &&
+    result.exitCode !== null &&
+    result.exitCode !== 0 &&
+    result.signal === null &&
+    response?.status === 404 &&
+    response.body.message === "Not Found" &&
+    (response.body.status === "404" || response.body.status === 404)
+  ) {
+    return Object.freeze({ status: "absent" });
+  }
+  if (!passed(result) || response?.status !== 200) {
+    return Object.freeze({ status: "unavailable" });
+  }
+  const body = response.body;
+  if (
+    !Array.isArray(body.assets) ||
+    typeof body.draft !== "boolean" ||
+    typeof body.prerelease !== "boolean" ||
+    typeof body.tag_name !== "string" ||
+    typeof body.html_url !== "string"
+  ) {
+    return Object.freeze({ status: "unavailable" });
+  }
+  return Object.freeze({
+    status: "present",
+    value: Object.freeze({
+      assets: body.assets,
+      isDraft: body.draft,
+      isPrerelease: body.prerelease,
+      tagName: body.tag_name,
+      url: body.html_url,
+    }),
+  });
 }
 
 function releaseMatches(
   context: PublicationContext,
+  target: GitHubRepository,
   value: Readonly<Record<string, unknown>> | null,
 ): value is Readonly<Record<string, unknown>> {
   if (
     value === null ||
     value.tagName !== tag(context) ||
+    value.url !== releaseUrl(context, target) ||
     value.isDraft !== false ||
     value.isPrerelease !== false ||
     !Array.isArray(value.assets)
@@ -159,7 +246,15 @@ function releaseMatches(
       ? [{ name: record.name, digest: record.digest, size: record.size }]
       : [];
   });
-  return assets(context).every((local) =>
+  const localAssets = assets(context);
+  if (
+    remoteAssets.length !== value.assets.length ||
+    remoteAssets.length !== localAssets.length ||
+    new Set(remoteAssets.map((asset) => asset.name)).size !== remoteAssets.length
+  ) {
+    return false;
+  }
+  return localAssets.every((local) =>
     remoteAssets.some(
       (remote) =>
         remote.name === local.name &&
@@ -175,9 +270,9 @@ async function verifyGitHub(
   runtime: PublicationAdapterRuntime,
 ): Promise<PublicationVerification> {
   const [branchCommit, tagCommit, releaseValue, repoResult] = await Promise.all([
-    remoteCommit(context, target, "refs/heads/main", runtime),
-    remoteCommit(context, target, `refs/tags/${tag(context)}`, runtime),
-    release(context, target, runtime),
+    remoteReference(context, target, "refs/heads/main", runtime),
+    remoteReference(context, target, `refs/tags/${tag(context)}`, runtime),
+    inspectRelease(context, target, runtime),
     runProviderCommand(
       context.root,
       ["gh", "repo", "view", target.slug, "--json", "repositoryTopics,url"],
@@ -189,15 +284,17 @@ async function verifyGitHub(
     ? repoValue.repositoryTopics.filter((value): value is string => typeof value === "string")
     : [];
   const ok =
-    branchCommit === context.sourceCommit &&
-    tagCommit === context.sourceCommit &&
-    releaseMatches(context, releaseValue) &&
+    branchCommit.status === "present" &&
+    branchCommit.commit === context.sourceCommit &&
+    tagCommit.status === "present" &&
+    tagCommit.commit === context.sourceCommit &&
+    releaseValue.status === "present" &&
+    releaseMatches(context, target, releaseValue.value) &&
+    repoValue?.url === target.url &&
     topics.includes("agent-skills");
-  const url = releaseValue?.url;
   return Object.freeze({
     ok,
-    ...(typeof url === "string" ? { url } : {}),
-    ...(ok ? { remoteId: `${target.slug}@${tag(context)}` } : {}),
+    ...(ok ? { remoteId: `${target.slug}@${tag(context)}`, url: releaseUrl(context, target) } : {}),
   });
 }
 
@@ -227,7 +324,11 @@ export function createGitHubPublicationAdapter(
         runtime,
       );
       const repoValue = jsonRecord(repoResult);
-      if (repoValue?.nameWithOwner !== target.slug || repoValue.isPrivate !== false) {
+      if (
+        repoValue?.nameWithOwner !== target.slug ||
+        repoValue.isPrivate !== false ||
+        repoValue.url !== target.url
+      ) {
         return Object.freeze({
           ok: false,
           code: "repository_unavailable",
@@ -236,7 +337,7 @@ export function createGitHubPublicationAdapter(
       }
       const push = await runProviderCommand(
         context.root,
-        pushArguments(context, target, true),
+        pushArguments(context, target, "refs/heads/main", true),
         runtime,
       );
       if (!passed(push)) {
@@ -244,6 +345,58 @@ export function createGitHubPublicationAdapter(
           ok: false,
           code: "push_unavailable",
           message: "Git credentials cannot push the exact source commit to main",
+        });
+      }
+      const tagReference = await remoteReference(
+        context,
+        target,
+        `refs/tags/${tag(context)}`,
+        runtime,
+      );
+      if (tagReference.status === "unavailable") {
+        return Object.freeze({
+          ok: false,
+          code: "tag_unavailable",
+          message: "GitHub release tag state could not be established safely",
+        });
+      }
+      if (tagReference.status === "present" && tagReference.commit !== context.sourceCommit) {
+        return Object.freeze({
+          ok: false,
+          code: "tag_conflict",
+          message: "GitHub release tag points to a different immutable source commit",
+        });
+      }
+      if (tagReference.status === "absent") {
+        const tagPush = await runProviderCommand(
+          context.root,
+          pushArguments(context, target, `refs/tags/${tag(context)}`, true),
+          runtime,
+        );
+        if (!passed(tagPush)) {
+          return Object.freeze({
+            ok: false,
+            code: "tag_push_unavailable",
+            message: "Git credentials cannot create the exact protected release tag",
+          });
+        }
+      }
+      const releaseState = await inspectRelease(context, target, runtime);
+      if (releaseState.status === "unavailable") {
+        return Object.freeze({
+          ok: false,
+          code: "release_unavailable",
+          message: "GitHub release state could not be established safely",
+        });
+      }
+      if (
+        releaseState.status === "present" &&
+        !releaseMatches(context, target, releaseState.value)
+      ) {
+        return Object.freeze({
+          ok: false,
+          code: "release_conflict",
+          message: "GitHub release version conflicts with expected immutable assets",
         });
       }
       const validation = await runProviderCommand(
@@ -262,12 +415,12 @@ export function createGitHubPublicationAdapter(
     execute: async (context: PublicationContext, step: string) => {
       const target = repository(context.project.repository);
       if (step === "publish-source") {
-        if (
-          (await remoteCommit(context, target, "refs/heads/main", runtime)) !== context.sourceCommit
-        ) {
+        const branch = await remoteReference(context, target, "refs/heads/main", runtime);
+        if (branch.status === "unavailable") throw new Error("GitHub source state is unavailable");
+        if (branch.status !== "present" || branch.commit !== context.sourceCommit) {
           const result = await runProviderCommand(
             context.root,
-            pushArguments(context, target, false),
+            pushArguments(context, target, "refs/heads/main", false),
             runtime,
           );
           if (!passed(result)) throw new Error("GitHub source push failed");
@@ -284,11 +437,26 @@ export function createGitHubPublicationAdapter(
         return Object.freeze({ remoteId: target.slug, url: target.url });
       }
       if (step !== "publish-release") throw new Error("Unknown GitHub publication step");
-      const existing = await release(context, target, runtime);
-      if (existing !== null && !releaseMatches(context, existing)) {
+      const tagReference = `refs/tags/${tag(context)}`;
+      const remoteTag = await remoteReference(context, target, tagReference, runtime);
+      if (remoteTag.status === "unavailable") throw new Error("GitHub tag state is unavailable");
+      if (remoteTag.status === "present" && remoteTag.commit !== context.sourceCommit) {
+        throw new Error("GitHub release tag conflicts with the immutable source commit");
+      }
+      if (remoteTag.status === "absent") {
+        const pushed = await runProviderCommand(
+          context.root,
+          pushArguments(context, target, tagReference, false),
+          runtime,
+        );
+        if (!passed(pushed)) throw new Error("GitHub release tag push failed");
+      }
+      const existing = await inspectRelease(context, target, runtime);
+      if (existing.status === "unavailable") throw new Error("GitHub release state is unavailable");
+      if (existing.status === "present" && !releaseMatches(context, target, existing.value)) {
         throw new Error("GitHub release version conflicts with expected immutable assets");
       }
-      if (existing === null) {
+      if (existing.status === "absent") {
         const result = await runProviderCommand(
           context.root,
           [
@@ -299,8 +467,7 @@ export function createGitHubPublicationAdapter(
             ...assetPaths(context),
             "--repo",
             target.slug,
-            "--target",
-            context.sourceCommit,
+            "--verify-tag",
             "--title",
             `${context.project.name} ${context.project.version}`,
             "--generate-notes",
@@ -309,11 +476,13 @@ export function createGitHubPublicationAdapter(
         );
         if (!passed(result)) throw new Error("GitHub release creation failed");
       }
-      const value = await release(context, target, runtime);
-      const url = value?.url;
+      const final = await inspectRelease(context, target, runtime);
+      if (final.status !== "present" || !releaseMatches(context, target, final.value)) {
+        throw new Error("GitHub release verification failed");
+      }
       return Object.freeze({
         remoteId: `${target.slug}@${tag(context)}`,
-        ...(typeof url === "string" ? { url } : {}),
+        url: releaseUrl(context, target),
       });
     },
     verify: async (context: PublicationContext) =>

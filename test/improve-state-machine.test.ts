@@ -370,17 +370,19 @@ describe("bounded improvement state machine", () => {
     expect(accept).not.toHaveBeenCalled();
   });
 
-  it("aborts a callback that does not settle before the wall deadline", async () => {
+  it("aborts a callback and waits for its cancellation at the wall deadline", async () => {
     let clockReads = 0;
     let aborted = false;
     const report = await runBoundedImprovement(
       options(
         {
           author: async (_context, signal) => {
-            signal.addEventListener("abort", () => {
-              aborted = true;
+            return new Promise<ImprovementProposal>((_resolve, reject) => {
+              signal.addEventListener("abort", () => {
+                aborted = true;
+                reject(signal.reason);
+              });
             });
-            return new Promise<ImprovementProposal>(() => undefined);
           },
         },
         {
@@ -404,8 +406,9 @@ describe("bounded improvement state machine", () => {
     async (stage) => {
       let late = false;
       const hang = async (signal: AbortSignal): Promise<never> => {
-        signal.addEventListener("abort", () => undefined);
-        return new Promise<never>(() => undefined);
+        return new Promise<never>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
       };
       const changed: Partial<ImprovementCallbacks> = {};
       if (stage === "review") {
@@ -447,6 +450,37 @@ describe("bounded improvement state machine", () => {
       expect(report.iterations[0]?.decision).toBe("budget_exceeded");
     },
   );
+
+  it("waits for an atomic accept to settle before reporting an exceeded deadline", async () => {
+    let clockReads = 0;
+    let accepted = false;
+    const report = await runBoundedImprovement(
+      options(
+        {
+          accept: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            accepted = true;
+          },
+        },
+        {
+          now: () => {
+            clockReads += 1;
+            return clockReads === 1 ? 0 : 59_999;
+          },
+        },
+      ),
+    );
+
+    expect(accepted).toBe(true);
+    expect(report).toMatchObject({
+      success: false,
+      stopReason: "wall_time_budget",
+      iterations: [{ decision: "accepted" }],
+    });
+    expect(report.finalCandidateSha256).not.toBe(report.initialCandidateSha256);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(accepted).toBe(true);
+  });
 
   it("stops at the iteration limit while retaining the last accepted digest", async () => {
     const report = await runBoundedImprovement(
