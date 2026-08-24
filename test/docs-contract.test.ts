@@ -66,6 +66,7 @@ describe("operating documentation contracts", () => {
     expect(operations).toContain("npm run package:verify");
     expect(operations).toContain("tessl api-key create");
     expect(tessl).toContain("tessl api-key create");
+    expect(tessl).toContain("tessl eval run --json --force");
     expect(operations).not.toContain("tessl auth token");
     for (const target of config.publish.targets) expect(registries).toContain(`\`${target}\``);
     for (const descriptor of [

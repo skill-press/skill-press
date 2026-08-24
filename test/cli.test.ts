@@ -129,6 +129,7 @@ describe("SkillPress CLI scaffold", () => {
 
     await expect(runCli(["tessl", flag as string], capture.io)).resolves.toBe(0);
     expect(capture.stdout).toEqual([renderTesslHelp()]);
+    expect(renderTesslHelp()).toContain("fresh provider solves");
     expect(capture.stderr).toEqual([]);
   });
 

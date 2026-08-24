@@ -93,9 +93,10 @@ commands. `tessl eval` invokes the official paired `tessl eval run --json` workf
 identifier with `tessl eval view --json`, and derives Impact only from the returned scenario
 assessments. Omit `--agent` and `--model` to use Tessl's provider defaults when a workspace plan
 does not permit explicit model selection. The resolved provider identities remain bound in the
-evidence. There is no flag or API for entering scores by hand. Raw bounded provider output is
-stored with private permissions under ignored `.skillpress/tessl/` directories; public evidence
-retains command/output digests, source bindings, scores, and eligibility reasons.
+evidence. Impact capture always forces fresh provider solves, so cached cases from an older skill
+cannot satisfy the release gate. There is no flag or API for entering scores by hand. Raw bounded
+provider output is stored with private permissions under ignored `.skillpress/tessl/` directories;
+public evidence retains command/output digests, source bindings, scores, and eligibility reasons.
 
 Evidence is release-ineligible when relevant Git inputs are dirty or change during a run, when a
 scenario baseline is absent or regresses, when a test executor is injected, or when the Tessl

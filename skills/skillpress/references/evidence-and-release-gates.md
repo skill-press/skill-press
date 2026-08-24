@@ -32,7 +32,8 @@ paired results remain part of the evidence binding.
 
 The commands retain bounded raw provider output in private `.skillpress/tessl/` storage. A trusted
 version string alone is insufficient: the executable SHA-256 must match the signed-release trust
-set.
+set. Impact capture always forces fresh provider solves; evidence from cached cases created for an
+older skill context is rejected at the release gate.
 
 ## Apply the release gate
 

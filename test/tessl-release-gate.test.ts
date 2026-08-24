@@ -188,6 +188,7 @@ async function fixture(): Promise<Fixture> {
     "eval",
     "run",
     "--json",
+    "--force",
     "--agent",
     "codex",
     "--model",
@@ -258,6 +259,7 @@ describe("Tessl release gate", () => {
         "eval",
         "run",
         "--json",
+        "--force",
         ...selection,
         "--runs",
         "1",
@@ -274,6 +276,29 @@ describe("Tessl release gate", () => {
 
       expect((await gate(value)).passed).toBe(true);
     }
+  });
+
+  it("rejects eval start commands that can reuse cached solutions", async () => {
+    const value = await fixture();
+    const evalFile = join(value.root, value.evalPath);
+    const evaluation = JSON.parse(await readFile(evalFile, "utf8"));
+    evaluation.start.commandSha256 = tesslCommandDigest(trustedDigest, [
+      "eval",
+      "run",
+      "--json",
+      "--agent",
+      "codex",
+      "--model",
+      "model",
+      "--runs",
+      "1",
+      "tessl-evals",
+    ]);
+    await writePrivateJson(evalFile, evaluation);
+
+    expect((await gate(value)).issues.map((entry) => entry.code)).toContain(
+      "release.evidence.command",
+    );
   });
 
   it("rejects a resolved agent or model that drifts in the raw final result", async () => {

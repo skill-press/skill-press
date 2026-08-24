@@ -28,13 +28,15 @@ SkillPress 0.1.0 pins Tessl CLI 0.99.0 and invokes these no-shell argv sequences
 tessl --version
 tessl skill lint <private-plugin-projection/.tessl-plugin/plugin.json>
 tessl review run quality --json [--workspace <workspace>] --threshold 0 <canonical-skill>
-tessl eval run --json [--agent <agent>] [--model <model>] --runs <count> <eval-source>
+tessl eval run --json --force [--agent <agent>] [--model <model>] --runs <count> <eval-source>
 tessl eval view --json <run-id>
 ```
 
 Agent and model selection are optional. When omitted, Tessl selects the workspace defaults and
-SkillPress binds the resolved agent/model returned by the provider plus the exact flag-free command
-digest. This supports plans that do not permit explicit model selection without weakening evidence.
+SkillPress binds the resolved agent/model returned by the provider plus the exact command digest
+without selection flags. Every official Impact capture uses `--force` so the provider recomputes
+all paired cases for the bound skill instead of reusing solutions from an older context. This
+supports plans that do not permit explicit model selection without weakening evidence.
 Keep generated or holdout scenario sources under the ignored `.skillpress/tessl-evals/<set>` path;
 the complete private tree is still digested before and after capture and again at the release gate.
 

@@ -82,7 +82,8 @@ Eval options:
   --poll-interval-ms <ms>   Poll interval from 1 to 60000; defaults to 30000
 
 Only evidence from a pinned, trusted Tessl CLI and unchanged committed inputs can satisfy a
-release gate. Provider authentication and scores are never inferred or entered manually.
+release gate. Impact capture forces fresh provider solves instead of reusing cached cases.
+Provider authentication and scores are never inferred or entered manually.
 `;
 
 const CREATE_HELP = `Create a canonical SkillPress project from a complete capability brief.

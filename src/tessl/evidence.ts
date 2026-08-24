@@ -804,6 +804,7 @@ export async function captureTesslEvalEvidence(
     "eval",
     "run",
     "--json",
+    "--force",
     ...(options.agent === undefined ? [] : ["--agent", options.agent]),
     ...(options.model === undefined ? [] : ["--model", options.model]),
     "--runs",

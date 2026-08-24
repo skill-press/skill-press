@@ -459,11 +459,12 @@ async function verifyRawEvidence(
     ]),
   );
   const evalStartCandidates = [
-    ["eval", "run", "--json", "--runs", String(evaluation.runs), evalSource],
+    ["eval", "run", "--json", "--force", "--runs", String(evaluation.runs), evalSource],
     [
       "eval",
       "run",
       "--json",
+      "--force",
       "--agent",
       evaluation.agent,
       "--runs",
@@ -474,6 +475,7 @@ async function verifyRawEvidence(
       "eval",
       "run",
       "--json",
+      "--force",
       "--model",
       evaluation.model,
       "--runs",
@@ -484,6 +486,7 @@ async function verifyRawEvidence(
       "eval",
       "run",
       "--json",
+      "--force",
       "--agent",
       evaluation.agent,
       "--model",

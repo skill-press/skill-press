@@ -101,7 +101,8 @@ If the Tessl workspace plan does not allow explicit model selection, omit both s
 Otherwise add `--agent <agent>` and/or `--model <model>`. The evidence still records the
 provider-resolved identities and binds the exact invocation. Keep generated or holdout sources in
 the ignored private path shown above; SkillPress digests their complete contents across capture and
-release-gate verification.
+release-gate verification. Impact capture always passes the native Tessl `--force` flag so cached
+solutions from an older skill context cannot become release evidence.
 
 Retain the two returned private evidence paths. Immediately before staging a release, re-open and
 revalidate them against current Git inputs:
