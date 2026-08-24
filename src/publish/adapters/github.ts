@@ -30,6 +30,8 @@ function runProviderCommand(
       GH_CONFIG_DIR:
         process.env.GH_CONFIG_DIR ??
         join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "gh"),
+      HOME: process.env.HOME ?? homedir(),
+      GIT_TERMINAL_PROMPT: "0",
       NO_COLOR: "1",
     }),
   );
@@ -62,6 +64,20 @@ function repository(input: string): GitHubRepository {
 
 function tag(context: PublicationContext): string {
   return `v${context.project.version}`;
+}
+
+function pushArguments(context: PublicationContext, target: GitHubRepository, dryRun: boolean) {
+  return [
+    "git",
+    "-c",
+    "credential.helper=",
+    "-c",
+    "credential.helper=!gh auth git-credential",
+    "push",
+    ...(dryRun ? ["--dry-run"] : []),
+    `${target.url}.git`,
+    `${context.sourceCommit}:refs/heads/main`,
+  ] as [string, ...string[]];
 }
 
 function assets(context: PublicationContext) {
@@ -218,6 +234,18 @@ export function createGitHubPublicationAdapter(
           message: "configured GitHub repository must exist and be public",
         });
       }
+      const push = await runProviderCommand(
+        context.root,
+        pushArguments(context, target, true),
+        runtime,
+      );
+      if (!passed(push)) {
+        return Object.freeze({
+          ok: false,
+          code: "push_unavailable",
+          message: "Git credentials cannot push the exact source commit to main",
+        });
+      }
       const validation = await runProviderCommand(
         context.root,
         ["gh", "skill", "publish", "--dry-run", context.root],
@@ -239,7 +267,7 @@ export function createGitHubPublicationAdapter(
         ) {
           const result = await runProviderCommand(
             context.root,
-            ["git", "push", `${target.url}.git`, `${context.sourceCommit}:refs/heads/main`],
+            pushArguments(context, target, false),
             runtime,
           );
           if (!passed(result)) throw new Error("GitHub source push failed");

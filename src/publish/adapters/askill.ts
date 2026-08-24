@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { CapturedCommandResult } from "../../process/capture.js";
@@ -24,6 +25,20 @@ export interface AskillPublicationAdapterOptions extends PublicationAdapterRunti
 const AUTHOR = /^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/u;
 const VERSION = /^(\d+)[.](\d+)[.](\d+)(?:[-+][0-9A-Za-z.-]+)?$/u;
 const API_BASE_URL = "https://askill.sh/api/v1";
+const loginEnvironment = Object.freeze({
+  HOME: process.env.HOME ?? homedir(),
+  ...(process.env.XDG_CONFIG_HOME === undefined
+    ? {}
+    : { XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME }),
+  ...(process.env.XDG_DATA_HOME === undefined ? {} : { XDG_DATA_HOME: process.env.XDG_DATA_HOME }),
+  ...(process.env.XDG_STATE_HOME === undefined
+    ? {}
+    : { XDG_STATE_HOME: process.env.XDG_STATE_HOME }),
+  ...(process.env.APPDATA === undefined ? {} : { APPDATA: process.env.APPDATA }),
+  ...(process.env.LOCALAPPDATA === undefined ? {} : { LOCALAPPDATA: process.env.LOCALAPPDATA }),
+  ...(process.env.USERPROFILE === undefined ? {} : { USERPROFILE: process.env.USERPROFILE }),
+  NO_COLOR: "1",
+});
 
 type Inspection =
   | { readonly status: "absent" | "older" | "conflict" | "unavailable" }
@@ -104,12 +119,7 @@ function runAskill(
   argv: readonly string[],
   runtime: PublicationAdapterRuntime,
 ) {
-  return runProviderCommand(
-    context.root,
-    [executable, ...argv],
-    runtime,
-    Object.freeze({ NO_COLOR: "1" }),
-  );
+  return runProviderCommand(context.root, [executable, ...argv], runtime, loginEnvironment);
 }
 
 async function inspectAskill(

@@ -1,7 +1,7 @@
 # SkillPress implementation plan
 
-Status: accepted after independent review; Phases 1-3 implemented locally, Phase 4 external release
-gates pending
+Status: accepted after independent review; all implementation phases complete locally, external
+identity setup, official evidence, registry approvals, and public release remain fail-closed
 
 Date: 2026-08-19
 
@@ -127,7 +127,9 @@ Stale evidence cannot satisfy a release gate after relevant inputs change.
 Each adapter declares one of `publish`, `submit`, or `derived`, plus auth requirements, mutation
 steps, verification method, idempotency key, and rollback limitations. Provider IDs are exact and
 never inferred from a display name: `github`, `tessl`, `skills-sh`, `askill-sh`,
-`agentskillhub-dev`, `agent-skills-hub-catalog`, and `clawhub`.
+`agentskillhub-dev`, `agent-skills-hub-catalog`, and `clawhub`. npm is released by a separate
+protected GitHub Actions trusted-publishing workflow after the ordered local saga reaches its final
+GitHub target.
 
 | Target | Planned supported path | Important boundary |
 | --- | --- | --- |

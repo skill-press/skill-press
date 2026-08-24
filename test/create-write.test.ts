@@ -330,7 +330,7 @@ describe("transactional project writing", () => {
     expect(await readdir(output)).toContain(".skillpress-incomplete");
   });
 
-  it("rejects same-inode content changes before removing the incomplete marker", async () => {
+  it("preserves same-inode content changes under the incomplete marker", async () => {
     const parent = await temporaryDirectory();
     const output = join(parent, "project");
 
@@ -350,10 +350,14 @@ describe("transactional project writing", () => {
     );
 
     expect(error.kind).toBe("unsafe-output");
-    await expect(lstat(output)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(error.issues.map((entry) => entry.code)).toContain("create.incomplete_preserved");
+    await expect(readFile(join(output, "skillpress.yaml"), "utf8")).resolves.not.toBe(
+      rendered.files.find((file) => file.path === "skillpress.yaml")?.content,
+    );
+    await expect(lstat(join(output, ".skillpress-incomplete"))).resolves.toMatchObject({});
   });
 
-  it("rejects a truncated owned file before completion", async () => {
+  it("preserves a truncated owned file under the incomplete marker", async () => {
     const parent = await temporaryDirectory();
     const output = join(parent, "project");
 
@@ -369,7 +373,9 @@ describe("transactional project writing", () => {
     );
 
     expect(error.kind).toBe("unsafe-output");
-    await expect(lstat(output)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(error.issues.map((entry) => entry.code)).toContain("create.incomplete_preserved");
+    await expect(readFile(join(output, "skillpress.yaml"), "utf8")).resolves.toBe("short\n");
+    await expect(lstat(join(output, ".skillpress-incomplete"))).resolves.toMatchObject({});
   });
 
   it("preserves a replaced target inode under the incomplete marker", async () => {

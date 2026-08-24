@@ -68,6 +68,12 @@ describe("owned tree cleanup", () => {
     await expect(cleanupOwned(replaced.entries)).resolves.toBe(false);
     await expect(readFile(replaced.file, "utf8")).resolves.toBe("foreign");
 
+    const sameSize = await createCleanupFixture();
+    await unlink(sameSize.file);
+    await writeFile(sameSize.file, "alien\n", { flag: "wx" });
+    await expect(cleanupOwned(sameSize.entries)).resolves.toBe(false);
+    await expect(readFile(sameSize.file, "utf8")).resolves.toBe("alien\n");
+
     const nonempty = await createCleanupFixture();
     await writeFile(join(nonempty.root, "foreign"), "keep", { flag: "wx" });
     await expect(cleanupOwned(nonempty.entries)).resolves.toBe(false);

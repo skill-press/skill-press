@@ -60,6 +60,17 @@ const tagged = (
 if (!/^[a-f0-9]{40}$/u.test(head) || head !== tagged) {
   fail("checked-out source is not the immutable release tag commit");
 }
+const status = (
+  await execFileAsync("git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"], {
+    cwd: root,
+  })
+).stdout;
+if (status.length !== 0) fail("checked-out release source is not clean");
+try {
+  await execFileAsync("git", ["merge-base", "--is-ancestor", head, "origin/main"], { cwd: root });
+} catch {
+  fail("release tag commit must be reachable from origin/main");
+}
 
 process.stdout.write(
   `${JSON.stringify({ tag, sourceCommit: head, node: process.version, npm: npmVersion })}\n`,

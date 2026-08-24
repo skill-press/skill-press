@@ -49,6 +49,7 @@ function invalidCwd(name: string, cwd: string): TestCommandResult {
 /** Run configured deterministic project commands sequentially without invoking a shell. */
 export async function runProjectTests(
   projectDirectory: string = process.cwd(),
+  options: { readonly signal?: AbortSignal } = {},
 ): Promise<ProjectTestReport> {
   if (!isSafePathInput(projectDirectory)) {
     throw new TypeError("projectDirectory must be a bounded, unambiguous filesystem path.");
@@ -71,6 +72,7 @@ export async function runProjectTests(
         cwd,
         reportCwd: configuredCwd,
         timeoutSeconds: command.timeoutSeconds,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
       }),
     );
   }

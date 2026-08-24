@@ -341,6 +341,24 @@ describe("Agent Skill Hub publication adapter", () => {
     });
     await expect(badManifest.verify(context)).resolves.toEqual({ ok: false });
 
+    const wrongCommit = createAgentSkillHubPublicationAdapter({
+      pollAttempts: 1,
+      pollIntervalMs: 0,
+      executor: async () => treeResult(),
+      httpClient: async () =>
+        detail({
+          latestVersion: {
+            version: "2026.08.24",
+            commitSha: "d".repeat(40),
+            skillMdRaw: markdown,
+            fileManifest: [
+              { path: "SKILL.md", gitBlobSha: blob, size: Buffer.byteLength(markdown) },
+            ],
+          },
+        }),
+    });
+    await expect(wrongCommit.verify(context)).resolves.toEqual({ ok: false });
+
     const outdated = createAgentSkillHubPublicationAdapter({
       executor: async () => treeResult(),
       httpClient: route((request) =>

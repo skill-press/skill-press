@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 import { lstat, readdir, rmdir, unlink, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 
-import { type FileMetadata, type OwnedEntry, sameIdentity } from "./owned-tree.js";
+import {
+  type FileMetadata,
+  matchesOwnedFile,
+  type OwnedEntry,
+  sameIdentity,
+} from "./owned-tree.js";
 
 export async function cleanupOwned(entries: readonly OwnedEntry[]): Promise<boolean> {
   let complete = true;
@@ -15,7 +20,11 @@ export async function cleanupOwned(entries: readonly OwnedEntry[]): Promise<bool
       continue;
     }
 
-    if (!sameIdentity(entry, metadata) || metadata.isSymbolicLink()) {
+    if (
+      !sameIdentity(entry, metadata) ||
+      metadata.isSymbolicLink() ||
+      (entry.kind === "file" && !(await matchesOwnedFile(entry)))
+    ) {
       complete = false;
       continue;
     }
@@ -77,6 +86,7 @@ export async function cleanupClaimedTarget(
       if (
         !sameIdentity(marker, markerMetadata) ||
         !markerMetadata.isFile() ||
+        !(await matchesOwnedFile(marker)) ||
         remaining.length !== 1 ||
         remaining[0] !== basename(marker.path)
       ) {

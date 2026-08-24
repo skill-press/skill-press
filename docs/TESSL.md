@@ -8,13 +8,18 @@ readiness, local paired evaluation, or a user-supplied number into a Tessl score
 Install and authenticate the official Tessl CLI, then check the active identity:
 
 ```bash
-tessl auth login
+tessl login
 tessl auth whoami --json
 ```
 
-For a non-interactive SkillPress run, export the Tessl API key as `TESSL_TOKEN`; this is the only
-ambient credential variable forwarded to the provider subprocess. Interactive login remains useful
-for direct Tessl CLI administration, while CI should always use the scoped secret variable.
+For a non-interactive SkillPress run, create a bounded-lifetime API key with
+`tessl auth token --expiry-date <YYYY-MM-DD>` and export it as `TESSL_TOKEN` in the shell that
+starts SkillPress.
+This is the only ambient credential variable forwarded to the provider subprocess; the interactive
+login store and home directory are intentionally not forwarded. Interactive login remains useful
+for direct Tessl CLI administration. Never paste the value into chat or commit it; rotate it after
+release. Automatic CLI updates are disabled for captured runs with the official
+`TESSL_AUTO_UPDATE_INTERVAL_MINUTES=0` setting so the executable digest stays stable.
 
 SkillPress 0.1.0 pins Tessl CLI 0.99.0 and invokes these no-shell argv sequences:
 

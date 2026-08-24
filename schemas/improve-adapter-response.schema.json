@@ -5,10 +5,11 @@
   "description": "Strict response written by an external SkillPress improvement role adapter.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "responseType", "operation", "result"],
+  "required": ["schemaVersion", "responseType", "requestId", "operation", "result"],
   "properties": {
     "schemaVersion": { "const": 1 },
     "responseType": { "const": "skillpress.improve-adapter-response" },
+    "requestId": { "$ref": "#/definitions/digest" },
     "operation": {
       "type": "string",
       "enum": ["author", "review", "evaluate-training", "evaluate-holdout"]
@@ -74,23 +75,14 @@
         }
       }
     },
-    "metrics": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["successRate", "activationPrecision", "safetyRate"],
-      "properties": {
-        "successRate": { "type": "number", "minimum": 0, "maximum": 1 },
-        "activationPrecision": { "type": "number", "minimum": 0, "maximum": 1 },
-        "safetyRate": { "type": "number", "minimum": 0, "maximum": 1 }
-      }
-    },
     "evaluation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["scenarioSetSha256", "metrics"],
+      "required": ["candidateSha256", "scenarioSetSha256", "evidence"],
       "properties": {
+        "candidateSha256": { "$ref": "#/definitions/digest" },
         "scenarioSetSha256": { "$ref": "#/definitions/digest" },
-        "metrics": { "$ref": "#/definitions/metrics" }
+        "evidence": { "$ref": "eval-evidence.schema.json" }
       }
     }
   }

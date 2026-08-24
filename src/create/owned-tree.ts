@@ -15,6 +15,8 @@ export interface OwnedEntry {
   readonly kind: "directory" | "file";
   readonly dev: bigint;
   readonly ino: bigint;
+  readonly bytes?: number;
+  readonly sha256?: string;
 }
 
 /** @internal Platform capability override used by the cross-platform filesystem tests. */
@@ -61,6 +63,29 @@ async function closeQuietly(handle: Awaited<ReturnType<typeof open>> | undefined
       // Verification has already completed or failed; a close error cannot make the handle safe.
     }
   }
+}
+
+async function digestExactBytes(
+  handle: Awaited<ReturnType<typeof open>>,
+  bytes: number,
+): Promise<string | undefined> {
+  const digest = createHash("sha256");
+  const buffer = Buffer.alloc(READ_BUFFER_BYTES);
+  let remaining = bytes;
+  while (remaining > 0) {
+    const requested = Math.min(buffer.length, remaining);
+    const { bytesRead } = await handle.read(buffer, 0, requested, null);
+    if (bytesRead === 0) {
+      return undefined;
+    }
+    digest.update(buffer.subarray(0, bytesRead));
+    remaining -= bytesRead;
+  }
+  const extra = Buffer.alloc(1);
+  if ((await handle.read(extra, 0, 1, null)).bytesRead !== 0) {
+    return undefined;
+  }
+  return digest.digest("hex");
 }
 
 /** @internal Not exported from the package root. */
@@ -138,30 +163,14 @@ export async function finalizeOwnedFile(
       if (before.size !== BigInt(expected.bytes)) {
         return false;
       }
-
-      const digest = createHash("sha256");
-      const buffer = Buffer.alloc(READ_BUFFER_BYTES);
-      let remaining = expected.bytes;
-      while (remaining > 0) {
-        const requested = Math.min(buffer.length, remaining);
-        const { bytesRead } = await handle.read(buffer, 0, requested, null);
-        if (bytesRead === 0) {
-          return false;
-        }
-        digest.update(buffer.subarray(0, bytesRead));
-        remaining -= bytesRead;
-      }
-      const extra = Buffer.alloc(1);
-      if ((await handle.read(extra, 0, 1, null)).bytesRead !== 0) {
-        return false;
-      }
+      const digest = await digestExactBytes(handle, expected.bytes);
 
       const afterRead = await handle.stat({ bigint: true });
       if (
         !sameIdentity(entry, afterRead) ||
         !afterRead.isFile() ||
         afterRead.size !== BigInt(expected.bytes) ||
-        digest.digest("hex") !== expected.sha256
+        digest !== expected.sha256
       ) {
         return false;
       }
@@ -180,6 +189,22 @@ export async function finalizeOwnedFile(
   } finally {
     await closeQuietly(handle);
   }
+}
+
+/** @internal Not exported from the package root. */
+export async function matchesOwnedFile(entry: OwnedEntry): Promise<boolean> {
+  if (
+    entry.kind !== "file" ||
+    !Number.isSafeInteger(entry.bytes) ||
+    (entry.bytes as number) < 0 ||
+    typeof entry.sha256 !== "string"
+  ) {
+    return false;
+  }
+  return finalizeOwnedFile(entry, {
+    bytes: entry.bytes as number,
+    sha256: entry.sha256,
+  });
 }
 
 function compareAscii(left: string, right: string): number {
@@ -270,7 +295,10 @@ export async function verifyOwnedTree(
         ? await finalizeOwnedDirectory(entry, finalizeModes ? 0o755 : undefined)
         : await finalizeOwnedFile(
             entry,
-            expected,
+            expected ??
+              (entry.bytes !== undefined && entry.sha256 !== undefined
+                ? { bytes: entry.bytes, sha256: entry.sha256 }
+                : undefined),
             finalizeModes && expected !== undefined ? 0o644 : undefined,
           );
     if (!verified) {
@@ -298,5 +326,44 @@ export async function recordOwned(path: string, kind: OwnedEntry["kind"]): Promi
   if (!matches || metadata.isSymbolicLink()) {
     throw changedTypeError(kind);
   }
-  return { path, kind, dev: metadata.dev, ino: metadata.ino };
+  const entry = { path, kind, dev: metadata.dev, ino: metadata.ino };
+  if (kind === "directory") {
+    return entry;
+  }
+  if (metadata.size > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw changedTypeError(kind);
+  }
+
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    const noFollow = (constants as Partial<typeof constants>).O_NOFOLLOW;
+    handle = await open(path, constants.O_RDONLY | (typeof noFollow === "number" ? noFollow : 0));
+    const before = await handle.stat({ bigint: true });
+    if (!sameIdentity(entry, before) || !before.isFile() || before.size !== metadata.size) {
+      throw changedTypeError(kind);
+    }
+    const bytes = Number(before.size);
+    const sha256 = await digestExactBytes(handle, bytes);
+    const afterRead = await handle.stat({ bigint: true });
+    const finalPath = await lstat(path, { bigint: true });
+    if (
+      sha256 === undefined ||
+      !sameIdentity(entry, afterRead) ||
+      !afterRead.isFile() ||
+      afterRead.size !== before.size ||
+      !sameIdentity(entry, finalPath) ||
+      !finalPath.isFile() ||
+      finalPath.isSymbolicLink()
+    ) {
+      throw changedTypeError(kind);
+    }
+    return { ...entry, bytes, sha256 };
+  } catch (error) {
+    if (error instanceof ProjectCreationError) {
+      throw error;
+    }
+    throw changedTypeError(kind);
+  } finally {
+    await closeQuietly(handle);
+  }
 }

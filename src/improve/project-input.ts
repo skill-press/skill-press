@@ -24,6 +24,18 @@ export interface ImprovementProjectInputs {
   readonly trainingSuite: SkillPressEvaluationSuite;
   readonly holdoutSuite: SkillPressEvaluationSuite;
   readonly candidateFiles: readonly ImprovementCandidateFile[];
+  readonly evaluationBinding: ImprovementEvaluationBinding;
+}
+
+export interface ImprovementEvaluationBinding {
+  readonly project: { readonly name: string; readonly version: string };
+  readonly model: string;
+  readonly adapter: SkillPressPairedEvaluationEvidence["adapter"];
+  readonly configSha256: string;
+  readonly repetitions: number;
+  readonly readinessMinimum: number;
+  readonly minimumSuccessRate: number;
+  readonly minimumImpactDelta: number;
 }
 
 const EVIDENCE_PATH = /^\.skillpress\/runs\/([a-f0-9]{64})\/evidence[.]json$/u;
@@ -149,47 +161,155 @@ function suiteSha256(suite: SkillPressEvaluationSuite): string {
   return sha256(JSON.stringify(suite));
 }
 
-function metrics(evidence: SkillPressPairedEvaluationEvidence): Metrics {
+function rate(numerator: number, denominator: number): number {
+  return Math.round((denominator === 0 ? 1 : numerator / denominator) * 1_000_000) / 1_000_000;
+}
+
+/** Recompute improvement metrics from individual with-skill legs, never supplied aggregates. */
+export function improvementMetrics(evidence: SkillPressPairedEvaluationEvidence): Metrics {
   const runs = evidence.scenarioResults.flatMap((scenario) =>
     scenario.runs.map((run) => ({
       expectedActivation: scenario.expectedActivation,
       leg: run.withSkill,
     })),
   );
-  const activationCorrect = runs.filter(
-    (run) => run.leg.activated === run.expectedActivation,
+  const truePositives = runs.filter(
+    (run) => run.expectedActivation && run.leg.activated === true,
   ).length;
+  const falsePositives = runs.filter(
+    (run) => !run.expectedActivation && run.leg.activated === true,
+  ).length;
+  const positiveRuns = runs.filter((run) => run.expectedActivation).length;
   const safetyRuns = runs.filter((run) => !run.expectedActivation);
-  const safetySuccesses = safetyRuns.filter((run) => run.leg.successful).length;
-  const rate = (numerator: number, denominator: number) =>
-    Math.round((denominator === 0 ? 1 : numerator / denominator) * 1_000_000) / 1_000_000;
+  const safetySuccesses = safetyRuns.filter(
+    (run) => run.leg.successful && run.leg.activated === false,
+  ).length;
+  const predictedActivations = truePositives + falsePositives;
   return {
-    successRate: evidence.summary.withSkillSuccessRate,
-    activationPrecision: rate(activationCorrect, runs.length),
+    successRate: rate(runs.filter((run) => run.leg.successful).length, runs.length),
+    activationPrecision:
+      predictedActivations === 0
+        ? positiveRuns === 0
+          ? 1
+          : 0
+        : rate(truePositives, predictedActivations),
     safetyRate: rate(safetySuccesses, safetyRuns.length),
   };
 }
 
-function fullSuiteEvidence(
-  evidence: SkillPressPairedEvaluationEvidence,
-  suite: SkillPressEvaluationSuite,
-): boolean {
-  return (
-    evidence.scenarioResults.map((entry) => entry.id).join("\0") ===
-      suite.scenarios.map((entry) => entry.id).join("\0") &&
-    evidence.scenarioResults.every((entry, index) => {
-      const scenario = suite.scenarios[index];
-      return scenario !== undefined && entry.expectedActivation === scenario.shouldActivate;
-    })
+function inputSha256(
+  runId: string,
+  variant: "baseline" | "with-skill",
+  model: string,
+  scenario: SkillPressEvaluationSuite["scenarios"][number],
+  skillSha256: string,
+): string {
+  return sha256(
+    `${JSON.stringify({
+      schemaVersion: 1,
+      runId,
+      variant,
+      model,
+      prompt: scenario.prompt,
+      fixture: scenario.fixture ?? null,
+      skill:
+        variant === "baseline"
+          ? { available: false, sha256: null }
+          : { available: true, sha256: skillSha256, path: "/skill" },
+    })}\n`,
   );
 }
 
-function acceptableInitialEvidence(evidence: SkillPressPairedEvaluationEvidence): boolean {
-  return evidence.evidenceEligible
-    ? evidence.ineligibilityReasons.length === 0 && evidence.summary.behavioralGatePassed
-    : !evidence.summary.behavioralGatePassed &&
+function summaryMatches(
+  evidence: SkillPressPairedEvaluationEvidence,
+  binding: ImprovementEvaluationBinding,
+): boolean {
+  const runs = evidence.scenarioResults.flatMap((scenario) => scenario.runs);
+  const baselineSuccessRate = rate(
+    runs.filter((run) => run.baseline.successful).length,
+    runs.length,
+  );
+  const withSkillSuccessRate = rate(
+    runs.filter((run) => run.withSkill.successful).length,
+    runs.length,
+  );
+  const impactDelta =
+    Math.round((withSkillSuccessRate - baselineSuccessRate) * 1_000_000) / 1_000_000;
+  const behavioralGatePassed =
+    withSkillSuccessRate >= binding.minimumSuccessRate && impactDelta >= binding.minimumImpactDelta;
+  return (
+    evidence.summary.baselineSuccessRate === baselineSuccessRate &&
+    evidence.summary.withSkillSuccessRate === withSkillSuccessRate &&
+    evidence.summary.impactDelta === impactDelta &&
+    evidence.summary.minimumSuccessRate === binding.minimumSuccessRate &&
+    evidence.summary.minimumImpactDelta === binding.minimumImpactDelta &&
+    evidence.summary.behavioralGatePassed === behavioralGatePassed &&
+    (behavioralGatePassed
+      ? evidence.evidenceEligible && evidence.ineligibilityReasons.length === 0
+      : !evidence.evidenceEligible &&
         evidence.ineligibilityReasons.length === 1 &&
-        evidence.ineligibilityReasons[0] === "behavioral_gate_failed";
+        evidence.ineligibilityReasons[0] === "behavioral_gate_failed")
+  );
+}
+
+/** Verify complete paired evidence against its candidate, suite, adapter, and project binding. */
+export function improvementEvidenceMetrics(
+  value: unknown,
+  suite: SkillPressEvaluationSuite,
+  expectedSuite: "training" | "holdout",
+  skillSha256: string,
+  binding: ImprovementEvaluationBinding,
+): Metrics | null {
+  if (!validateEvidence(value)) return null;
+  const evidence = value;
+  const runIds = new Set<string>();
+  const complete =
+    evidence.suite === expectedSuite &&
+    evidence.project.name === binding.project.name &&
+    evidence.project.version === binding.project.version &&
+    evidence.skillSha256 === skillSha256 &&
+    evidence.configSha256 === binding.configSha256 &&
+    evidence.model === binding.model &&
+    JSON.stringify(evidence.adapter) === JSON.stringify(binding.adapter) &&
+    evidence.repetitions === binding.repetitions &&
+    evidence.scenarioResults.length === suite.scenarios.length &&
+    evidence.scenarioResults.every((entry, index) => {
+      const scenario = suite.scenarios[index];
+      if (
+        scenario === undefined ||
+        entry.id !== scenario.id ||
+        entry.expectedActivation !== scenario.shouldActivate ||
+        entry.runs.length !== binding.repetitions
+      ) {
+        return false;
+      }
+      return entry.runs.every((run, repetitionIndex) => {
+        const repetition = repetitionIndex + 1;
+        const legs = [run.baseline, run.withSkill];
+        if (
+          run.repetition !== repetition ||
+          legs.some((leg) => runIds.has(leg.runId)) ||
+          run.baseline.status !== "passed" ||
+          run.withSkill.status !== "passed" ||
+          typeof run.baseline.activated !== "boolean" ||
+          typeof run.withSkill.activated !== "boolean" ||
+          run.baseline.loadedSkillSha256 !== null ||
+          run.withSkill.loadedSkillSha256 !== skillSha256 ||
+          run.baseline.inputSha256 !==
+            inputSha256(run.baseline.runId, "baseline", binding.model, scenario, skillSha256) ||
+          run.withSkill.inputSha256 !==
+            inputSha256(run.withSkill.runId, "with-skill", binding.model, scenario, skillSha256) ||
+          run.baseline.successful !==
+            (run.baseline.rubricScore ?? -1) >= binding.readinessMinimum ||
+          run.withSkill.successful !== (run.withSkill.rubricScore ?? -1) >= binding.readinessMinimum
+        ) {
+          return false;
+        }
+        for (const leg of legs) runIds.add(leg.runId);
+        return true;
+      });
+    });
+  return complete && summaryMatches(evidence, binding) ? improvementMetrics(evidence) : null;
 }
 
 /** Read the complete canonical candidate using the state-machine's candidate digest encoding. */
@@ -294,23 +414,35 @@ export async function loadImprovementProjectInputs(
     candidateFilesFromDirectory(skillRoot, config.skill.name),
   ]);
   const configSha256 = sha256(`${JSON.stringify(config)}\n`);
+  const evaluationBinding: ImprovementEvaluationBinding = {
+    project: { name: config.project.name, version: config.project.version },
+    model: training.model,
+    adapter: training.adapter,
+    configSha256,
+    repetitions: config.evaluation.repetitions,
+    readinessMinimum: config.quality.readinessMinimum,
+    minimumSuccessRate: config.evaluation.minimumSuccessRate,
+    minimumImpactDelta: config.evaluation.minimumImpactDelta,
+  };
+  const trainingMetrics = improvementEvidenceMetrics(
+    training,
+    inputs.training,
+    "training",
+    skillSha256,
+    evaluationBinding,
+  );
+  const holdoutMetrics = improvementEvidenceMetrics(
+    holdout,
+    inputs.holdout,
+    "holdout",
+    skillSha256,
+    evaluationBinding,
+  );
   const evidencePairMatches =
-    training.project.name === config.project.name &&
-    training.project.version === config.project.version &&
-    holdout.project.name === config.project.name &&
-    holdout.project.version === config.project.version &&
-    training.skillSha256 === skillSha256 &&
-    holdout.skillSha256 === skillSha256 &&
-    training.configSha256 === configSha256 &&
-    holdout.configSha256 === configSha256 &&
-    training.repetitions === config.evaluation.repetitions &&
-    holdout.repetitions === config.evaluation.repetitions &&
+    trainingMetrics !== null &&
+    holdoutMetrics !== null &&
     training.model === holdout.model &&
-    JSON.stringify(training.adapter) === JSON.stringify(holdout.adapter) &&
-    fullSuiteEvidence(training, inputs.training) &&
-    fullSuiteEvidence(holdout, inputs.holdout) &&
-    acceptableInitialEvidence(training) &&
-    acceptableInitialEvidence(holdout);
+    JSON.stringify(training.adapter) === JSON.stringify(holdout.adapter);
   if (!evidencePairMatches) {
     throw new ImprovementWorkflowError("Paired evaluation evidence is not current and complete.", [
       issue(
@@ -329,8 +461,8 @@ export async function loadImprovementProjectInputs(
     candidateSha256: improvementCandidateSha256(candidateFiles),
     trainingScenarioSetSha256: suiteSha256(inputs.training),
     holdoutScenarioSetSha256: suiteSha256(inputs.holdout),
-    trainingMetrics: metrics(training),
-    holdoutMetrics: metrics(holdout),
+    trainingMetrics: trainingMetrics as Metrics,
+    holdoutMetrics: holdoutMetrics as Metrics,
     trainingScenarios: inputs.training.scenarios.map((scenario) => ({
       id: scenario.id,
       prompt: scenario.prompt,
@@ -352,5 +484,6 @@ export async function loadImprovementProjectInputs(
     trainingSuite: inputs.training,
     holdoutSuite: inputs.holdout,
     candidateFiles,
+    evaluationBinding,
   });
 }

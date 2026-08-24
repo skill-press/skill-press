@@ -57,6 +57,8 @@ function ghEnvironment(): Readonly<Record<string, string>> {
     GH_CONFIG_DIR:
       process.env.GH_CONFIG_DIR ??
       join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "gh"),
+    HOME: process.env.HOME ?? homedir(),
+    GIT_TERMINAL_PROMPT: "0",
     NO_COLOR: "1",
   });
 }

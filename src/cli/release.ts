@@ -64,7 +64,7 @@ Options:
   --eval-evidence <file>      Private Tessl Impact evidence file
   --eval-source <directory>   Evaluated scenario source inside the project
   --execute                   Permit configured remote mutations; default is dry-run
-  --resume <receipt>          Resume an executed private publication receipt; implies --execute
+  --resume <receipt>          Resume an executed private publication receipt; requires --execute
   --tessl-workspace <name>    Required when tessl is a configured target
   --tessl-executable <path>   Official Tessl CLI; defaults to tessl on PATH
   --askill-author <name>      askill.sh author; defaults to project.author.github

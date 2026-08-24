@@ -1,5 +1,6 @@
 import { realpathSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -9,6 +10,7 @@ import { createNpmPublicationAdapter } from "../src/publish/adapters/npm.js";
 import type { PublicationContext } from "../src/publish/saga.js";
 
 const root = realpathSync(new URL("..", import.meta.url).pathname);
+const temporaryRoot = realpathSync(tmpdir());
 const sourceCommit = "c".repeat(40);
 const context: PublicationContext = Object.freeze({
   root,
@@ -149,7 +151,14 @@ describe("npm publication adapter", () => {
   it("preflights supported npm, registry reachability, and package dry-run under OIDC", async () => {
     trustedEnvironment();
     const calls: CapturedCommand[] = [];
-    const outputs = [result("", false), result("11.5.1\n"), result("{}"), result("[]")];
+    const outputs = [
+      result("", false),
+      result(`${sourceCommit}\n`),
+      result(""),
+      result("11.5.1\n"),
+      result("{}"),
+      result("[]"),
+    ];
     const adapter = createNpmPublicationAdapter({
       executor: async (command) => {
         calls.push(command);
@@ -159,15 +168,17 @@ describe("npm publication adapter", () => {
     await expect(adapter.preflight(context)).resolves.toMatchObject({ ok: true, code: "ready" });
     expect(calls.map((call) => call.argv)).toEqual([
       ["npm", "view", "@mushanyoung/skillpress@0.1.0", "name", "version", "dist", "--json"],
+      ["git", "rev-parse", "--verify", "HEAD"],
+      ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
       ["npm", "--version"],
       ["npm", "ping", "--json"],
       ["npm", "pack", "--dry-run", "--json"],
     ]);
-    expect(calls[1]?.env).toMatchObject({
+    expect(calls[3]?.env).toMatchObject({
       ACTIONS_ID_TOKEN_REQUEST_TOKEN: "oidc-secret",
       NPM_CONFIG_PROVENANCE: "true",
     });
-    expect(calls[1]?.env).not.toHaveProperty("NPM_TOKEN");
+    expect(calls[3]?.env).not.toHaveProperty("NPM_TOKEN");
   });
 
   it("verifies registry signatures and SLSA provenance and reuses an existing version", async () => {
@@ -193,20 +204,51 @@ describe("npm publication adapter", () => {
     });
   });
 
+  it("treats an existing version with different provenance as an immutable conflict", async () => {
+    trustedEnvironment();
+    const adapter = createNpmPublicationAdapter({
+      executor: async () => result(publishedPackage()),
+      httpClient: async () => ({
+        status: 200,
+        body: attestationBody("f".repeat(40)),
+      }),
+    });
+
+    await expect(adapter.preflight(context)).resolves.toEqual({
+      ok: false,
+      code: "version_conflict",
+      message: "npm version exists but does not match trusted source provenance",
+    });
+    await expect(adapter.execute?.(context, "publish-package")).rejects.toThrow(/conflicts/u);
+  });
+
   it("publishes once when the version is absent and fails closed on publication failure", async () => {
+    trustedEnvironment();
     let calls = 0;
     const publishing = createNpmPublicationAdapter({
       executor: async (command) => {
         calls += 1;
+        if (command.argv[0] === "git" && command.argv[1] === "rev-parse") {
+          return result(`${sourceCommit}\n`);
+        }
+        if (command.argv[0] === "git") return result("");
         return command.argv[1] === "publish" ? result("published") : result("", false);
       },
     });
     await expect(publishing.execute?.(context, "publish-package")).resolves.toMatchObject({
       remoteId: "@mushanyoung/skillpress@0.1.0",
     });
-    expect(calls).toBe(2);
+    expect(calls).toBe(4);
 
-    const failing = createNpmPublicationAdapter({ executor: async () => result("", false) });
+    const failing = createNpmPublicationAdapter({
+      executor: async (command) => {
+        if (command.argv[0] === "git" && command.argv[1] === "rev-parse") {
+          return result(`${sourceCommit}\n`);
+        }
+        if (command.argv[0] === "git") return result("");
+        return result("", false);
+      },
+    });
     await expect(failing.execute?.(context, "publish-package")).rejects.toThrow(/publication/u);
     await expect(failing.execute?.(context, "wrong")).rejects.toThrow(/Unknown/u);
   });
@@ -214,11 +256,13 @@ describe("npm publication adapter", () => {
   it("rejects unsupported npm and failed registry or pack checks", async () => {
     trustedEnvironment();
     for (const version of ["bad", "10.9.0", "11.5.0"]) {
-      let calls = 0;
       const adapter = createNpmPublicationAdapter({
-        executor: async () => {
-          calls += 1;
-          return calls === 1 ? result("", false) : result(version);
+        executor: async (command) => {
+          if (command.argv[0] === "git" && command.argv[1] === "rev-parse") {
+            return result(`${sourceCommit}\n`);
+          }
+          if (command.argv[0] === "git") return result("");
+          return command.argv[1] === "--version" ? result(version) : result("", false);
         },
       });
       await expect(adapter.preflight(context)).resolves.toMatchObject({
@@ -226,13 +270,17 @@ describe("npm publication adapter", () => {
       });
     }
     for (const failAt of [3, 4]) {
-      let calls = 0;
+      let npmChecks = 0;
       const adapter = createNpmPublicationAdapter({
-        executor: async () => {
-          calls += 1;
-          if (calls === 1) return result("", false);
-          if (calls === 2) return result("12.0.0");
-          return result("{}", calls !== failAt);
+        executor: async (command) => {
+          if (command.argv[0] === "git" && command.argv[1] === "rev-parse") {
+            return result(`${sourceCommit}\n`);
+          }
+          if (command.argv[0] === "git") return result("");
+          npmChecks += 1;
+          if (npmChecks === 1) return result("", false);
+          if (npmChecks === 2) return result("12.0.0");
+          return result("{}", npmChecks !== failAt);
         },
       });
       await expect(adapter.preflight(context)).resolves.toMatchObject({
@@ -242,7 +290,7 @@ describe("npm publication adapter", () => {
   });
 
   it("rejects malformed package metadata and incomplete registry attestations", async () => {
-    const invalidRoot = await mkdtemp("/private/tmp/skillpress-npm-adapter-");
+    const invalidRoot = await mkdtemp(join(temporaryRoot, "skillpress-npm-adapter-"));
     temporaryDirectories.push(invalidRoot);
     await writeFile(join(invalidRoot, "package.json"), "{}\n");
     const invalidContext = { ...context, root: invalidRoot };

@@ -9,7 +9,7 @@ source. Publication uses the TypeScript adapter APIs in 0.1.0 and always starts 
 | Provider ID | Capability | Required identity or credential | Verified success | Rollback boundary |
 | --- | --- | --- | --- | --- |
 | `github` | publish | authenticated `gh` / `GH_TOKEN` | public `main` and `v<version>` resolve to the source commit, release assets/digests match, `agent-skills` topic exists | release/tag deletion is manual; pushed history remains |
-| `npm` | publish | GitHub Actions OIDC | exact public `@mushanyoung/skillpress@<version>` metadata, repository, integrity, and provenance | versions are immutable; deprecation/unpublish is policy-bound and manual |
+| `npm` | publish | protected GitHub Actions OIDC workflow | exact public `@mushanyoung/skillpress@<version>` metadata, repository, tarball integrity, and provenance | versions are immutable; deprecation/unpublish is policy-bound and manual |
 | `tessl` | publish | pinned Tessl CLI, `TESSL_TOKEN`, workspace approval | exact public plugin version archive matches every projected byte, path, count, and executable mode | public cannot become private; unpublish is limited to two days, then archive manually |
 | `skills-sh` | derived | exact public GitHub source; optional read tokens | source is exact; listing metadata is recorded only when independently visible | no mutation; ranking/indexing is organic |
 | `askill-sh` | publish | official askill CLI login as configured author | exact immutable version and raw projected `SKILL.md` match | removal or a later version is manual |
@@ -36,11 +36,19 @@ before dry run. Existing tags/releases are reused only if every immutable fact m
 
 ## npm (`npm`)
 
-Only the scoped package `@mushanyoung/skillpress` is valid. The adapter requires matching package
-version/repository, public access, provenance enabled, npm 11.5.1 or newer, the canonical GitHub
-Actions repository/SHA, and OIDC request variables. It will not accept a long-lived token fallback.
-Preflight pings npm and performs `npm pack --dry-run`; verification reads the exact registry
-version and distribution integrity.
+Only the scoped package `@mushanyoung/skillpress` is valid. Production npm publication is not part
+of the local multi-registry saga: the final GitHub target creates the formal Release, which starts
+the protected `release.yml` workflow. Its unprivileged job verifies the exact release assets and
+tarball; its separately approved job receives OIDC, publishes that unchanged tarball, and verifies
+registry integrity and provenance. The exported adapter still fails closed on a conflicting
+existing version, but it is not used as a second production publish path.
+
+npm requires the package to exist before a trusted publisher can be configured. Claim the package
+once with a 2FA-approved `0.0.0` bootstrap version under the `bootstrap` dist-tag, then bind GitHub
+owner `mushanyoung`, repository `skillpress`, workflow filename `release.yml`, environment `npm`,
+and allowed action `npm publish`. No npm write token belongs in GitHub. The protected environment
+reviewer approves only after the local saga receipt, Tessl gate, release assets, and verify job all
+bind to the same source commit.
 
 Configure npm's trusted publisher with workflow filename `release.yml` and GitHub environment
 `npm`. Trusted publication of a public package from a public repository automatically generates
@@ -80,9 +88,10 @@ configured adapter option. It creates a private `SKILL.md` projection with targe
 `version`, runs official validation, publishes that projection, then verifies the immutable
 provider ID, author, slug, version, and raw source-bound projected content.
 
-Run `askill login` interactively before local publication. An absent, malformed, unavailable, or
-conflicting listing is not safe to overwrite. See [askill.sh](https://askill.sh/) for the provider
-and official CLI entrypoint.
+Install the pinned entrypoint with `npm install --global askill-cli@0.1.15`, then run `askill login`
+interactively before local publication. An absent, malformed, unavailable, or conflicting listing
+is not safe to overwrite. See [askill.sh](https://askill.sh/) for the provider and official CLI
+entrypoint.
 
 ## Agent Skill Hub (`agentskillhub-dev`)
 

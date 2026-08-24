@@ -19,14 +19,13 @@ const execFileAsync = promisify(execFile);
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 const generatedPaths: string[] = [];
 const expectedTargets = [
-  "github",
-  "npm",
   "tessl",
   "skills-sh",
   "askill-sh",
   "agentskillhub-dev",
   "agent-skills-hub-catalog",
   "clawhub",
+  "github",
 ] as const;
 
 afterEach(async () => {
@@ -159,7 +158,7 @@ describe("SkillPress self-hosting and publication recovery", () => {
       preflights: [],
       executions: [],
       verifications: [],
-      failAt: "tessl:publish",
+      failAt: "github:publish",
     };
     const adapters = expectedTargets.map((id) => fakeAdapter(id, state));
 
@@ -168,14 +167,13 @@ describe("SkillPress self-hosting and publication recovery", () => {
     expect(
       dryRun.targets.map(({ id, capability, status }) => ({ id, capability, status })),
     ).toEqual([
-      { id: "github", capability: "publish", status: "planned" },
-      { id: "npm", capability: "publish", status: "planned" },
       { id: "tessl", capability: "publish", status: "planned" },
       { id: "skills-sh", capability: "derived", status: "planned" },
       { id: "askill-sh", capability: "publish", status: "planned" },
       { id: "agentskillhub-dev", capability: "publish", status: "planned" },
       { id: "agent-skills-hub-catalog", capability: "submit", status: "planned" },
       { id: "clawhub", capability: "publish", status: "planned" },
+      { id: "github", capability: "publish", status: "planned" },
     ]);
     expect(state.executions).toEqual([]);
     expect(state.verifications).toEqual([]);
@@ -187,23 +185,35 @@ describe("SkillPress self-hosting and publication recovery", () => {
     track(failed.storagePath as string);
     expect(state.preflights).toEqual(expectedTargets);
     expect(state.executions).toEqual([
-      "github:prepare",
-      "github:publish",
-      "npm:prepare",
-      "npm:publish",
       "tessl:prepare",
       "tessl:publish",
+      "askill-sh:prepare",
+      "askill-sh:publish",
+      "agentskillhub-dev:prepare",
+      "agentskillhub-dev:publish",
+      "agent-skills-hub-catalog:prepare",
+      "agent-skills-hub-catalog:publish",
+      "clawhub:prepare",
+      "clawhub:publish",
+      "github:prepare",
+      "github:publish",
     ]);
-    expect(state.verifications).toEqual(["github", "npm"]);
+    expect(state.verifications).toEqual([
+      "tessl",
+      "skills-sh",
+      "askill-sh",
+      "agentskillhub-dev",
+      "agent-skills-hub-catalog",
+      "clawhub",
+    ]);
     expect(failed.targets.map(({ id, status }) => ({ id, status }))).toMatchObject([
-      { id: "github", status: "verified" },
-      { id: "npm", status: "verified" },
-      { id: "tessl", status: "failed" },
-      { id: "skills-sh", status: "planned" },
-      { id: "askill-sh", status: "planned" },
-      { id: "agentskillhub-dev", status: "planned" },
-      { id: "agent-skills-hub-catalog", status: "planned" },
-      { id: "clawhub", status: "planned" },
+      { id: "tessl", status: "verified" },
+      { id: "skills-sh", status: "derived" },
+      { id: "askill-sh", status: "verified" },
+      { id: "agentskillhub-dev", status: "verified" },
+      { id: "agent-skills-hub-catalog", status: "verified" },
+      { id: "clawhub", status: "verified" },
+      { id: "github", status: "failed" },
     ]);
     if (process.platform !== "win32") {
       expect((await stat(join(repositoryRoot, failed.storagePath as string))).mode & 0o777).toBe(
@@ -219,23 +229,17 @@ describe("SkillPress self-hosting and publication recovery", () => {
     });
     expect(resumed.status).toBe("completed");
     expect(resumed.targets.map(({ id, status }) => ({ id, status }))).toEqual([
-      { id: "github", status: "verified" },
-      { id: "npm", status: "verified" },
       { id: "tessl", status: "verified" },
       { id: "skills-sh", status: "derived" },
       { id: "askill-sh", status: "verified" },
       { id: "agentskillhub-dev", status: "verified" },
       { id: "agent-skills-hub-catalog", status: "verified" },
       { id: "clawhub", status: "verified" },
+      { id: "github", status: "verified" },
     ]);
-    expect(state.preflights).toEqual(expectedTargets.slice(2));
+    expect(state.preflights).toEqual(["github"]);
     expect(state.executions).toEqual([
-      "github:prepare",
-      "github:publish",
-      "npm:prepare",
-      "npm:publish",
       "tessl:prepare",
-      "tessl:publish",
       "tessl:publish",
       "askill-sh:prepare",
       "askill-sh:publish",
@@ -245,16 +249,18 @@ describe("SkillPress self-hosting and publication recovery", () => {
       "agent-skills-hub-catalog:publish",
       "clawhub:prepare",
       "clawhub:publish",
+      "github:prepare",
+      "github:publish",
+      "github:publish",
     ]);
     expect(state.verifications).toEqual([
-      "github",
-      "npm",
       "tessl",
       "skills-sh",
       "askill-sh",
       "agentskillhub-dev",
       "agent-skills-hub-catalog",
       "clawhub",
+      "github",
     ]);
     expect(JSON.stringify(resumed)).not.toContain("fixture credential must not leak");
 

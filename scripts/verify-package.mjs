@@ -1,8 +1,18 @@
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { constants } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
@@ -149,6 +159,33 @@ try {
     'const api = await import("@mushanyoung/skillpress");' +
     'if (typeof api.checkProject !== "function" || typeof api.runPublicationSaga !== "function") process.exit(1);';
   await run(process.execPath, ["--input-type=module", "--eval", apiProbe], installRoot);
+
+  const releaseOutput = process.env.SKILLPRESS_PACKAGE_OUTPUT_DIR;
+  if (releaseOutput !== undefined) {
+    if (!isAbsolute(releaseOutput)) fail("release output directory must be absolute");
+    const destination = resolve(releaseOutput);
+    await mkdir(destination, { mode: 0o700 });
+    const outputTarball = join(destination, packed.filename);
+    await copyFile(tarball, outputTarball, constants.COPYFILE_EXCL);
+    const sourceCommit = (await run("git", ["rev-parse", "HEAD"])).stdout.trim();
+    if (!/^[a-f0-9]{40}$/u.test(sourceCommit)) fail("source commit is invalid");
+    await writeFile(
+      join(destination, "manifest.json"),
+      `${JSON.stringify({
+        schemaVersion: 1,
+        package: packed.id,
+        name: packed.name,
+        version: packed.version,
+        filename: packed.filename,
+        bytes: packed.size,
+        shasum: packed.shasum,
+        integrity: packed.integrity,
+        sha256: digest("sha256", bytes),
+        sourceCommit,
+      })}\n`,
+      { flag: "wx", mode: 0o600 },
+    );
+  }
 
   process.stdout.write(
     `${JSON.stringify({

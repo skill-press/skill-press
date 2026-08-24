@@ -187,6 +187,14 @@ describe("publication saga", () => {
     await expect(runPublicationSaga(root, artifacts, [manySteps])).rejects.toBeInstanceOf(
       PublicationSagaError,
     );
+
+    const orderedRoot = await project(["github", "npm"]);
+    await expect(
+      runPublicationSaga(orderedRoot, artifacts, [
+        adapter({ calls: [] }, "npm"),
+        adapter({ calls: [] }, "github"),
+      ]),
+    ).rejects.toBeInstanceOf(PublicationSagaError);
   });
 
   it("rejects unsafe or mismatched resume receipts and skips already verified targets", async () => {
@@ -371,6 +379,27 @@ describe("publication saga", () => {
       readPublicationReceipt(root, completed.storagePath as string),
     ).rejects.toBeInstanceOf(PublicationSagaError);
   });
+
+  it.runIf(process.platform !== "win32")(
+    "rejects permissive receipt parents and oversized receipts",
+    async () => {
+      const root = await project();
+      const completed = await runPublicationSaga(root, artifacts, [adapter({ calls: [] })], {
+        execute: true,
+      });
+      const receiptPath = join(root, completed.storagePath as string);
+      const runRoot = join(receiptPath, "..");
+      await chmod(runRoot, 0o755);
+      await expect(
+        readPublicationReceipt(root, completed.storagePath as string),
+      ).rejects.toBeInstanceOf(PublicationSagaError);
+      await chmod(runRoot, 0o700);
+      await writeFile(receiptPath, "x".repeat(2 * 1024 * 1024 + 1), { mode: 0o600 });
+      await expect(
+        readPublicationReceipt(root, completed.storagePath as string),
+      ).rejects.toBeInstanceOf(PublicationSagaError);
+    },
+  );
 
   it.runIf(process.platform !== "win32")(
     "handles existing private storage and rejects unsafe creation",

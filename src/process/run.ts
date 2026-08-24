@@ -12,6 +12,7 @@ export interface BoundedCommand {
   readonly cwd: string;
   readonly reportCwd?: string;
   readonly timeoutSeconds: number;
+  readonly signal?: AbortSignal;
 }
 
 const spawnSnapshot = spawn;
@@ -114,6 +115,7 @@ export async function runBoundedCommand(command: BoundedCommand): Promise<TestCo
     forcedStatus = status;
     terminate(child, detached);
   };
+  const abort = (): void => force("failed");
   child.stdout?.on("data", (chunk: Buffer) => {
     stdoutBytes += chunk.byteLength;
     stdoutHash.update(chunk);
@@ -131,6 +133,7 @@ export async function runBoundedCommand(command: BoundedCommand): Promise<TestCo
     child.once("error", () => force("spawn_error"));
     child.once("close", (exitCode, signal) => {
       clearTimeout(timeout);
+      command.signal?.removeEventListener("abort", abort);
       const status = forcedStatus ?? (exitCode === 0 ? "passed" : "failed");
       resolveResult(
         fixedResult(
@@ -146,5 +149,7 @@ export async function runBoundedCommand(command: BoundedCommand): Promise<TestCo
         ),
       );
     });
+    command.signal?.addEventListener("abort", abort, { once: true });
+    if (command.signal?.aborted === true) abort();
   });
 }

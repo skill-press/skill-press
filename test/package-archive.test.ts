@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -217,6 +218,36 @@ describe("deterministic package archives", () => {
     provenance.project.name = "different";
     await writeFile(provenancePath, `${JSON.stringify(provenance)}\n`);
     await expect(loadPackagedSkill(staleRoot, stale.artifactsPath)).rejects.toBeInstanceOf(
+      SkillPackageError,
+    );
+  });
+
+  it("rejects coherently rewritten archives, provenance, and checksums", async () => {
+    const root = await project();
+    const packaged = await packageStagedSkill(root, await stageCanonicalSkill(root));
+    const output = join(root, packaged.artifactsPath);
+    const archive = Buffer.concat([
+      await readFile(join(output, packaged.skillArchive)),
+      Buffer.from("foreign archive payload"),
+    ]);
+    const archiveSha256 = createHash("sha256").update(archive).digest("hex");
+    await writeFile(join(output, packaged.skillArchive), archive);
+    await writeFile(join(output, packaged.zipArchive), archive);
+    const provenancePath = join(output, packaged.provenance);
+    const provenance = JSON.parse(await readFile(provenancePath, "utf8"));
+    for (const artifact of provenance.artifacts) {
+      artifact.sha256 = archiveSha256;
+      artifact.bytes = archive.byteLength;
+    }
+    const provenanceBytes = Buffer.from(`${JSON.stringify(provenance)}\n`);
+    await writeFile(provenancePath, provenanceBytes);
+    const provenanceSha256 = createHash("sha256").update(provenanceBytes).digest("hex");
+    await writeFile(
+      join(output, packaged.checksums),
+      `${archiveSha256}  ${packaged.skillArchive}\n${archiveSha256}  ${packaged.zipArchive}\n${provenanceSha256}  ${packaged.provenance}\n`,
+    );
+
+    await expect(loadPackagedSkill(root, packaged.artifactsPath)).rejects.toBeInstanceOf(
       SkillPackageError,
     );
   });

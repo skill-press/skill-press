@@ -16,9 +16,11 @@ import { basename, dirname, join, resolve } from "node:path";
 
 import { Ajv, type ValidateFunction } from "ajv";
 
+import { checkProject } from "../check/project.js";
 import { loadProjectConfig } from "../config/load.js";
 import { digestBoundedTree } from "../evidence/tree-digest.js";
 import { runCapturedCommand } from "../process/capture.js";
+import { runProjectTests } from "../test/project.js";
 import type { SkillPressImprovementAdapterRequest } from "./generated-adapter-request.js";
 import type {
   Evaluation as AdapterEvaluation,
@@ -29,6 +31,7 @@ import type {
 import type { SkillPressImprovementReport } from "./generated-report.js";
 import {
   candidateFilesFromDirectory,
+  improvementEvidenceMetrics,
   improvementCandidateSha256,
   loadImprovementProjectInputs,
   type ImprovementEvidencePaths,
@@ -37,7 +40,6 @@ import {
   runBoundedImprovement,
   type ImprovementAuthorContext,
   type ImprovementCandidateFile,
-  type ImprovementEvaluation,
   type ImprovementProposal,
   type ImprovementReview,
 } from "./state-machine.js";
@@ -72,6 +74,7 @@ export interface CommandImprovementResult {
 interface PreparedCandidate {
   readonly root: string;
   readonly sha256: string;
+  readonly skillSha256: string;
   readonly files: readonly ImprovementCandidateFile[];
 }
 
@@ -87,7 +90,10 @@ const requestSchema = JSON.parse(
     "utf8",
   ),
 ) as object;
-const ajv = new Ajv({ allErrors: true, strict: true });
+const evidenceSchema = JSON.parse(
+  await readFile(new URL("../../schemas/eval-evidence.schema.json", import.meta.url), "utf8"),
+) as object;
+const ajv = new Ajv({ allErrors: true, strict: true, schemas: [evidenceSchema] });
 const validateResponse = ajv.compile<SkillPressImprovementAdapterResponse>(
   responseSchema,
 ) as ValidateFunction<SkillPressImprovementAdapterResponse>;
@@ -168,13 +174,14 @@ function snapshotCommand(command: ImprovementRoleCommand, label: string): Improv
 function responseResult(
   value: SkillPressImprovementAdapterResponse,
   operation: ImprovementAdapterOperation,
+  requestId: string,
 ): AdapterProposal | AdapterReview | AdapterEvaluation {
-  if (value.operation !== operation) {
+  if (value.operation !== operation || value.requestId !== requestId) {
     throw new ImprovementWorkflowError("Improvement adapter response operation changed.", [
       issue(
         "improve.adapter.operation",
         "/response/operation",
-        "response operation must match its request",
+        "response requestId and operation must match its request",
       ),
     ]);
   }
@@ -183,7 +190,7 @@ function responseResult(
   if (operation === "review" && "approved" in result) return result;
   if (
     (operation === "evaluate-training" || operation === "evaluate-holdout") &&
-    "scenarioSetSha256" in result
+    "evidence" in result
   ) {
     return result;
   }
@@ -279,7 +286,72 @@ async function writeCandidate(
     await chmod(destination, file.executable === true ? 0o700 : 0o600);
   }
   const files = await candidateFilesFromDirectory(candidateRoot, skillName);
-  return freeze({ root: candidateRoot, sha256: improvementCandidateSha256(files), files });
+  return freeze({
+    root: candidateRoot,
+    sha256: improvementCandidateSha256(files),
+    skillSha256: await digestBoundedTree(candidateRoot),
+    files,
+  });
+}
+
+async function deterministicCandidate(
+  root: string,
+  canonicalSkillPath: string,
+  candidate: PreparedCandidate,
+  backupsRoot: string,
+  signal: AbortSignal,
+): Promise<boolean> {
+  if (signal.aborted || (await digestBoundedTree(candidate.root)) !== candidate.skillSha256) {
+    return false;
+  }
+  const canonical = await realpath(join(root, canonicalSkillPath));
+  const backup = join(backupsRoot, `deterministic-${randomBytes(32).toString("hex")}`);
+  await rename(canonical, backup);
+  let installed = false;
+  let recovered = false;
+  let canonicalRestored = false;
+  let candidatePassed = false;
+  let candidateFailed = false;
+  let candidateFailure: unknown;
+  try {
+    await rename(candidate.root, canonical);
+    installed = true;
+    const readiness = await checkProject(root);
+    const tests = await runProjectTests(root, { signal });
+    candidatePassed =
+      !signal.aborted &&
+      readiness.ok &&
+      tests.ok &&
+      (await digestBoundedTree(canonical)) === candidate.skillSha256;
+  } catch (error) {
+    candidateFailed = true;
+    candidateFailure = error;
+  }
+  if (installed) {
+    try {
+      await rename(canonical, candidate.root);
+      recovered = true;
+    } catch {
+      recovered = false;
+    }
+  }
+  try {
+    await rename(backup, canonical);
+    canonicalRestored = true;
+  } catch {
+    canonicalRestored = false;
+  }
+  if (!canonicalRestored || (installed && !recovered)) {
+    throw new ImprovementWorkflowError("Prepared candidate could not be restored.", [
+      issue(
+        "improve.deterministic.restore",
+        "/candidate",
+        "candidate verification must restore the canonical project transaction",
+      ),
+    ]);
+  }
+  if (candidateFailed) throw candidateFailure;
+  return candidatePassed;
 }
 
 async function setCanonicalModes(root: string): Promise<void> {
@@ -406,7 +478,7 @@ export async function runCommandImprovement(
           ),
         ]);
       }
-      return responseResult(await stableResponse(responsePath), operation);
+      return responseResult(await stableResponse(responsePath), operation, requestId);
     } finally {
       await rm(callRoot, { recursive: true, force: true });
     }
@@ -426,37 +498,87 @@ export async function runCommandImprovement(
         )) as ImprovementProposal,
       review: async (proposal, signal) =>
         (await call(reviewer, "review", { proposal }, signal)) as ImprovementReview,
-      deterministic: async (proposal) => {
+      deterministic: async (proposal, signal) => {
         try {
           const candidate = await writeCandidate(runRoot, config.skill.name, proposal);
           prepared.set(proposalKey(proposal), candidate);
-          return { passed: true };
+          return {
+            passed: await deterministicCandidate(
+              root,
+              config.skill.path,
+              candidate,
+              backupsRoot,
+              signal,
+            ),
+          };
         } catch {
           return { passed: false };
         }
       },
-      evaluateTraining: async (proposal, signal) =>
-        (await call(
+      evaluateTraining: async (proposal, signal) => {
+        const candidate = prepared.get(proposalKey(proposal));
+        if (candidate === undefined) throw new Error("candidate was not prepared");
+        const result = (await call(
           evaluator,
           "evaluate-training",
           {
             proposal,
+            candidateSha256: candidate.sha256,
+            skillSha256: candidate.skillSha256,
             scenarioSetSha256: inputs.initial.trainingScenarioSetSha256,
             suite: inputs.trainingSuite,
+            binding: inputs.evaluationBinding,
           },
           signal,
-        )) as ImprovementEvaluation,
-      evaluateHoldout: async (proposal, signal) =>
-        (await call(
+        )) as AdapterEvaluation;
+        const metrics = improvementEvidenceMetrics(
+          result.evidence,
+          inputs.trainingSuite,
+          "training",
+          candidate.skillSha256,
+          inputs.evaluationBinding,
+        );
+        if (
+          result.candidateSha256 !== candidate.sha256 ||
+          result.scenarioSetSha256 !== inputs.initial.trainingScenarioSetSha256 ||
+          metrics === null
+        ) {
+          throw new Error("training evidence did not bind the prepared candidate");
+        }
+        return { scenarioSetSha256: result.scenarioSetSha256, metrics };
+      },
+      evaluateHoldout: async (proposal, signal) => {
+        const candidate = prepared.get(proposalKey(proposal));
+        if (candidate === undefined) throw new Error("candidate was not prepared");
+        const result = (await call(
           evaluator,
           "evaluate-holdout",
           {
             proposal,
+            candidateSha256: candidate.sha256,
+            skillSha256: candidate.skillSha256,
             scenarioSetSha256: inputs.initial.holdoutScenarioSetSha256,
             suite: inputs.holdoutSuite,
+            binding: inputs.evaluationBinding,
           },
           signal,
-        )) as ImprovementEvaluation,
+        )) as AdapterEvaluation;
+        const metrics = improvementEvidenceMetrics(
+          result.evidence,
+          inputs.holdoutSuite,
+          "holdout",
+          candidate.skillSha256,
+          inputs.evaluationBinding,
+        );
+        if (
+          result.candidateSha256 !== candidate.sha256 ||
+          result.scenarioSetSha256 !== inputs.initial.holdoutScenarioSetSha256 ||
+          metrics === null
+        ) {
+          throw new Error("holdout evidence did not bind the prepared candidate");
+        }
+        return { scenarioSetSha256: result.scenarioSetSha256, metrics };
+      },
       accept: async (proposal) => {
         const candidate = prepared.get(proposalKey(proposal));
         if (candidate === undefined) throw new Error("candidate was not prepared");

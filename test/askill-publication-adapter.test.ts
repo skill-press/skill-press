@@ -165,9 +165,9 @@ describe("askill publication adapter", () => {
     expect(
       calls.every((call) => call.argv.includes("--json") || call.argv[1] === "--version"),
     ).toBe(true);
-    expect(
-      calls.every((call) => JSON.stringify(call.env) === JSON.stringify({ NO_COLOR: "1" })),
-    ).toBe(true);
+    expect(calls.every((call) => call.env?.NO_COLOR === "1")).toBe(true);
+    expect(calls.every((call) => call.env?.HOME !== undefined)).toBe(true);
+    expect(calls.every((call) => call.env?.AWS_SECRET_ACCESS_KEY === undefined)).toBe(true);
     expect(await readFile(canonicalPath, "utf8")).toBe(canonicalMarkdown);
     const projection = join(
       context.root,

@@ -203,7 +203,7 @@ function tesslEnvironment(
 ): Readonly<Record<string, string>> {
   return Object.freeze({
     NO_COLOR: "1",
-    TESSL_DISABLE_UPDATE: "true",
+    TESSL_AUTO_UPDATE_INTERVAL_MINUTES: "0",
     ...(authenticated && token !== undefined ? { TESSL_TOKEN: token } : {}),
   });
 }

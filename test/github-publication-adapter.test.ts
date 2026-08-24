@@ -75,6 +75,7 @@ describe("GitHub publication adapter", () => {
     const outputs = [
       result("{}"),
       result(JSON.stringify({ isPrivate: false, nameWithOwner: "mushanyoung/skillpress" })),
+      result(""),
       result("valid"),
     ];
     const adapter = createGitHubPublicationAdapter({
@@ -91,6 +92,17 @@ describe("GitHub publication adapter", () => {
     expect(calls.map((call) => call.argv)).toEqual([
       ["gh", "api", "user"],
       ["gh", "repo", "view", "mushanyoung/skillpress", "--json", "isPrivate,nameWithOwner,url"],
+      [
+        "git",
+        "-c",
+        "credential.helper=",
+        "-c",
+        "credential.helper=!gh auth git-credential",
+        "push",
+        "--dry-run",
+        "https://github.com/mushanyoung/skillpress.git",
+        `${commit}:refs/heads/main`,
+      ],
       ["gh", "skill", "publish", "--dry-run", root],
     ]);
   });
@@ -113,6 +125,8 @@ describe("GitHub publication adapter", () => {
         GH_TOKEN: "gh-secret",
         GITHUB_TOKEN: "github-secret",
         GH_CONFIG_DIR: expect.any(String),
+        HOME: expect.any(String),
+        GIT_TERMINAL_PROMPT: "0",
         NO_COLOR: "1",
       });
     } finally {
@@ -187,7 +201,7 @@ describe("GitHub publication adapter", () => {
     const invalid = createGitHubPublicationAdapter({
       executor: async () => {
         calls += 1;
-        return calls === 3
+        return calls === 4
           ? result("", false)
           : result(
               calls === 2

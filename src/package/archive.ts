@@ -189,6 +189,79 @@ function createZip(
   return Buffer.concat([...body, ...central, end]);
 }
 
+async function archiveFromCanonicalTree(
+  root: string,
+  skillName: string,
+): Promise<{ readonly bytes: Buffer; readonly sha256: string }> {
+  const files: Array<{ path: string; contents: Buffer; executable: boolean }> = [];
+  let entries = 0;
+  let totalBytes = 0;
+  const visit = async (directory: string, relativeDirectory: string): Promise<void> => {
+    const names = await readdir(directory);
+    names.sort((left, right) => Buffer.compare(Buffer.from(left), Buffer.from(right)));
+    for (const name of names) {
+      entries += 1;
+      if (entries > 2048) {
+        throw new SkillPackageError("Staged canonical inventory is too large.", [
+          issue("package.load.canonical", "/artifacts", "canonical entry limit exceeded"),
+        ]);
+      }
+      const absolute = join(directory, name);
+      const relativePath = relativeDirectory === "" ? name : `${relativeDirectory}/${name}`;
+      const before = await lstat(absolute);
+      if (before.isSymbolicLink()) {
+        throw new SkillPackageError("Staged canonical tree is unsafe.", [
+          issue("package.load.canonical", "/artifacts", "canonical tree cannot contain links"),
+        ]);
+      }
+      if (before.isDirectory()) {
+        await visit(absolute, relativePath);
+        continue;
+      }
+      if (!before.isFile() || before.size > 32 * 1024 * 1024) {
+        throw new SkillPackageError("Staged canonical tree is unsafe.", [
+          issue(
+            "package.load.canonical",
+            "/artifacts",
+            "canonical tree must contain bounded regular files",
+          ),
+        ]);
+      }
+      const contents = await readFile(absolute);
+      const after = await lstat(absolute);
+      totalBytes += contents.byteLength;
+      if (
+        totalBytes > 128 * 1024 * 1024 ||
+        contents.byteLength !== before.size ||
+        !sameMetadata(before, after)
+      ) {
+        throw new SkillPackageError("Staged canonical tree changed while it was read.", [
+          issue(
+            "package.load.canonical",
+            "/artifacts",
+            "canonical content and metadata must remain stable",
+          ),
+        ]);
+      }
+      files.push({
+        path: posix.join(skillName, relativePath),
+        contents,
+        executable: (before.mode & 0o111) !== 0,
+      });
+    }
+  };
+  const beforeSha256 = await digestBoundedTree(root);
+  await visit(root, "");
+  const afterSha256 = await digestBoundedTree(root);
+  if (beforeSha256 !== afterSha256) {
+    throw new SkillPackageError("Staged canonical tree changed while it was archived.", [
+      issue("package.load.canonical", "/artifacts", "canonical tree digest must remain stable"),
+    ]);
+  }
+  files.sort((left, right) => Buffer.compare(Buffer.from(left.path), Buffer.from(right.path)));
+  return Object.freeze({ bytes: createZip(files), sha256: afterSha256 });
+}
+
 async function readStagedFiles(
   root: string,
   staged: StagedCanonicalSkill,
@@ -436,11 +509,35 @@ export async function loadPackagedSkill(
   const configBytes = await readFile(join(root, "skillpress.yaml"));
   const artifactSha256 = sha256(skillBytes);
   const provenanceSha256 = sha256(provenanceBytes);
+  const stagedCanonicalPath = join(
+    root,
+    ...artifactsPath.split("/").slice(0, -1),
+    "canonical",
+    config.skill.name,
+  );
+  const stagedCanonicalRoot = await realpath(stagedCanonicalPath);
+  const currentCanonicalRoot = await realpath(join(root, config.skill.path));
+  if (stagedCanonicalRoot !== stagedCanonicalPath) {
+    throw new SkillPackageError("Staged canonical storage is unsafe.", [
+      issue(
+        "package.load.canonical",
+        "/artifacts",
+        "staged canonical storage cannot traverse symbolic links",
+      ),
+    ]);
+  }
+  const [stagedCanonical, currentCanonicalSha256] = await Promise.all([
+    archiveFromCanonicalTree(stagedCanonicalRoot, config.skill.name),
+    digestBoundedTree(currentCanonicalRoot),
+  ]);
   if (
     loadedProvenance.project.name !== config.project.name ||
     loadedProvenance.project.version !== config.project.version ||
     loadedProvenance.project.skillName !== config.skill.name ||
     loadedProvenance.projectConfigSha256 !== sha256(configBytes) ||
+    loadedProvenance.skillSha256 !== stagedCanonical.sha256 ||
+    loadedProvenance.skillSha256 !== currentCanonicalSha256 ||
+    !skillBytes.equals(stagedCanonical.bytes) ||
     loadedProvenance.artifacts.length !== 2 ||
     loadedProvenance.artifacts[0]?.name !== skillArchive ||
     loadedProvenance.artifacts[1]?.name !== zipArchive ||

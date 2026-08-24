@@ -25,6 +25,21 @@ test, and enforces coverage. `package:verify` runs `npm pack --dry-run`, creates
 checks its allowlisted contents and integrity, installs it with lifecycle scripts disabled in a
 clean temporary project, and probes both the CLI and library exports.
 
+## Exit codes
+
+Every command uses the same bounded exit-code set:
+
+| Code | Meaning | Commands |
+| --- | --- | --- |
+| `0` | Successful command, satisfied report/gate, or help/version output | all |
+| `1` | Unexpected internal, subprocess-I/O, or output-sink failure | all |
+| `2` | Invalid CLI usage or arguments | all |
+| `3` | Invalid input/project/evidence, failed deterministic or provider gate, bounded improvement stop, or blocked publication/readiness state | all operational commands |
+| `4` | Unsafe, concurrently changed, or already-existing create destination | `create` only |
+
+`publish` therefore exits `0` only when every dry-run preflight is ready or every executed target
+is verified. `--resume` requires `--execute`; it never implies mutation silently.
+
 ## Authoring and local proof
 
 Create a project only from a complete capability brief:
@@ -67,11 +82,15 @@ bounded stop, not an internal failure or permission to bypass a gate.
 ## Capture and verify Tessl evidence
 
 Install the pinned official Tessl CLI 0.99.0, authenticate, and confirm the intended workspace.
-Use `TESSL_TOKEN` for non-interactive calls; do not place it in `skillpress.yaml` or the skill.
+SkillPress intentionally does not expose the interactive login store to evidence or publication
+subprocesses. Generate a short-lived Tessl API key locally and export it only in the shell that
+launches SkillPress (or Codex); never paste it into chat, `skillpress.yaml`, or the skill.
 
 ```bash
-tessl auth login
+tessl login
 tessl auth whoami --json
+tessl auth token --expiry-date <YYYY-MM-DD>
+export TESSL_TOKEN='<value-shown-once>'
 node dist/bin.js tessl review --project . --workspace <workspace> --json
 node dist/bin.js tessl eval --project . --source <tessl-eval-source> \
   --agent <agent> --model <model> --json
@@ -156,25 +175,28 @@ import {
   createAskillPublicationAdapter,
   createClawHubPublicationAdapter,
   createGitHubPublicationAdapter,
-  createNpmPublicationAdapter,
   createSkillsShDerivedAdapter,
   createTesslPublicationAdapter,
   runPublicationSaga,
 } from "@mushanyoung/skillpress";
 
 const adapters = [
-  createGitHubPublicationAdapter(),
-  createNpmPublicationAdapter(),
   createTesslPublicationAdapter({ workspace: "<tessl-workspace>" }),
   createSkillsShDerivedAdapter({ source: "<github-owner>/<repository>" }),
   createAskillPublicationAdapter({ author: "<github-login>" }),
   createAgentSkillHubPublicationAdapter(),
   createAgentSkillsHubCatalogAdapter({ contributor: "<github-login>" }),
   createClawHubPublicationAdapter({ owner: "<clawhub-owner>", licenseConsent: "MIT-0" }),
+  createGitHubPublicationAdapter(),
 ];
 
 const plan = await runPublicationSaga(projectRoot, artifacts, adapters);
 ```
+
+This order matches the self-host configuration: GitHub is last so a formal Release cannot trigger
+npm until the other six targets and the derived skills.sh state have been verified. npm remains an
+exported adapter for integrations, but it is not a member of this production saga because trusted
+publishing requires the protected GitHub workflow context.
 
 Dry run is the default. Inspect every target's `preflight`, `capability`, `auth`, steps, and
 rollback statement. A failed preflight blocks the complete mutation run; resolve it without
@@ -230,20 +252,50 @@ closed instead of retrying blindly.
 ## npm trusted release
 
 The repository's `release.yml` workflow publishes only a formal, non-prerelease GitHub Release
-whose tag is exactly `v<package-version>`. It reruns all gates, production dependency audit, and
-package smoke on Node.js 26, then uses npm trusted publishing. Before first use:
+whose tag is exactly `v<package-version>`. The unprivileged `verify` job checks out that tag,
+reopens the exact four GitHub Release assets, reruns all gates and the production audit, produces
+one npm tarball, verifies it, and uploads that exact tarball plus its digest manifest. Only the
+protected `publish` job can request OIDC; after approval it downloads and rehashes those two files,
+publishes that exact tarball, verifies registry integrity/provenance, and preserves a receipt.
 
-1. Create a protected GitHub environment named `npm` and require the desired reviewers.
-2. On npm, configure the trusted publisher for owner `mushanyoung`, repository `skillpress`,
-   workflow `release.yml`, environment `npm`, and allowed action `npm publish`.
-3. Confirm the repository is public and `package.json.repository.url` is unchanged.
-4. Protect release tags. Do not add `NODE_AUTH_TOKEN`, `NPM_TOKEN`, or a write token fallback.
-5. Run the full Tessl gate locally, publish/verify the requested skill targets, then create the
-   immutable tag and formal GitHub Release only when the release policy is satisfied.
+Trusted publishing can be attached only after the package exists. Bootstrap the package name once
+under the npm account that owns the `@mushanyoung` scope:
 
-The workflow requires npm 11.5.1 or newer and Node.js 22.14.0 or newer, grants `id-token: write`
-only to the publish job, and relies on npm's automatic provenance for a public package from a
-public GitHub repository.
+1. Enable account-level 2FA and run `npm whoami`; it must show the intended owner. Do this in a
+   disposable private directory, not by changing this checkout.
+2. Create a minimal `@mushanyoung/skillpress@0.0.0` package containing only a bootstrap README,
+   the MIT license declaration, and the exact GitHub repository URL. Publish it interactively with
+   `npm publish --access public --tag bootstrap --provenance=false`; complete the 2FA prompt. This
+   claims the name without assigning the `latest` tag or consuming version `0.1.0`.
+3. Confirm `npm view @mushanyoung/skillpress@0.0.0 name version dist-tags --json`, then remove the
+   disposable directory. The bootstrap version is public and immutable.
+
+Configure the release identity and approval boundary next:
+
+1. In GitHub repository settings, create an environment named exactly `npm`. Add a required
+   reviewer, prevent self-review when another maintainer is available, add no npm secret, and
+   restrict deployment tags to `v*`.
+2. Add an active tag ruleset targeting `v*`; restrict tag creation, updates, and deletion to the
+   narrowest practical bypass list.
+3. In npm package **Settings → Trusted publishing**, choose GitHub Actions and enter organization
+   or user `mushanyoung`, repository `skillpress`, workflow filename `release.yml` (filename only),
+   environment `npm`, and allowed action `npm publish`. The npm 11 CLI equivalent is:
+
+   ```bash
+   npm trust github @mushanyoung/skillpress --repo mushanyoung/skillpress \
+     --file release.yml --env npm --allow-publish
+   ```
+
+4. Confirm the repository is public and `package.json.repository.url` remains the exact GitHub
+   repository. Do not add `NODE_AUTH_TOKEN`, `NPM_TOKEN`, or a write-token fallback.
+5. After the first OIDC release succeeds, set npm **Publishing access** to **Require two-factor
+   authentication and disallow tokens**, then revoke any obsolete write tokens.
+
+The environment reviewer must wait for the unprivileged `verify` job and the local seven-target
+publication receipt to finish, then compare the release tag/source commit, Tessl 90/90 evidence,
+four GitHub Release assets, and npm tarball manifest before approving `publish`. The workflow uses
+Node.js 26 (above npm's Node 22.14/npm 11.5.1 minimum), grants `id-token: write` only to the approved
+job, and relies on npm's automatic provenance for a public package from a public repository.
 
 ## Incident checklist
 

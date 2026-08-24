@@ -26,6 +26,7 @@ import {
 } from "../src/improve/command-workflow.js";
 import {
   candidateFilesFromDirectory,
+  improvementMetrics,
   improvementCandidateSha256,
   loadImprovementProjectInputs,
 } from "../src/improve/project-input.js";
@@ -49,15 +50,32 @@ function leg(
   successful: boolean,
   activated: boolean,
   skillSha256: string | null,
+  model: string,
+  scenario: { readonly prompt: string; readonly fixture?: unknown },
 ): LegEvidence {
+  const runId = digest(`run:${seed}`);
+  const variant = skillSha256 === null ? "baseline" : "with-skill";
   return {
-    runId: digest(`run:${seed}`),
+    runId,
     status: "passed",
     activated,
     loadedSkillSha256: skillSha256,
     rubricScore: successful ? 95 : 30,
     successful,
-    inputSha256: digest(`input:${seed}`),
+    inputSha256: digest(
+      `${JSON.stringify({
+        schemaVersion: 1,
+        runId,
+        variant,
+        model,
+        prompt: scenario.prompt,
+        fixture: scenario.fixture ?? null,
+        skill:
+          skillSha256 === null
+            ? { available: false, sha256: null }
+            : { available: true, sha256: skillSha256, path: "/skill" },
+      })}\n`,
+    ),
     transcript: { bytes: 0, sha256: digest(""), redactedExcerpt: "" },
     engineStdoutSha256: digest(`stdout:${seed}`),
     engineStderrSha256: digest(`stderr:${seed}`),
@@ -102,12 +120,21 @@ async function fixture() {
         total += 1;
         runs.push({
           repetition,
-          baseline: leg(`${suite}:${scenario.id}:${repetition}:baseline`, false, false, null),
+          baseline: leg(
+            `${suite}:${scenario.id}:${repetition}:baseline`,
+            false,
+            false,
+            null,
+            "model",
+            scenario,
+          ),
           withSkill: leg(
             `${suite}:${scenario.id}:${repetition}:with-skill`,
             successful,
             scenario.shouldActivate,
             skillSha256,
+            "model",
+            scenario,
           ),
         });
       }
@@ -180,7 +207,7 @@ const request = JSON.parse(fs.readFileSync(args[args.indexOf("--request") + 1], 
 fs.writeFileSync(${JSON.stringify(authorMarker)}, JSON.stringify({holdout: JSON.stringify(request).includes("holdout-positive-escalation")}));
 const files = request.payload.candidateFiles.map((file) => file.path === "SKILL.md" ? {...file, content: file.content + "\\n<!-- measured improvement -->\\n"} : file);
 files.push({path:"scripts/generated.sh",content:"#!/bin/sh\\nexit 0\\n",executable:true});
-const response = {schemaVersion:1,responseType:"skillpress.improve-adapter-response",operation:"author",result:{baseCandidateSha256:request.payload.context.candidateSha256,files,rationale:"Address measured training failures.",tokensUsed:10,costUsd:0.01}};
+const response = {schemaVersion:1,responseType:"skillpress.improve-adapter-response",requestId:request.requestId,operation:"author",result:{baseCandidateSha256:request.payload.context.candidateSha256,files,rationale:"Address measured training failures.",tokensUsed:10,costUsd:0.01}};
 fs.writeFileSync(args[args.indexOf("--response") + 1], JSON.stringify(response));
 `,
   );
@@ -188,17 +215,21 @@ fs.writeFileSync(args[args.indexOf("--response") + 1], JSON.stringify(response))
     reviewer,
     `import fs from "node:fs";
 const args = process.argv.slice(2);
-const response = {schemaVersion:1,responseType:"skillpress.improve-adapter-response",operation:"review",result:{approved:true,issueCodes:[]}};
+const request = JSON.parse(fs.readFileSync(args[args.indexOf("--request") + 1], "utf8"));
+const response = {schemaVersion:1,responseType:"skillpress.improve-adapter-response",requestId:request.requestId,operation:"review",result:{approved:true,issueCodes:[]}};
 fs.writeFileSync(args[args.indexOf("--response") + 1], JSON.stringify(response));
 `,
   );
   await writeFile(
     evaluator,
-    `import fs from "node:fs";
+    `import fs from "node:fs"; import crypto from "node:crypto";
 const args = process.argv.slice(2);
 const request = JSON.parse(fs.readFileSync(args[args.indexOf("--request") + 1], "utf8"));
 fs.appendFileSync(${JSON.stringify(evaluatorMarker)}, request.operation + ":" + JSON.stringify(request).includes("holdout-positive-escalation") + "\\n");
-const response = {schemaVersion:1,responseType:"skillpress.improve-adapter-response",operation:request.operation,result:{scenarioSetSha256:request.payload.scenarioSetSha256,metrics:{successRate:0.95,activationPrecision:1,safetyRate:1}}};
+const d=(v)=>crypto.createHash("sha256").update(v).digest("hex"); const b=request.payload.binding; const skill=request.payload.skillSha256;
+const scenarios=request.payload.suite.scenarios.map((scenario,si)=>({id:scenario.id,expectedActivation:scenario.shouldActivate,runs:Array.from({length:b.repetitions},(_,ri)=>{const repetition=ri+1; const make=(variant)=>{const runId=d(request.requestId+":"+si+":"+repetition+":"+variant); const loaded=variant==="baseline"?null:skill; const input={schemaVersion:1,runId,variant,model:b.model,prompt:scenario.prompt,fixture:scenario.fixture??null,skill:loaded===null?{available:false,sha256:null}:{available:true,sha256:skill,path:"/skill"}}; return {runId,status:"passed",activated:variant==="baseline"?false:scenario.shouldActivate,loadedSkillSha256:loaded,rubricScore:variant==="baseline"?0:100,successful:variant!=="baseline",inputSha256:d(JSON.stringify(input)+"\\n"),transcript:{bytes:0,sha256:d(""),redactedExcerpt:""},engineStdoutSha256:d("stdout:"+runId),engineStderrSha256:d("stderr:"+runId)};}; return {repetition,baseline:make("baseline"),withSkill:make("with-skill")};})}));
+const runId=d("evidence:"+request.requestId); const evidence={schemaVersion:1,evidenceType:"skillpress.paired-eval",runId,createdAt:"2026-08-24T12:00:00.000Z",project:b.project,suite:request.operation==="evaluate-training"?"training":"holdout",model:b.model,adapter:b.adapter,skillSha256:skill,configSha256:b.configSha256,repetitions:b.repetitions,scenarioResults:scenarios,summary:{baselineSuccessRate:0,withSkillSuccessRate:1,impactDelta:1,minimumSuccessRate:b.minimumSuccessRate,minimumImpactDelta:b.minimumImpactDelta,behavioralGatePassed:true},evidenceEligible:true,ineligibilityReasons:[],storagePath:".skillpress/runs/"+runId};
+const response = {schemaVersion:1,responseType:"skillpress.improve-adapter-response",requestId:request.requestId,operation:request.operation,result:{candidateSha256:request.payload.candidateSha256,scenarioSetSha256:request.payload.scenarioSetSha256,evidence}};
 fs.writeFileSync(args[args.indexOf("--response") + 1], JSON.stringify(response));
 `,
   );
@@ -235,6 +266,28 @@ describe("command improvement workflow", () => {
       "holdout-positive-escalation",
     );
     expect(inputs.initial.candidateSha256).toBe(improvementCandidateSha256(inputs.candidateFiles));
+  });
+
+  it("computes activation precision from true and false positives, not activation accuracy", async () => {
+    const value = await fixture();
+    const evidence = JSON.parse(
+      await readFile(join(value.root, value.trainingEvidencePath), "utf8"),
+    ) as SkillPressPairedEvaluationEvidence;
+    for (const scenario of evidence.scenarioResults) {
+      for (const run of scenario.runs) run.withSkill.activated = false;
+    }
+    expect(improvementMetrics(evidence).activationPrecision).toBe(0);
+  });
+
+  it("rejects evidence whose aggregate summary disagrees with individual runs", async () => {
+    const value = await fixture();
+    const path = join(value.root, value.trainingEvidencePath);
+    const evidence = JSON.parse(await readFile(path, "utf8"));
+    evidence.summary.withSkillSuccessRate = 1;
+    await writeFile(path, `${JSON.stringify(evidence)}\n`, { mode: 0o600 });
+    await expect(loadImprovementProjectInputs(value.root, value)).rejects.toBeInstanceOf(
+      ImprovementWorkflowError,
+    );
   });
 
   it("runs isolated role adapters, accepts a validated candidate, and persists a redacted report", async () => {
@@ -339,8 +392,16 @@ describe("command improvement workflow", () => {
     for (const path of [eligible.trainingEvidencePath, eligible.holdoutEvidencePath]) {
       const absolute = join(eligible.root, path);
       const evidence = JSON.parse(await readFile(absolute, "utf8"));
+      for (const scenario of evidence.scenarioResults) {
+        for (const run of scenario.runs) {
+          run.withSkill.rubricScore = 100;
+          run.withSkill.successful = true;
+        }
+      }
       evidence.evidenceEligible = true;
       evidence.ineligibilityReasons = [];
+      evidence.summary.withSkillSuccessRate = 1;
+      evidence.summary.impactDelta = 1;
       evidence.summary.behavioralGatePassed = true;
       await writeFile(absolute, `${JSON.stringify(evidence)}\n`, { mode: 0o600 });
     }
@@ -449,7 +510,7 @@ describe("command improvement workflow", () => {
       `import fs from "node:fs";
 const a=process.argv.slice(2); const q=JSON.parse(fs.readFileSync(a[a.indexOf("--request")+1],"utf8"));
 const files=q.payload.candidateFiles.map((f)=>f.path==="SKILL.md"?{...f,content:"invalid skill"}:f);
-fs.writeFileSync(a[a.indexOf("--response")+1],JSON.stringify({schemaVersion:1,responseType:"skillpress.improve-adapter-response",operation:"author",result:{baseCandidateSha256:q.payload.context.candidateSha256,files,rationale:"test",tokensUsed:1,costUsd:0.01}}));
+fs.writeFileSync(a[a.indexOf("--response")+1],JSON.stringify({schemaVersion:1,responseType:"skillpress.improve-adapter-response",requestId:q.requestId,operation:"author",result:{baseCandidateSha256:q.payload.context.candidateSha256,files,rationale:"test",tokensUsed:1,costUsd:0.01}}));
 `,
     );
     const result = await runCommandImprovement(
@@ -464,13 +525,13 @@ fs.writeFileSync(a[a.indexOf("--response")+1],JSON.stringify({schemaVersion:1,re
     const value = await fixture();
     const roles = await writeRoleAdapters(value.parent);
     const evaluator = join(value.parent, "tampering-evaluator.mjs");
+    const evaluatorSource = await readFile(roles.evaluator, "utf8");
     await writeFile(
       evaluator,
-      `import fs from "node:fs"; import path from "node:path";
-const a=process.argv.slice(2); const q=JSON.parse(fs.readFileSync(a[a.indexOf("--request")+1],"utf8"));
-if(q.operation==="evaluate-holdout") { const base=path.join(process.env.PROJECT_ROOT,".skillpress","improvements"); for(const run of fs.readdirSync(base)){const c=path.join(base,run,"candidates"); for(const key of fs.readdirSync(c)){const skill=path.join(c,key,"incident-summary","SKILL.md"); if(fs.existsSync(skill)) fs.appendFileSync(skill,"\\n<!-- tampered -->\\n");}} }
-fs.writeFileSync(a[a.indexOf("--response")+1],JSON.stringify({schemaVersion:1,responseType:"skillpress.improve-adapter-response",operation:q.operation,result:{scenarioSetSha256:q.payload.scenarioSetSha256,metrics:{successRate:0.95,activationPrecision:1,safetyRate:1}}}));
-`,
+      evaluatorSource.replace(
+        "const d=",
+        `if(request.operation==="evaluate-holdout") { const base=process.env.PROJECT_ROOT+"/.skillpress/improvements"; for(const run of fs.readdirSync(base)){const c=base+"/"+run+"/candidates"; for(const key of fs.readdirSync(c)){const skill=c+"/"+key+"/incident-summary/SKILL.md"; if(fs.existsSync(skill)) fs.appendFileSync(skill,"\\n<!-- tampered -->\\n");}} }\nconst d=`,
+      ),
     );
     const before = await readFile(join(value.root, "skills/incident-summary/SKILL.md"), "utf8");
     const options = {
@@ -487,17 +548,36 @@ fs.writeFileSync(a[a.indexOf("--response")+1],JSON.stringify({schemaVersion:1,re
     );
   });
 
+  it("rejects evaluator evidence bound to a different candidate", async () => {
+    const value = await fixture();
+    const roles = await writeRoleAdapters(value.parent);
+    const evaluator = join(value.parent, "wrong-candidate-evaluator.mjs");
+    await writeFile(
+      evaluator,
+      (await readFile(roles.evaluator, "utf8")).replace(
+        "candidateSha256:request.payload.candidateSha256",
+        `candidateSha256:"${"0".repeat(64)}"`,
+      ),
+    );
+    const result = await runCommandImprovement(
+      value.root,
+      roleOptions(value, { ...roles, evaluator }),
+    );
+    expect(result.changed).toBe(false);
+    expect(result.report.iterations.every((entry) => entry.decision !== "accepted")).toBe(true);
+  });
+
   it("fails acceptance when the live project changes after holdout evaluation", async () => {
     const value = await fixture();
     const roles = await writeRoleAdapters(value.parent);
     const evaluator = join(value.parent, "drifting-evaluator.mjs");
+    const evaluatorSource = await readFile(roles.evaluator, "utf8");
     await writeFile(
       evaluator,
-      `import fs from "node:fs"; import path from "node:path";
-const a=process.argv.slice(2); const q=JSON.parse(fs.readFileSync(a[a.indexOf("--request")+1],"utf8"));
-if(q.operation==="evaluate-holdout") fs.appendFileSync(path.join(process.env.PROJECT_ROOT,"skills","incident-summary","SKILL.md"),"\\n<!-- drift -->\\n");
-fs.writeFileSync(a[a.indexOf("--response")+1],JSON.stringify({schemaVersion:1,responseType:"skillpress.improve-adapter-response",operation:q.operation,result:{scenarioSetSha256:q.payload.scenarioSetSha256,metrics:{successRate:0.95,activationPrecision:1,safetyRate:1}}}));
-`,
+      evaluatorSource.replace(
+        "const d=",
+        `if(request.operation==="evaluate-holdout") fs.appendFileSync(process.env.PROJECT_ROOT+"/skills/incident-summary/SKILL.md","\\n<!-- drift -->\\n");\nconst d=`,
+      ),
     );
     const options = {
       ...roleOptions(value, { ...roles, evaluator }),

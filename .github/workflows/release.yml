@@ -12,21 +12,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
-    name: Publish verified package
+  verify:
+    name: Verify exact npm tarball
     if: github.repository == 'mushanyoung/skillpress' && !github.event.release.prerelease
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: npm
     permissions:
       contents: read
-      id-token: write
+    outputs:
+      source_commit: ${{ steps.release-manifest.outputs.source_commit }}
     steps:
       - name: Check out the immutable release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.release.tag_name }}
           persist-credentials: false
+          fetch-depth: 0
       - name: Set up the trusted publishing runtime
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -41,9 +42,93 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Run release quality gates
         run: npm run check
+      - name: Verify SkillPress GitHub Release assets
+        env:
+          RELEASE_ASSETS_JSON: ${{ toJSON(github.event.release.assets) }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: node scripts/verify-github-release-assets.mjs
       - name: Audit runtime dependencies
         run: npm run security:audit
       - name: Verify the packed CLI
+        env:
+          SKILLPRESS_PACKAGE_OUTPUT_DIR: ${{ runner.temp }}/npm-release
         run: npm run package:verify
+      - name: Bind the release manifest output
+        id: release-manifest
+        run: node --input-type=module --eval 'import {readFile,appendFile} from "node:fs/promises"; import {join} from "node:path"; const m=JSON.parse(await readFile(join(process.env.RUNNER_TEMP,"npm-release/manifest.json"),"utf8")); if(!/^[a-f0-9]{40}$/.test(m.sourceCommit)) throw new Error("invalid source commit"); await appendFile(process.env.GITHUB_OUTPUT, `source_commit=${m.sourceCommit}\n`)'
+      - name: Preserve the exact verified tarball
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: npm-tarball-${{ github.event.release.tag_name }}
+          path: ${{ runner.temp }}/npm-release
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish approved exact tarball
+    needs: verify
+    if: github.repository == 'mushanyoung/skillpress' && !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Set up the trusted publishing runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Download the verified tarball only
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: npm-tarball-${{ github.event.release.tag_name }}
+          path: ${{ runner.temp }}/npm-release
+      - name: Recheck the downloaded tarball binding
+        env:
+          RELEASE_SOURCE_COMMIT: ${{ needs.verify.outputs.source_commit }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { createHash } from "node:crypto";
+          import { readFile, readdir, stat } from "node:fs/promises";
+          import { join } from "node:path";
+          const root = join(process.env.RUNNER_TEMP, "npm-release");
+          const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8"));
+          const names = await readdir(root);
+          if (names.length !== 2 || !names.includes(manifest.filename)) throw new Error("unexpected release artifact inventory");
+          const tarball = join(root, manifest.filename);
+          const bytes = await readFile(tarball);
+          if (!(await stat(tarball)).isFile() || bytes.byteLength !== manifest.bytes) throw new Error("tarball size changed");
+          const digest = (algorithm, encoding) => createHash(algorithm).update(bytes).digest(encoding);
+          if (digest("sha256", "hex") !== manifest.sha256 || `sha512-${digest("sha512", "base64")}` !== manifest.integrity) throw new Error("tarball digest changed");
+          if (manifest.sourceCommit !== process.env.RELEASE_SOURCE_COMMIT) throw new Error("release commit changed");
+          NODE
       - name: Publish with npm trusted publishing
-        run: npm publish --access public
+        run: npm publish "${RUNNER_TEMP}/npm-release/"*.tgz --access public
+      - name: Verify registry integrity and write receipt
+        run: |
+          PACKAGE_SPEC=$(node --input-type=module --eval 'import {readFile} from "node:fs/promises"; import {join} from "node:path"; const m=JSON.parse(await readFile(join(process.env.RUNNER_TEMP,"npm-release/manifest.json"),"utf8")); process.stdout.write(m.package)')
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            npm view "$PACKAGE_SPEC" name version dist --json > "${RUNNER_TEMP}/npm-registry.json" && break
+            sleep 3
+          done
+          node --input-type=module <<'NODE'
+          import { readFile, writeFile } from "node:fs/promises";
+          import { join } from "node:path";
+          const root = process.env.RUNNER_TEMP;
+          const manifest = JSON.parse(await readFile(join(root, "npm-release/manifest.json"), "utf8"));
+          const remote = JSON.parse(await readFile(join(root, "npm-registry.json"), "utf8"));
+          if (remote.name !== manifest.name || remote.version !== manifest.version || remote.dist?.integrity !== manifest.integrity) throw new Error("registry package does not match verified tarball");
+          if (!remote.dist?.attestations?.url || remote.dist?.attestations?.provenance?.predicateType !== "https://slsa.dev/provenance/v1") throw new Error("registry provenance is unavailable");
+          const receipt = {schemaVersion:1,receiptType:"skillpress.npm-trusted-release",status:"verified",package:manifest.package,sourceCommit:manifest.sourceCommit,tarballSha256:manifest.sha256,integrity:manifest.integrity,registryIntegrity:remote.dist.integrity,provenanceUrl:remote.dist.attestations.url,runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT};
+          await writeFile(join(root, "npm-publication-receipt.json"), `${JSON.stringify(receipt)}\n`, {mode:0o600});
+          NODE
+      - name: Preserve the npm publication receipt
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: npm-publication-receipt-${{ github.event.release.tag_name }}
+          path: ${{ runner.temp }}/npm-publication-receipt.json
+          if-no-files-found: error
+          retention-days: 90

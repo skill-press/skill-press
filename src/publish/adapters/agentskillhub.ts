@@ -178,7 +178,11 @@ async function inspect(
   const remote = remoteManifest(latest.fileManifest);
   if (local === null) return Object.freeze({ status: "unavailable" });
   if (remote === null) return Object.freeze({ status: "conflict" });
-  if (latest.skillMdRaw !== canonical.skillMarkdown || !manifestsMatch(local, remote)) {
+  if (
+    latest.commitSha !== context.sourceCommit ||
+    latest.skillMdRaw !== canonical.skillMarkdown ||
+    !manifestsMatch(local, remote)
+  ) {
     return Object.freeze({ status: "outdated" });
   }
   return Object.freeze({

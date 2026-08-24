@@ -4,9 +4,8 @@ SkillPress builds, evaluates, packages, and publishes production-grade Agent Ski
 an installable skill with a typed CLI so open-ended authoring stays agent-friendly while quality,
 testing, provenance, and publication gates remain deterministic and auditable.
 
-The project is under active development. The future npm package is
-`@mushanyoung/skillpress`; the unscoped `skillpress` name belongs to a different project and will
-not be used.
+The project is under active development. The npm package identity is `@mushanyoung/skillpress`;
+the unscoped `skillpress` name belongs to a different project and will not be used.
 
 ```bash
 npm install
@@ -23,9 +22,9 @@ skillpress create --brief capability-brief.yaml --output ./my-skill --json
 ```
 
 The brief contract is defined by
-[`schemas/capability-brief.schema.json`](schemas/capability-brief.schema.json). Exit codes are `0`
-for success, `1` for unexpected I/O/internal failure, `2` for usage, `3` for an invalid brief, and
-`4` for an unsafe or already-existing output.
+[`schemas/capability-brief.schema.json`](schemas/capability-brief.schema.json). All command exit
+codes, including the `create`-only unsafe-output code, are documented in the
+[operating runbook](docs/OPERATIONS.md#exit-codes).
 
 The project writer accepts only a bounded, snapshotted rendered manifest. The destination must not
 exist: SkillPress claims it atomically, never overwrites an existing path, and keeps an incomplete
@@ -66,6 +65,8 @@ skillpress publish --artifacts <private-artifacts-directory> \
 `publish` is a non-mutating dry run unless `--execute` is supplied. Resume an executed partial run
 with `--execute --resume <private-receipt.json>`. Run each command with `--help` for provider
 identity and executable options; ClawHub additionally requires explicit `--accept-clawhub-mit0`.
+The configured local saga publishes seven skill-registry targets; npm is deliberately released by
+the separate protected GitHub Actions trusted-publishing workflow after the GitHub target succeeds.
 
 `check` reports a local readiness score and fails closed on invalid canonical skills, missing or
 invalid scenario/rubric inputs, and project identity mismatches. Scenario suites reject duplicate

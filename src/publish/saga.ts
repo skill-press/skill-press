@@ -133,6 +133,7 @@ export class PublicationSagaError extends Error {
 }
 
 const RECEIPT_PATH = /^\.skillpress\/publications\/[a-f0-9]{64}\/receipt\.json$/u;
+const MAX_RECEIPT_BYTES = 2 * 1024 * 1024;
 const IDENTIFIER = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const ENVIRONMENT_NAME = /^[A-Z][A-Z0-9_]*$/u;
 const receiptSchema = JSON.parse(
@@ -311,21 +312,44 @@ async function loadReceipt(root: string, path: string): Promise<PublicationRecei
     dirname(absolute),
   ]) {
     const parentMetadata = await lstat(parent);
-    if (!parentMetadata.isDirectory()) {
+    if (
+      !parentMetadata.isDirectory() ||
+      parentMetadata.isSymbolicLink() ||
+      (process.platform !== "win32" && (parentMetadata.mode & 0o077) !== 0)
+    ) {
       throw new PublicationSagaError("Resume receipt is unsafe.", [
         issue("publish.resume.unsafe", "/resume", "receipt parents must be real directories"),
       ]);
     }
   }
-  const metadata = await lstat(absolute);
-  if (!metadata.isFile() || (process.platform !== "win32" && (metadata.mode & 0o077) !== 0)) {
+  const before = await lstat(absolute);
+  if (
+    !before.isFile() ||
+    before.isSymbolicLink() ||
+    before.size < 1 ||
+    before.size > MAX_RECEIPT_BYTES ||
+    (process.platform !== "win32" && (before.mode & 0o077) !== 0)
+  ) {
     throw new PublicationSagaError("Resume receipt is unsafe.", [
       issue("publish.resume.unsafe", "/resume", "receipt must be a private regular file"),
     ]);
   }
   let value: unknown;
   try {
-    value = JSON.parse(await readFile(absolute, "utf8"));
+    const bytes = await readFile(absolute);
+    const after = await lstat(absolute);
+    if (
+      bytes.byteLength !== before.size ||
+      before.dev !== after.dev ||
+      before.ino !== after.ino ||
+      before.mode !== after.mode ||
+      before.size !== after.size ||
+      before.mtimeMs !== after.mtimeMs ||
+      before.ctimeMs !== after.ctimeMs
+    ) {
+      throw new Error("receipt changed while read");
+    }
+    value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
   } catch {
     value = undefined;
   }
@@ -392,13 +416,13 @@ export async function runPublicationSaga(
   const requested = config.publish.targets;
   if (
     adapters.length !== requested.length ||
-    adapters.some((adapter) => !requested.includes(adapter.id as never))
+    adapters.some((adapter, index) => adapter.id !== requested[index])
   ) {
     throw new PublicationSagaError("Publication adapters do not match requested targets.", [
       issue(
         "publish.targets.mismatch",
         "/adapters",
-        "provide exactly one adapter per configured target",
+        "provide exactly one adapter per configured target in configured order",
       ),
     ]);
   }

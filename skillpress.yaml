@@ -36,11 +36,10 @@ improve:
   maxWallMinutes: 240
 publish:
   targets:
-    - github
-    - npm
     - tessl
     - skills-sh
     - askill-sh
     - agentskillhub-dev
     - agent-skills-hub-catalog
     - clawhub
+    - github

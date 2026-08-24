@@ -369,14 +369,13 @@ describe("release CLI orchestration", () => {
       json: false,
     });
     expect(configured.map((entry) => entry.id)).toEqual([
-      "github",
-      "npm",
       "tessl",
       "skills-sh",
       "askill-sh",
       "agentskillhub-dev",
       "agent-skills-hub-catalog",
       "clawhub",
+      "github",
     ]);
     await expect(
       createConfiguredPublicationAdapters({

@@ -24,6 +24,10 @@ interface NpmPackage {
   readonly provenance: boolean;
 }
 
+type NpmInspection =
+  | { readonly status: "absent" | "conflict" }
+  | { readonly status: "match"; readonly verification: PublicationVerification };
+
 function npmEnvironment(): Readonly<Record<string, string>> {
   const names = [
     "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
@@ -240,6 +244,42 @@ async function verifyNpm(
   });
 }
 
+async function inspectNpm(
+  context: PublicationContext,
+  contract: NpmPackage,
+  runtime: PublicationAdapterRuntime,
+): Promise<NpmInspection> {
+  const value = jsonRecord(
+    await runNpm(
+      context.root,
+      ["npm", "view", packageSpec(contract), "name", "version", "dist", "--json"],
+      runtime,
+    ),
+  );
+  if (value === null) return Object.freeze({ status: "absent" });
+  const verification = await verifyNpm(context, contract, {
+    ...runtime,
+    executor: async () => {
+      const bytes = Buffer.from(JSON.stringify(value));
+      return Object.freeze({
+        status: "passed" as const,
+        exitCode: 0,
+        signal: null,
+        durationMs: 0,
+        stdout: bytes,
+        stderr: Buffer.alloc(0),
+        stdoutBytes: bytes.byteLength,
+        stderrBytes: 0,
+        stdoutSha256: "",
+        stderrSha256: "",
+      });
+    },
+  });
+  return verification.ok
+    ? Object.freeze({ status: "match", verification })
+    : Object.freeze({ status: "conflict" });
+}
+
 function trustedPublishingContext(context: PublicationContext): boolean {
   const repo = new URL(context.project.repository).pathname
     .replace(/^\//u, "")
@@ -260,6 +300,24 @@ function supportedNpmVersion(input: string): boolean {
   if (match === null) return false;
   const [major, minor, patch] = match.slice(1).map(Number) as [number, number, number];
   return major > 11 || (major === 11 && (minor > 5 || (minor === 5 && patch >= 1)));
+}
+
+async function sourceIsCurrent(
+  context: PublicationContext,
+  runtime: PublicationAdapterRuntime,
+): Promise<boolean> {
+  const head = await runNpm(context.root, ["git", "rev-parse", "--verify", "HEAD"], runtime);
+  const status = await runNpm(
+    context.root,
+    ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    runtime,
+  );
+  return (
+    passed(head) &&
+    text(head) === context.sourceCommit &&
+    passed(status) &&
+    status.stdoutBytes === 0
+  );
 }
 
 /** Publish the scoped CLI only through npm trusted publishing with required provenance. */
@@ -288,14 +346,29 @@ export function createNpmPublicationAdapter(
           message: "scoped npm package metadata must match the release contract",
         });
       }
-      if ((await verifyNpm(context, contract, runtime)).ok) {
+      const inspected = await inspectNpm(context, contract, runtime);
+      if (inspected.status === "match") {
         return Object.freeze({ ok: true, code: "ready", message: "npm version already verified" });
+      }
+      if (inspected.status === "conflict") {
+        return Object.freeze({
+          ok: false,
+          code: "version_conflict",
+          message: "npm version exists but does not match trusted source provenance",
+        });
       }
       if (!trustedPublishingContext(context)) {
         return Object.freeze({
           ok: false,
           code: "trusted_publishing_required",
           message: "run from the bound GitHub Actions trusted-publisher workflow",
+        });
+      }
+      if (!(await sourceIsCurrent(context, runtime))) {
+        return Object.freeze({
+          ok: false,
+          code: "source_changed",
+          message: "checked-out source must be clean and match the trusted workflow commit",
         });
       }
       const version = await runNpm(context.root, ["npm", "--version"], runtime);
@@ -321,8 +394,12 @@ export function createNpmPublicationAdapter(
       if (step !== "publish-package") throw new Error("Unknown npm publication step");
       const contract = await packageContract(context.root);
       if (contract === null) throw new Error("npm package contract disappeared");
-      const existing = await verifyNpm(context, contract, runtime);
-      if (!existing.ok) {
+      const existing = await inspectNpm(context, contract, runtime);
+      if (existing.status === "conflict") throw new Error("npm immutable version conflicts");
+      if (existing.status === "absent") {
+        if (!trustedPublishingContext(context) || !(await sourceIsCurrent(context, runtime))) {
+          throw new Error("npm trusted publication source is unavailable");
+        }
         const result = await runNpm(
           context.root,
           ["npm", "publish", "--access", "public"],

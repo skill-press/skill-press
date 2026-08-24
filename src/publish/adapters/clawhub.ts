@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { homedir } from "node:os";
 
 import type { CapturedCommandResult } from "../../process/capture.js";
 import { projectClawHubSkill } from "../projection.js";
@@ -59,6 +60,10 @@ function supportedVersion(value: string): boolean {
 
 function clawHubEnvironment(): Readonly<Record<string, string>> {
   return Object.freeze({
+    HOME: process.env.HOME ?? homedir(),
+    ...(process.env.XDG_CONFIG_HOME === undefined
+      ? {}
+      : { XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME }),
     ...(process.env.CLAWHUB_CONFIG_PATH === undefined
       ? {}
       : { CLAWHUB_CONFIG_PATH: process.env.CLAWHUB_CONFIG_PATH }),

@@ -252,10 +252,10 @@ describe("Tessl publication adapter", () => {
         expect.stringContaining("/.skillpress/projections/"),
       ],
     ]);
-    expect(calls[1]?.env).toEqual({ NO_COLOR: "1", TESSL_DISABLE_UPDATE: "true" });
+    expect(calls[1]?.env).toEqual({ NO_COLOR: "1", TESSL_AUTO_UPDATE_INTERVAL_MINUTES: "0" });
     expect(calls[2]?.env).toEqual({
       NO_COLOR: "1",
-      TESSL_DISABLE_UPDATE: "true",
+      TESSL_AUTO_UPDATE_INTERVAL_MINUTES: "0",
       TESSL_TOKEN: "tessl-secret",
     });
     expect(JSON.stringify(calls[1])).not.toContain("tessl-secret");
