@@ -28,6 +28,12 @@ export type {
   TesslReleaseGateOptions,
   TesslReleaseGateReport,
 } from "./release/tessl-gate.js";
+export { SkillStagingError, stageCanonicalSkill } from "./package/stage.js";
+export type {
+  SkillStagingIssue,
+  StagedCanonicalSkill,
+  StagedSkillFile,
+} from "./package/stage.js";
 export { checkProject } from "./check/project.js";
 export type {
   ProjectCheckDiagnostic,
