@@ -25,6 +25,10 @@ interface NpmPackage {
   readonly provenance: boolean;
 }
 
+const GITHUB_ACTIONS_BUILD_TYPE =
+  "https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1";
+const RELEASE_WORKFLOW_PATH = ".github/workflows/release.yml";
+
 type NpmInspection =
   | { readonly status: "absent" | "conflict" | "unavailable" }
   | { readonly status: "match"; readonly verification: PublicationVerification };
@@ -209,14 +213,20 @@ function sourceAttestationMatches(
     const verification = record(bundle?.verificationMaterial);
     const tlog = verification?.tlogEntries;
     const signatures = envelope?.signatures;
+    const releaseRef = `refs/tags/v${contract.version}`;
     return (
       envelope?.payloadType === "application/vnd.in-toto+json" &&
       payload?._type === "https://in-toto.io/Statement/v1" &&
       payload?.predicateType === "https://slsa.dev/provenance/v1" &&
       subjectMatches &&
+      definition?.buildType === GITHUB_ACTIONS_BUILD_TYPE &&
       workflow?.repository === context.project.repository &&
+      workflow.path === RELEASE_WORKFLOW_PATH &&
+      workflow.ref === releaseRef &&
       dependencies.some(
-        (dependency) => record(dependency?.digest)?.gitCommit === context.sourceCommit,
+        (dependency) =>
+          dependency?.uri === `git+${context.project.repository}@${releaseRef}` &&
+          record(dependency.digest)?.gitCommit === context.sourceCommit,
       ) &&
       builder?.id === "https://github.com/actions/runner/github-hosted" &&
       Array.isArray(tlog) &&

@@ -387,12 +387,11 @@ fs.writeFileSync(args[args.indexOf("--response")+1],JSON.stringify(response));
 `,
       );
 
-      const result = await runCommandImprovement(value.root, roleOptions(value, roles));
-
-      expect(result.changed).toBe(false);
-      expect(
-        result.report.iterations.some((entry) => entry.decision === "deterministic_failed"),
-      ).toBe(true);
+      await expect(
+        runCommandImprovement(value.root, roleOptions(value, roles)),
+      ).rejects.toMatchObject({
+        issues: [expect.objectContaining({ code: "improve.canonical.symlink" })],
+      });
       await expect(readFile(join(external, "SKILL.md"), "utf8")).resolves.toBe(original);
       await expect(stat(join(external, "scripts/generated.sh"))).rejects.toMatchObject({
         code: "ENOENT",

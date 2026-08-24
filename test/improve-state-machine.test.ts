@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { Metrics } from "../src/improve/generated-report.js";
+import { ImprovementWorkflowError } from "../src/improve/workflow-error.js";
 import {
   ImprovementLoopError,
   type ImprovementAuthorContext,
@@ -193,11 +194,6 @@ describe("bounded improvement state machine", () => {
       { deterministic: async () => ({ passed: false }) },
       "deterministic_failed",
     ],
-    [
-      "deterministic exception",
-      { deterministic: async () => Promise.reject(new Error("check")) },
-      "deterministic_failed",
-    ],
   ] as const)("fails closed on %s", async (_name, changed, decision) => {
     const holdout = vi.fn<ImprovementCallbacks["evaluateHoldout"]>();
     const report = await runBoundedImprovement(
@@ -207,6 +203,47 @@ describe("bounded improvement state machine", () => {
     expect(report.stopReason).toBe("no_improvement");
     expect(report.iterations[0]?.decision).toBe(decision);
     expect(holdout).not.toHaveBeenCalled();
+  });
+
+  it.each(["deterministic", "accept"] as const)(
+    "propagates a %s transaction-invariant failure even after the wall deadline",
+    async (stage) => {
+      let clockReads = 0;
+      const failure = new ImprovementWorkflowError("restore failed", [
+        { code: "improve.transaction.restore", path: "/candidate", message: "restore" },
+      ]);
+      const rejectAfterDeadline = async (): Promise<never> => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        throw failure;
+      };
+      const changed: Partial<ImprovementCallbacks> =
+        stage === "deterministic"
+          ? { deterministic: rejectAfterDeadline }
+          : { accept: rejectAfterDeadline };
+
+      await expect(
+        runBoundedImprovement(
+          options(changed, {
+            now: () => {
+              clockReads += 1;
+              return clockReads === 1 ? 0 : 59_999;
+            },
+          }),
+        ),
+      ).rejects.toBe(failure);
+    },
+  );
+
+  it("still reports an ordinary deterministic exception as a failed check", async () => {
+    const report = await runBoundedImprovement(
+      options(
+        { deterministic: async () => Promise.reject(new Error("check")) },
+        { budgets: { maxNoImprovement: 1 } },
+      ),
+    );
+
+    expect(report.stopReason).toBe("no_improvement");
+    expect(report.iterations[0]?.decision).toBe("deterministic_failed");
   });
 
   it.each([

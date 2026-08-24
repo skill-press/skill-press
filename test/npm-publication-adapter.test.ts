@@ -118,10 +118,20 @@ function attestationBody(commit = sourceCommit): string {
     ],
     predicate: {
       buildDefinition: {
+        buildType: "https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1",
         externalParameters: {
-          workflow: { repository: "https://github.com/mushanyoung/skillpress" },
+          workflow: {
+            repository: "https://github.com/mushanyoung/skillpress",
+            path: ".github/workflows/release.yml",
+            ref: "refs/tags/v0.1.0",
+          },
         },
-        resolvedDependencies: [{ digest: { gitCommit: commit } }],
+        resolvedDependencies: [
+          {
+            uri: "git+https://github.com/mushanyoung/skillpress@refs/tags/v0.1.0",
+            digest: { gitCommit: commit },
+          },
+        ],
       },
       runDetails: { builder: { id: "https://github.com/actions/runner/github-hosted" } },
     },

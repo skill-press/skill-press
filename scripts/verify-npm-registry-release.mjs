@@ -6,6 +6,9 @@ import { fileURLToPath } from "node:url";
 const maximumBodyBytes = 4 * 1024 * 1024;
 const slsaPredicate = "https://slsa.dev/provenance/v1";
 const githubHostedBuilder = "https://github.com/actions/runner/github-hosted";
+const githubActionsBuildType =
+  "https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1";
+const releaseWorkflowPath = ".github/workflows/release.yml";
 
 function fail(message) {
   throw new Error(`npm registry release verification failed: ${message}`);
@@ -159,10 +162,16 @@ function verifyAttestation(body, manifest) {
     : [];
   const builder = record(record(predicate?.runDetails)?.builder);
   const tlogEntries = record(bundle?.verificationMaterial)?.tlogEntries;
+  const releaseRef = `refs/tags/v${manifest.version}`;
   if (
+    definition?.buildType !== githubActionsBuildType ||
     workflow?.repository !== manifest.repository ||
+    workflow.path !== releaseWorkflowPath ||
+    workflow.ref !== releaseRef ||
     !dependencies.some(
-      (dependency) => record(dependency?.digest)?.gitCommit === manifest.sourceCommit,
+      (dependency) =>
+        dependency?.uri === `git+${manifest.repository}@${releaseRef}` &&
+        record(dependency.digest)?.gitCommit === manifest.sourceCommit,
     ) ||
     builder?.id !== githubHostedBuilder ||
     !Array.isArray(tlogEntries) ||

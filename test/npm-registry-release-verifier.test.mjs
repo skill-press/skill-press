@@ -59,10 +59,20 @@ function attestation(commit = manifest.sourceCommit) {
     ],
     predicate: {
       buildDefinition: {
+        buildType: "https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1",
         externalParameters: {
-          workflow: { repository: manifest.repository },
+          workflow: {
+            repository: manifest.repository,
+            path: ".github/workflows/release.yml",
+            ref: "refs/tags/v0.1.0",
+          },
         },
-        resolvedDependencies: [{ digest: { gitCommit: commit } }],
+        resolvedDependencies: [
+          {
+            uri: "git+https://github.com/mushanyoung/skillpress@refs/tags/v0.1.0",
+            digest: { gitCommit: commit },
+          },
+        ],
       },
       runDetails: { builder: { id: "https://github.com/actions/runner/github-hosted" } },
     },
@@ -82,6 +92,15 @@ function attestation(commit = manifest.sourceCommit) {
       },
     ],
   });
+}
+
+function mutatedAttestation(mutate) {
+  const value = JSON.parse(attestation());
+  const envelope = value.attestations[0].bundle.dsseEnvelope;
+  const payload = JSON.parse(Buffer.from(envelope.payload, "base64").toString("utf8"));
+  mutate(payload.predicate.buildDefinition);
+  envelope.payload = Buffer.from(JSON.stringify(payload)).toString("base64");
+  return JSON.stringify(value);
 }
 
 describe("npm registry release verifier", () => {
@@ -119,6 +138,37 @@ describe("npm registry release verifier", () => {
       .mockResolvedValueOnce(new Response(metadata(), { status: 200 }))
       .mockResolvedValueOnce(new Response(attestation("f".repeat(40)), { status: 200 }));
     await expect(verifyRegistryRelease(manifest, wrongSource)).rejects.toThrow(/does not match/u);
+
+    const invalidSources = [
+      mutatedAttestation((definition) => {
+        definition.buildType = "https://example.invalid/build";
+      }),
+      mutatedAttestation((definition) => {
+        definition.externalParameters.workflow.path = ".github/workflows/other.yml";
+      }),
+      mutatedAttestation((definition) => {
+        definition.externalParameters.workflow.ref = "refs/heads/main";
+      }),
+      mutatedAttestation((definition) => {
+        definition.resolvedDependencies = [
+          {
+            uri: "git+https://example.invalid/other@refs/tags/v0.1.0",
+            digest: { gitCommit: manifest.sourceCommit },
+          },
+          {
+            uri: "git+https://github.com/mushanyoung/skillpress@refs/tags/v0.1.0",
+            digest: { gitCommit: "f".repeat(40) },
+          },
+        ];
+      }),
+    ];
+    for (const body of invalidSources) {
+      const invalid = vi
+        .fn()
+        .mockResolvedValueOnce(new Response(metadata(), { status: 200 }))
+        .mockResolvedValueOnce(new Response(body, { status: 200 }));
+      await expect(verifyRegistryRelease(manifest, invalid)).rejects.toThrow(/does not match/u);
+    }
   });
 
   it("fails closed when registry state is unavailable or malformed", async () => {

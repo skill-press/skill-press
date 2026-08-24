@@ -500,21 +500,22 @@ export async function runCommandImprovement(
       review: async (proposal, signal) =>
         (await call(reviewer, "review", { proposal }, signal)) as ImprovementReview,
       deterministic: async (proposal, signal) => {
+        let candidate: PreparedCandidate;
         try {
-          const candidate = await writeCandidate(runRoot, config.skill.name, proposal);
-          prepared.set(proposalKey(proposal), candidate);
-          return {
-            passed: await deterministicCandidate(
-              root,
-              config.skill.path,
-              candidate,
-              backupsRoot,
-              signal,
-            ),
-          };
+          candidate = await writeCandidate(runRoot, config.skill.name, proposal);
         } catch {
           return { passed: false };
         }
+        prepared.set(proposalKey(proposal), candidate);
+        return {
+          passed: await deterministicCandidate(
+            root,
+            config.skill.path,
+            candidate,
+            backupsRoot,
+            signal,
+          ),
+        };
       },
       evaluateTraining: async (proposal, signal) => {
         const candidate = prepared.get(proposalKey(proposal));
@@ -611,7 +612,17 @@ export async function runCommandImprovement(
           } catch {
             // The candidate may not have reached the canonical path.
           }
-          await rename(backup, skillRoot);
+          try {
+            await rename(backup, skillRoot);
+          } catch {
+            throw new ImprovementWorkflowError("Accepted candidate could not be rolled back.", [
+              issue(
+                "improve.accept.restore",
+                "/candidate",
+                "failed acceptance must restore the canonical project transaction",
+              ),
+            ]);
+          }
           throw error;
         }
       },

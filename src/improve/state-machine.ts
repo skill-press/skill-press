@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { Ajv, type ValidateFunction } from "ajv";
 
 import type { Iteration, Metrics, SkillPressImprovementReport } from "./generated-report.js";
+import { ImprovementWorkflowError } from "./workflow-error.js";
 
 export interface ImprovementLoopIssue {
   readonly code: string;
@@ -471,15 +472,21 @@ async function withinAtomicWallBudget<T>(
   if (remainingMs === 0) throw new ImprovementDeadlineError();
   const controller = new AbortController();
   let deadlineExceeded = false;
+  const deadlineReason = new ImprovementDeadlineError();
   const timer = setTimeout(() => {
     deadlineExceeded = true;
-    controller.abort(new ImprovementDeadlineError());
+    controller.abort(deadlineReason);
   }, remainingMs);
   try {
     const value = await callback(controller.signal);
     return Object.freeze({ value, deadlineExceeded });
   } catch (error) {
-    if (deadlineExceeded) throw new ImprovementDeadlineError();
+    if (
+      deadlineExceeded &&
+      (error === deadlineReason || error instanceof ImprovementDeadlineError)
+    ) {
+      throw deadlineReason;
+    }
     throw error;
   } finally {
     clearTimeout(timer);
@@ -724,6 +731,7 @@ export async function runBoundedImprovement(
       deterministicPassed = deterministic.value.passed === true;
     } catch (error) {
       if (error instanceof ImprovementDeadlineError) return wallFailure(iteration, valid);
+      if (error instanceof ImprovementWorkflowError) throw error;
       deterministicPassed = false;
     }
     if (!deterministicPassed) {
@@ -921,6 +929,7 @@ export async function runBoundedImprovement(
       if (error instanceof ImprovementDeadlineError) {
         return wallFailure(iteration, valid, training.metrics, holdout.metrics);
       }
+      if (error instanceof ImprovementWorkflowError) throw error;
       iterations.push(
         fixedIteration(
           iteration,
