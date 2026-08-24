@@ -75,10 +75,11 @@ official Tessl CLI 0.99.0. Authenticate it with `tessl auth login`, then confirm
 `tessl auth whoami --json`. See [the Tessl evidence contract](docs/TESSL.md) for the exact commands,
 pin update procedure, and failure boundaries.
 
-Before packaging, `checkTesslReleaseGate` reopens the private evidence and raw streams, reparses the
-provider results, and rebinds them to current clean Git inputs and configured thresholds. See
-[the release-gate contract](docs/RELEASE_GATES.md). Packaging and publication adapters consume this
-report; they do not accept score flags.
+Before packaging, the operator must call `checkTesslReleaseGate`, which reopens the private evidence
+and raw streams, reparses provider results, and rebinds them to current clean Git inputs and
+configured thresholds. See [the release-gate contract](docs/RELEASE_GATES.md). The staging,
+packaging, and publication APIs do not accept score flags, and remote mutation must not begin
+unless the returned gate report passed.
 
 The library export `runBoundedImprovement` coordinates the improvement lifecycle for an author
 adapter. The adapter receives only frozen training scenarios, measured training failures, and
@@ -118,8 +119,12 @@ This repository self-hosts the same contract through `skillpress.yaml`, `skills/
 paired `evals/training.yaml` and private-authoring-boundary `evals/holdout.yaml` inputs, and
 `evals/rubric.yaml`.
 
-See [the reviewed implementation plan](docs/PLAN.md) for architecture, security boundaries,
-registry capabilities, and the small-commit delivery sequence.
+Operational references:
+
+- [operating and recovery runbook](docs/OPERATIONS.md);
+- [security and trust-boundary model](docs/SECURITY.md);
+- [registry capability and rollback guide](docs/REGISTRIES.md);
+- [reviewed implementation plan](docs/PLAN.md).
 
 ## License
 
