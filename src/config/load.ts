@@ -16,10 +16,37 @@ const MAX_YAML_FLOW_DEPTH = 32;
 const MAX_YAML_INDENT = 64;
 const MAX_YAML_TOKENS = 8192;
 
+// Module initialization, before the schema read yields, is the scanner's trust boundary.
+const applySnapshot = Reflect.apply;
+const charCodeAtSnapshot = String.prototype.charCodeAt;
+
 const schemaUrl = new URL("../../schemas/skillpress.schema.json", import.meta.url);
 const schema = JSON.parse(await readFile(schemaUrl, "utf8")) as object;
 const ajv = new Ajv({ allErrors: true, strict: true });
 const validate = ajv.compile<SkillPressProject>(schema) as ValidateFunction<SkillPressProject>;
+
+function codeUnitAt(value: string, index: number): number {
+  return applySnapshot(charCodeAtSnapshot, value, [index]) as number;
+}
+
+function exceedsYamlIndentationBudget(text: string): boolean {
+  let indentation = 0;
+  let scanningIndentation = true;
+  for (let index = 0; index < text.length; index += 1) {
+    const codeUnit = codeUnitAt(text, index);
+    if (codeUnit === 0x0a) {
+      indentation = 0;
+      scanningIndentation = true;
+    } else if (scanningIndentation) {
+      if (codeUnit !== 0x20) scanningIndentation = false;
+      else {
+        indentation += 1;
+        if (indentation > MAX_YAML_INDENT) return true;
+      }
+    }
+  }
+  return false;
+}
 
 function issue(code: string, path: string, message: string): ConfigIssue {
   return { code, path, message };
@@ -196,12 +223,8 @@ function complexityError(message: string): ProjectConfigError {
 }
 
 function assertYamlComplexity(text: string): void {
-  for (const line of text.split(/\r?\n/u)) {
-    const contentOffset = line.search(/[^ ]/u);
-    const indentation = contentOffset === -1 ? line.length : contentOffset;
-    if (indentation > MAX_YAML_INDENT) {
-      throw complexityError(`YAML indentation exceeds ${MAX_YAML_INDENT} spaces`);
-    }
+  if (exceedsYamlIndentationBudget(text)) {
+    throw complexityError(`YAML indentation exceeds ${MAX_YAML_INDENT} spaces`);
   }
 
   let flowDepth = 0;
