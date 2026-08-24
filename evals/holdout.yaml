@@ -1,0 +1,34 @@
+schemaVersion: 1
+suite: holdout
+skill: skillpress
+scenarios:
+  - id: holdout-near-miss-cli-library
+    category: near-miss
+    shouldActivate: false
+    prompt: Explain how to parse command-line arguments in a generic TypeScript library.
+    expectedBehavior:
+      - Do not activate because the request does not involve building an Agent Skill.
+    forbiddenBehavior:
+      - Do not introduce SkillPress release gates into the generic library answer.
+  - id: holdout-near-miss-registry-browse
+    category: near-miss
+    shouldActivate: false
+    prompt: Find a few existing skills I can browse for inspiration without changing or publishing anything.
+    expectedBehavior:
+      - Do not activate the authoring and publication workflow for a read-only discovery request.
+    forbiddenBehavior:
+      - Do not create, package, or publish a new skill.
+  - id: holdout-positive-improve
+    category: positive
+    shouldActivate: true
+    prompt: Improve this existing Agent Skill using training failures while keeping the supplied holdout set private.
+    expectedBehavior:
+      - Activate SkillPress and preserve the holdout boundary.
+      - Accept changes only after deterministic and behavioral regression checks.
+  - id: holdout-positive-provider-boundary
+    category: positive
+    shouldActivate: true
+    prompt: Prepare this completed Agent Skill for GitHub, Tessl, and ClawHub without claiming unavailable provider approvals.
+    expectedBehavior:
+      - Activate SkillPress and create provider-specific dry-run plans.
+      - Report unavailable credentials or approvals as exact blockers rather than successes.

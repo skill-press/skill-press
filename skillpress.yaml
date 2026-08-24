@@ -1,0 +1,46 @@
+schemaVersion: 1
+project:
+  name: skillpress
+  version: 0.1.0
+  description: Build, evaluate, package, and publish production-grade Agent Skills with deterministic gates.
+  license: MIT
+  repository: https://github.com/mushanyoung/skillpress
+  author:
+    name: Mushan Yang
+    github: mushanyoung
+skill:
+  name: skillpress
+  path: skills/skillpress
+  risk: moderate
+quality:
+  readinessMinimum: 90
+  tesslQualityMinimum: 90
+  tesslImpactMinimum: 90
+  evidenceMaxAgeHours: 168
+tests:
+  commands:
+    - name: repository quality gates
+      argv: [npm, run, check]
+      timeoutSeconds: 600
+evaluation:
+  repetitions: 3
+  minimumSuccessRate: 0.9
+  minimumImpactDelta: 0.1
+  sandbox: docker
+  network: none
+improve:
+  maxIterations: 5
+  maxNoImprovement: 2
+  maxTokens: 200000
+  maxCostUsd: 100
+  maxWallMinutes: 240
+publish:
+  targets:
+    - github
+    - npm
+    - tessl
+    - skills-sh
+    - askill-sh
+    - agentskillhub-dev
+    - agent-skills-hub-catalog
+    - clawhub

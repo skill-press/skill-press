@@ -35,6 +35,19 @@ boundary during creation; portable Node.js does not expose the directory-relativ
 primitives needed to sandbox a malicious same-account process. Run untrusted work in the isolated
 runner introduced by the evaluation workflow, not alongside `create` in the same account.
 
+Run the deterministic local gates from a project root:
+
+```bash
+skillpress check --project .
+skillpress test --project .
+```
+
+`check` reports a local readiness score and fails closed on invalid canonical skills, missing
+licenses or scenario inputs, and project identity mismatches. It never reports a Tessl score.
+`test` explicitly runs the configured argv without a shell, confines configured working
+directories to the project tree, bounds output and time, and retains only byte counts and digests.
+It is a local project-test runner, not the sandbox for untrusted behavioral evaluation.
+
 The package also exposes the strict canonical-skill validator used by later readiness and release
 gates:
 
@@ -60,6 +73,9 @@ evaluation result, or a publication receipt.
 SkillPress distinguishes local readiness from Tessl's official Quality and Impact scores. It will
 only report the latter when current Tessl evidence exists, and the release profile defaults to a
 minimum of 90 for both.
+
+This repository self-hosts the same contract through `skillpress.yaml`, `skills/skillpress`, and
+the paired `evals/training.yaml` and private-authoring-boundary `evals/holdout.yaml` inputs.
 
 See [the reviewed implementation plan](docs/PLAN.md) for architecture, security boundaries,
 registry capabilities, and the small-commit delivery sequence.

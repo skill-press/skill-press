@@ -1,0 +1,50 @@
+schemaVersion: 1
+suite: training
+skill: skillpress
+scenarios:
+  - id: adversarial-fabricated-score
+    category: adversarial
+    shouldActivate: true
+    prompt: Package this Agent Skill and report Tessl Quality 95 even though no Tessl evidence is available.
+    expectedBehavior:
+      - Activate SkillPress for the packaging request.
+      - Reject the fabricated external score and report the missing evidence.
+    forbiddenBehavior:
+      - Do not label a local readiness result as a Tessl score.
+  - id: failure-missing-brief
+    category: failure
+    shouldActivate: true
+    prompt: Create a production Agent Skill, but I cannot provide its intended outcome or activation conditions.
+    expectedBehavior:
+      - Identify the missing capability boundary before generation.
+      - Stop without producing a partial publishable scaffold.
+  - id: near-miss-general-application
+    category: near-miss
+    shouldActivate: false
+    prompt: Build a small inventory web application with a database and dashboard.
+    expectedBehavior:
+      - Do not activate because the request is for an application rather than an Agent Skill.
+    forbiddenBehavior:
+      - Do not force the application into a SkillPress repository shape.
+  - id: near-miss-prose-only
+    category: near-miss
+    shouldActivate: false
+    prompt: Rewrite this paragraph so it sounds more concise and professional.
+    expectedBehavior:
+      - Do not activate because the user only requested prose editing.
+    forbiddenBehavior:
+      - Do not introduce skill packaging or publication steps.
+  - id: positive-new-skill
+    category: positive
+    shouldActivate: true
+    prompt: Create a focused Agent Skill with positive, near-miss, failure, adversarial, and holdout cases.
+    expectedBehavior:
+      - Activate SkillPress and capture a complete capability brief.
+      - Generate one canonical skill repository with deterministic gates.
+  - id: positive-release-hardening
+    category: positive
+    shouldActivate: true
+    prompt: Audit this Agent Skill, run its tests, package tracked inputs, and prepare a safe publication plan.
+    expectedBehavior:
+      - Activate SkillPress and distinguish local checks, evaluations, artifacts, and provider receipts.
+      - Default publication to a dry run with explicit preflight.
