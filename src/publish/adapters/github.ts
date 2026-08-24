@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type {
@@ -26,6 +27,9 @@ function runProviderCommand(
     Object.freeze({
       ...(process.env.GH_TOKEN === undefined ? {} : { GH_TOKEN: process.env.GH_TOKEN }),
       ...(process.env.GITHUB_TOKEN === undefined ? {} : { GITHUB_TOKEN: process.env.GITHUB_TOKEN }),
+      GH_CONFIG_DIR:
+        process.env.GH_CONFIG_DIR ??
+        join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "gh"),
       NO_COLOR: "1",
     }),
   );

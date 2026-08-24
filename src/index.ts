@@ -62,6 +62,8 @@ export { createAskillPublicationAdapter } from "./publish/adapters/askill.js";
 export type { AskillPublicationAdapterOptions } from "./publish/adapters/askill.js";
 export { createAgentSkillHubPublicationAdapter } from "./publish/adapters/agentskillhub.js";
 export type { AgentSkillHubPublicationAdapterOptions } from "./publish/adapters/agentskillhub.js";
+export { createAgentSkillsHubCatalogAdapter } from "./publish/adapters/agent-skills-hub-catalog.js";
+export type { AgentSkillsHubCatalogAdapterOptions } from "./publish/adapters/agent-skills-hub-catalog.js";
 export type {
   PublicationAdapterRuntime,
   PublicationCommandExecutor,

@@ -112,6 +112,7 @@ describe("GitHub publication adapter", () => {
       expect(environment).toEqual({
         GH_TOKEN: "gh-secret",
         GITHUB_TOKEN: "github-secret",
+        GH_CONFIG_DIR: expect.any(String),
         NO_COLOR: "1",
       });
     } finally {
