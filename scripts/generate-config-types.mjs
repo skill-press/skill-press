@@ -22,6 +22,14 @@ const targets = [
     schema: "schemas/eval-rubric.schema.json",
     output: "src/eval/generated-rubric.ts",
   },
+  {
+    schema: "schemas/eval-agent-result.schema.json",
+    output: "src/eval/generated-agent-result.ts",
+  },
+  {
+    schema: "schemas/eval-evidence.schema.json",
+    output: "src/eval/generated-evidence.ts",
+  },
 ];
 
 let stale = false;

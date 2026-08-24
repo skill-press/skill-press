@@ -7,6 +7,10 @@ import { CapabilityBriefError, ProjectCreationError } from "./create/errors.js";
 import { loadCapabilityBrief } from "./create/load.js";
 import { renderCapabilityProject } from "./create/render.js";
 import { writeRenderedProject } from "./create/write.js";
+import { EvaluationInputError } from "./eval/errors.js";
+import { EvaluationRunError, runPairedEvaluation } from "./eval/paired.js";
+import type { SkillPressPairedEvaluationEvidence } from "./eval/generated-evidence.js";
+import { SandboxPolicyError } from "./eval/sandbox.js";
 import { isSafePathInput } from "./path-safety.js";
 import { runProjectTests } from "./test/project.js";
 import type { ProjectTestReport } from "./test/types.js";
@@ -35,8 +39,9 @@ Commands:
   create             Create a complete canonical skill project from a strict brief
   check              Validate a project and report local readiness
   test               Run deterministic project test commands without a shell
+  eval               Run paired baseline/with-skill evaluation in a sandbox
 
-The eval, package, publish, status, and doctor commands will be
+The package, publish, status, and doctor commands will be
 enabled as their independently reviewed implementation slices land.
 `;
 
@@ -74,6 +79,23 @@ Options:
   -h, --help             Show this help
 `;
 
+const EVAL_HELP = `Run paired baseline and with-skill scenarios in Docker or Podman.
+
+Usage:
+  skillpress eval --image <digest-pinned-image> --model <model> [options] -- <adapter-argv...>
+
+Options:
+  --project <directory>      Project root; defaults to the current directory
+  --suite <training|holdout> Scenario suite; defaults to training
+  --scenario <id>            Run only this scenario; may be repeated
+  --allow-unpinned-image     Permit a local mutable image and mark evidence ineligible
+  --json                     Emit one stable JSON object
+  -h, --help                 Show this help
+
+The adapter must implement the SkillPress request/result protocol. Publication credentials and
+host execution are never implied by this command.
+`;
+
 interface CliIssue {
   readonly code: string;
   readonly path: string;
@@ -88,6 +110,17 @@ interface CreateArguments {
 
 interface ProjectCommandArguments {
   readonly project: string;
+  readonly json: boolean;
+}
+
+interface EvalArguments {
+  readonly project: string;
+  readonly image: string;
+  readonly model: string;
+  readonly suite: "training" | "holdout";
+  readonly scenarioIds?: readonly string[];
+  readonly allowUnpinnedImage: boolean;
+  readonly command: readonly [string, ...string[]];
   readonly json: boolean;
 }
 
@@ -129,6 +162,10 @@ export function renderCheckHelp(): string {
 
 export function renderTestHelp(): string {
   return TEST_HELP;
+}
+
+export function renderEvalHelp(): string {
+  return EVAL_HELP;
 }
 
 function assertPathArgument(flag: string, value: string | undefined): string {
@@ -200,8 +237,86 @@ function parseProjectCommandArguments(
   return { project, json };
 }
 
+function argumentValue(flag: string, value: string | undefined): string {
+  if (value === undefined || value === "" || value.startsWith("--")) {
+    throw new CliUsageError(`${flag} requires a value.`);
+  }
+  return value;
+}
+
+function parseEvalArguments(args: readonly string[]): EvalArguments {
+  const separator = args.indexOf("--");
+  if (separator < 0 || separator === args.length - 1) {
+    throw new CliUsageError("eval requires adapter argv after --.");
+  }
+  const flags = args.slice(0, separator);
+  const command = args.slice(separator + 1) as unknown as readonly [string, ...string[]];
+  let project = ".";
+  let projectProvided = false;
+  let image: string | undefined;
+  let model: string | undefined;
+  let suite: "training" | "holdout" = "training";
+  let suiteProvided = false;
+  const scenarioIds: string[] = [];
+  let allowUnpinnedImage = false;
+  let json = false;
+  for (let index = 0; index < flags.length; index += 1) {
+    const argument = flags[index];
+    if (argument === "--json") {
+      if (json) throw new CliUsageError("--json may be specified only once.");
+      json = true;
+    } else if (argument === "--allow-unpinned-image") {
+      if (allowUnpinnedImage) {
+        throw new CliUsageError("--allow-unpinned-image may be specified only once.");
+      }
+      allowUnpinnedImage = true;
+    } else if (argument === "--project") {
+      if (projectProvided) throw new CliUsageError("--project may be specified only once.");
+      project = assertPathArgument("--project", flags[index + 1]);
+      projectProvided = true;
+      index += 1;
+    } else if (argument === "--image") {
+      if (image !== undefined) throw new CliUsageError("--image may be specified only once.");
+      image = argumentValue("--image", flags[index + 1]);
+      index += 1;
+    } else if (argument === "--model") {
+      if (model !== undefined) throw new CliUsageError("--model may be specified only once.");
+      model = argumentValue("--model", flags[index + 1]);
+      index += 1;
+    } else if (argument === "--suite") {
+      if (suiteProvided) throw new CliUsageError("--suite may be specified only once.");
+      const value = argumentValue("--suite", flags[index + 1]);
+      if (value !== "training" && value !== "holdout") {
+        throw new CliUsageError("--suite must be training or holdout.");
+      }
+      suite = value;
+      suiteProvided = true;
+      index += 1;
+    } else if (argument === "--scenario") {
+      scenarioIds.push(argumentValue("--scenario", flags[index + 1]));
+      index += 1;
+    } else {
+      throw new CliUsageError("Unknown eval argument.");
+    }
+  }
+  if (image === undefined || model === undefined) {
+    throw new CliUsageError("eval requires --image and --model.");
+  }
+  return {
+    project,
+    image,
+    model,
+    suite,
+    ...(scenarioIds.length === 0 ? {} : { scenarioIds: Object.freeze(scenarioIds) }),
+    allowUnpinnedImage,
+    command: Object.freeze([...command]) as unknown as readonly [string, ...string[]],
+    json,
+  };
+}
+
 function wantsJson(args: readonly string[]): boolean {
-  return args.includes("--json");
+  const separator = args.indexOf("--");
+  return args.slice(0, separator < 0 ? args.length : separator).includes("--json");
 }
 
 async function writeStdout(io: CliIo, text: string): Promise<boolean> {
@@ -427,6 +542,55 @@ async function runTests(args: readonly string[], io: CliIo): Promise<CliExitCode
   }
 }
 
+export function renderHumanEvalReport(evidence: SkillPressPairedEvaluationEvidence): string {
+  return [
+    `Paired evaluation: ${evidence.summary.behavioralGatePassed ? "pass" : "fail"}`,
+    `Evidence eligible: ${evidence.evidenceEligible ? "yes" : "no"}`,
+    `Baseline success: ${(evidence.summary.baselineSuccessRate * 100).toFixed(1)}%`,
+    `With-skill success: ${(evidence.summary.withSkillSuccessRate * 100).toFixed(1)}%`,
+    `Impact delta: ${(evidence.summary.impactDelta * 100).toFixed(1)} percentage points`,
+    `Evidence: ${evidence.storagePath}/evidence.json`,
+    ...(evidence.ineligibilityReasons.length === 0
+      ? []
+      : [`Ineligible: ${evidence.ineligibilityReasons.join(", ")}`]),
+    "",
+  ].join("\n");
+}
+
+async function runEval(args: readonly string[], io: CliIo): Promise<CliExitCode> {
+  const json = wantsJson(args);
+  try {
+    const parsed = parseEvalArguments(args);
+    const evidence = await runPairedEvaluation(parsed.project, {
+      image: parsed.image,
+      model: parsed.model,
+      suite: parsed.suite,
+      command: parsed.command,
+      allowUnpinnedImage: parsed.allowUnpinnedImage,
+      ...(parsed.scenarioIds === undefined ? {} : { scenarioIds: parsed.scenarioIds }),
+    });
+    const output = parsed.json
+      ? `${JSON.stringify({ command: "eval", ...evidence })}\n`
+      : renderHumanEvalReport(evidence);
+    if (!(await writeStdout(io, output))) return 1;
+    return evidence.evidenceEligible ? 0 : 3;
+  } catch (error) {
+    if (error instanceof CliUsageError) {
+      await writeError(io, json, "usage", error.message, error.issues);
+      return 2;
+    }
+    if (error instanceof ProjectConfigError || error instanceof EvaluationInputError) {
+      await writeError(io, json, "project.invalid", error.message, error.issues);
+      return 3;
+    }
+    if (error instanceof EvaluationRunError || error instanceof SandboxPolicyError) {
+      await writeError(io, json, "eval.invalid", error.message, error.issues);
+      return 3;
+    }
+    return writeInternalFailure(io, json, "eval");
+  }
+}
+
 async function usageFailure(
   args: readonly string[],
   io: CliIo,
@@ -497,6 +661,13 @@ export async function runCli(args: readonly string[], io: CliIo = defaultIo): Pr
       return (await writeStdout(capturedIo, renderTestHelp())) ? 0 : 1;
     }
     return runTests(capturedArgs.slice(1), capturedIo);
+  }
+
+  if (capturedArgs[0] === "eval") {
+    if ((capturedArgs[1] === "--help" || capturedArgs[1] === "-h") && capturedArgs.length === 2) {
+      return (await writeStdout(capturedIo, renderEvalHelp())) ? 0 : 1;
+    }
+    return runEval(capturedArgs.slice(1), capturedIo);
   }
 
   return usageFailure(

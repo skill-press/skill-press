@@ -9,6 +9,7 @@ describe("public API", () => {
     expect(skillpress.renderCreateHelp()).toContain("skillpress create");
     expect(skillpress.renderCheckHelp()).toContain("skillpress check");
     expect(skillpress.renderTestHelp()).toContain("skillpress test");
+    expect(skillpress.renderEvalHelp()).toContain("skillpress eval");
     expect(skillpress.runCli).toBeTypeOf("function");
     expect(skillpress.checkProject).toBeTypeOf("function");
     expect(skillpress.runProjectTests).toBeTypeOf("function");
@@ -18,6 +19,8 @@ describe("public API", () => {
     expect(skillpress.EvaluationInputError).toBeTypeOf("function");
     expect(skillpress.createSandboxInvocation).toBeTypeOf("function");
     expect(skillpress.SandboxPolicyError).toBeTypeOf("function");
+    expect(skillpress.runPairedEvaluation).toBeTypeOf("function");
+    expect(skillpress.EvaluationRunError).toBeTypeOf("function");
     expect(skillpress.MAX_TEST_OUTPUT_BYTES).toBe(1024 * 1024);
     expect(skillpress.ProjectCreationError).toBeTypeOf("function");
     expect(skillpress.writeRenderedProject).toBeTypeOf("function");

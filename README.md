@@ -40,6 +40,7 @@ Run the deterministic local gates from a project root:
 ```bash
 skillpress check --project .
 skillpress test --project .
+skillpress eval --project . --image <image@sha256:digest> --model <model> -- <adapter-argv...>
 ```
 
 `check` reports a local readiness score and fails closed on invalid canonical skills, missing or
@@ -49,6 +50,14 @@ It never reports a Tessl score.
 `test` explicitly runs the configured argv without a shell, confines configured working
 directories to the project tree, bounds output and time, and retains only byte counts and digests.
 It is a local project-test runner, not the sandbox for untrusted behavioral evaluation.
+
+`eval` runs the same selected scenario without and with the staged canonical skill in separate
+Docker or Podman containers. It requires a digest-pinned adapter image by default, disables
+networking, applies explicit CPU/memory/PID/filesystem/output/time limits, and verifies that the
+adapter consumed the exact request digest and loaded the staged skill digest. Raw baseline and
+with-skill results remain under ignored, private `.skillpress/runs/` storage; the returned evidence
+contains hashes and redacted excerpts. Local behavioral evidence remains distinct from Tessl
+Quality and Impact evidence.
 
 The package also exposes the strict canonical-skill validator used by later readiness and release
 gates:

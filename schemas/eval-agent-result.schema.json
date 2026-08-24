@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/mushanyoung/skillpress/main/schemas/eval-agent-result.schema.json",
+  "title": "SkillPressAgentResult",
+  "description": "The strict result protocol emitted by a pinned sandbox evaluation adapter.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "variant",
+    "model",
+    "inputSha256",
+    "activated",
+    "loadedSkillSha256",
+    "transcript",
+    "criteria"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "runId": { "$ref": "#/definitions/digest" },
+    "variant": { "type": "string", "enum": ["baseline", "with-skill"] },
+    "model": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "inputSha256": { "$ref": "#/definitions/digest" },
+    "activated": { "type": "boolean" },
+    "loadedSkillSha256": {
+      "anyOf": [{ "$ref": "#/definitions/digest" }, { "type": "null" }]
+    },
+    "transcript": { "type": "string", "maxLength": 1048576 },
+    "criteria": {
+      "type": "array",
+      "maxItems": 32,
+      "items": { "$ref": "#/definitions/criterionResult" }
+    }
+  },
+  "definitions": {
+    "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "criterionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "score", "rationale"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "rationale": { "type": "string", "minLength": 1, "maxLength": 4096 }
+      }
+    }
+  }
+}

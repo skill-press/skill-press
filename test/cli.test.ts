@@ -11,11 +11,14 @@ import type { SkillPressProject } from "../src/config/generated.js";
 import {
   renderCheckHelp,
   renderCreateHelp,
+  renderEvalHelp,
   renderHelp,
+  renderHumanEvalReport,
   renderTestHelp,
   runCli,
 } from "../src/cli.js";
 import { ProjectCreationError } from "../src/create/errors.js";
+import type { SkillPressPairedEvaluationEvidence } from "../src/eval/generated-evidence.js";
 import { VERSION } from "../src/version.js";
 
 const briefPath = fileURLToPath(new URL("fixtures/create/complete-brief.yaml", import.meta.url));
@@ -101,6 +104,202 @@ describe("SkillPress CLI scaffold", () => {
     await expect(runCli(["test", flag as string], capture.io)).resolves.toBe(0);
     expect(capture.stdout).toEqual([renderTestHelp()]);
     expect(capture.stderr).toEqual([]);
+  });
+
+  it.each([["--help"], ["-h"]])("renders eval help for %s", async (flag) => {
+    const capture = captureIo();
+
+    await expect(runCli(["eval", flag as string], capture.io)).resolves.toBe(0);
+    expect(capture.stdout).toEqual([renderEvalHelp()]);
+    expect(capture.stderr).toEqual([]);
+  });
+
+  it.each([
+    ["missing separator", ["eval", "--image", "image", "--model", "model"]],
+    ["missing adapter", ["eval", "--image", "image", "--model", "model", "--"]],
+    ["missing required option", ["eval", "--image", "image", "--", "adapter"]],
+    [
+      "invalid suite",
+      ["eval", "--image", "image", "--model", "model", "--suite", "other", "--", "adapter"],
+    ],
+    [
+      "duplicate JSON",
+      ["eval", "--json", "--json", "--image", "image", "--model", "model", "--", "adapter"],
+    ],
+    [
+      "duplicate image",
+      ["eval", "--image", "one", "--image", "two", "--model", "model", "--", "adapter"],
+    ],
+    [
+      "duplicate model",
+      ["eval", "--image", "image", "--model", "one", "--model", "two", "--", "adapter"],
+    ],
+    [
+      "duplicate suite",
+      [
+        "eval",
+        "--image",
+        "image",
+        "--model",
+        "model",
+        "--suite",
+        "training",
+        "--suite",
+        "holdout",
+        "--",
+        "adapter",
+      ],
+    ],
+    [
+      "duplicate project",
+      [
+        "eval",
+        "--project",
+        ".",
+        "--project",
+        ".",
+        "--image",
+        "image",
+        "--model",
+        "model",
+        "--",
+        "adapter",
+      ],
+    ],
+    [
+      "duplicate unsafe override",
+      [
+        "eval",
+        "--allow-unpinned-image",
+        "--allow-unpinned-image",
+        "--image",
+        "image",
+        "--model",
+        "model",
+        "--",
+        "adapter",
+      ],
+    ],
+    [
+      "unknown flag",
+      ["eval", "--unknown", "--image", "image", "--model", "model", "--", "adapter"],
+    ],
+  ] as const)("returns usage exit 2 for eval %s", async (_name, args) => {
+    const capture = captureIo();
+
+    await expect(runCli(args, capture.io)).resolves.toBe(2);
+    expect(capture.stdout).toEqual([]);
+    expect(capture.stderr).toHaveLength(1);
+  });
+
+  it("does not mistake an adapter --json argument for CLI JSON mode", async () => {
+    const capture = captureIo();
+
+    await expect(runCli(["eval", "--", "adapter", "--json"], capture.io)).resolves.toBe(2);
+
+    expect(capture.stderr[0]).toContain("eval requires --image and --model");
+    expect(() => JSON.parse(capture.stderr[0] as string)).toThrow();
+  });
+
+  it.each([
+    ["missing value", ["eval", "--image", "--", "adapter"]],
+    ["empty value", ["eval", "--image", "", "--model", "model", "--", "adapter"]],
+    ["flag value", ["eval", "--image", "--invalid", "--model", "model", "--", "adapter"]],
+  ] as const)("rejects an eval %s", async (_name, args) => {
+    const capture = captureIo();
+    await expect(runCli(args, capture.io)).resolves.toBe(2);
+  });
+
+  it("renders passing and ineligible paired evidence without external-score language", () => {
+    const evidence = {
+      schemaVersion: 1,
+      evidenceType: "skillpress.paired-eval",
+      runId: "a".repeat(64),
+      createdAt: "2026-08-24T00:00:00.000Z",
+      project: { name: "example", version: "1.0.0" },
+      suite: "training",
+      model: "model",
+      adapter: { backend: "docker", image: "image", commandSha256: "b".repeat(64) },
+      skillSha256: "c".repeat(64),
+      configSha256: "d".repeat(64),
+      repetitions: 3,
+      scenarioResults: [{ id: "case", expectedActivation: true, runs: [] }],
+      summary: {
+        baselineSuccessRate: 0,
+        withSkillSuccessRate: 1,
+        impactDelta: 1,
+        minimumSuccessRate: 0.9,
+        minimumImpactDelta: 0.1,
+        behavioralGatePassed: true,
+      },
+      evidenceEligible: true,
+      ineligibilityReasons: [],
+      storagePath: `.skillpress/runs/${"a".repeat(64)}`,
+    } as unknown as SkillPressPairedEvaluationEvidence;
+
+    const passing = renderHumanEvalReport(evidence);
+    const failing = renderHumanEvalReport({
+      ...evidence,
+      summary: { ...evidence.summary, behavioralGatePassed: false },
+      evidenceEligible: false,
+      ineligibilityReasons: ["behavioral_gate_failed"],
+    });
+
+    expect(passing).toContain("Paired evaluation: pass");
+    expect(passing).toContain("Evidence eligible: yes");
+    expect(passing).not.toContain("Ineligible:");
+    expect(failing).toContain("Paired evaluation: fail");
+    expect(failing).toContain("Evidence eligible: no");
+    expect(failing).toContain("Ineligible: behavioral_gate_failed");
+    expect(`${passing}${failing}`).not.toContain("Tessl Quality");
+  });
+
+  it("reports invalid eval projects and sandbox policy failures", async () => {
+    const missing = await temporaryDirectory();
+    const missingCapture = captureIo();
+    await expect(
+      runCli(
+        [
+          "eval",
+          "--project",
+          missing,
+          "--image",
+          `example/agent@sha256:${"a".repeat(64)}`,
+          "--model",
+          "model",
+          "--",
+          "adapter",
+        ],
+        missingCapture.io,
+      ),
+    ).resolves.toBe(3);
+    expect(missingCapture.stderr[0]).toContain("evaluation input");
+
+    const parent = await temporaryDirectory();
+    const output = join(parent, "project");
+    await expect(
+      runCli(["create", "--brief", briefPath, "--output", output], captureIo().io),
+    ).resolves.toBe(0);
+    const policyCapture = captureIo();
+    await expect(
+      runCli(
+        [
+          "eval",
+          "--project",
+          output,
+          "--image",
+          "mutable:latest",
+          "--model",
+          "model",
+          "--scenario",
+          "positive-shift-handoff",
+          "--",
+          "adapter",
+        ],
+        policyCapture.io,
+      ),
+    ).resolves.toBe(3);
+    expect(policyCapture.stderr[0]).toContain("immutable sha256 digest");
   });
 
   it("rejects an unknown command", async () => {

@@ -1,4 +1,11 @@
-export { renderCheckHelp, renderCreateHelp, renderHelp, renderTestHelp, runCli } from "./cli.js";
+export {
+  renderCheckHelp,
+  renderCreateHelp,
+  renderEvalHelp,
+  renderHelp,
+  renderTestHelp,
+  runCli,
+} from "./cli.js";
 export type { CliExitCode, CliIo } from "./cli.js";
 export { checkProject } from "./check/project.js";
 export type {
@@ -26,6 +33,12 @@ export {
   TRAINING_SUITE_PATH,
 } from "./eval/load.js";
 export type { ProjectEvaluationInputs } from "./eval/load.js";
+export { EvaluationRunError, runPairedEvaluation } from "./eval/paired.js";
+export type {
+  EvaluationRunIssue,
+  PairedEvaluationOptions,
+} from "./eval/paired.js";
+export type { SkillPressPairedEvaluationEvidence } from "./eval/generated-evidence.js";
 export {
   createSandboxInvocation,
   DEFAULT_SANDBOX_RESOURCE_POLICY,

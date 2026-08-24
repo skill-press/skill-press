@@ -1,0 +1,175 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/mushanyoung/skillpress/main/schemas/eval-evidence.schema.json",
+  "title": "SkillPressPairedEvaluationEvidence",
+  "description": "Redacted local evidence from paired baseline and with-skill sandbox runs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "evidenceType",
+    "runId",
+    "createdAt",
+    "project",
+    "suite",
+    "model",
+    "adapter",
+    "skillSha256",
+    "configSha256",
+    "repetitions",
+    "scenarioResults",
+    "summary",
+    "evidenceEligible",
+    "ineligibilityReasons",
+    "storagePath"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "evidenceType": { "const": "skillpress.paired-eval" },
+    "runId": { "$ref": "#/definitions/digest" },
+    "createdAt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "version": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "suite": { "type": "string", "enum": ["training", "holdout"] },
+    "model": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backend", "image", "commandSha256"],
+      "properties": {
+        "backend": { "type": "string", "enum": ["docker", "podman"] },
+        "image": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "commandSha256": { "$ref": "#/definitions/digest" }
+      }
+    },
+    "skillSha256": { "$ref": "#/definitions/digest" },
+    "configSha256": { "$ref": "#/definitions/digest" },
+    "repetitions": { "type": "integer", "minimum": 1, "maximum": 20 },
+    "scenarioResults": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "items": { "$ref": "#/definitions/scenarioEvidence" }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baselineSuccessRate",
+        "withSkillSuccessRate",
+        "impactDelta",
+        "minimumSuccessRate",
+        "minimumImpactDelta",
+        "behavioralGatePassed"
+      ],
+      "properties": {
+        "baselineSuccessRate": { "$ref": "#/definitions/rate" },
+        "withSkillSuccessRate": { "$ref": "#/definitions/rate" },
+        "impactDelta": { "type": "number", "minimum": -1, "maximum": 1 },
+        "minimumSuccessRate": { "$ref": "#/definitions/rate" },
+        "minimumImpactDelta": { "$ref": "#/definitions/rate" },
+        "behavioralGatePassed": { "type": "boolean" }
+      }
+    },
+    "evidenceEligible": { "type": "boolean" },
+    "ineligibilityReasons": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 120 }
+    },
+    "storagePath": {
+      "type": "string",
+      "pattern": "^\\.skillpress/runs/[a-f0-9]{64}$"
+    }
+  },
+  "definitions": {
+    "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "rate": { "type": "number", "minimum": 0, "maximum": 1 },
+    "transcriptEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bytes", "sha256", "redactedExcerpt"],
+      "properties": {
+        "bytes": { "type": "integer", "minimum": 0, "maximum": 4194304 },
+        "sha256": { "$ref": "#/definitions/digest" },
+        "redactedExcerpt": { "type": "string", "maxLength": 1000 }
+      }
+    },
+    "legEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "status",
+        "activated",
+        "loadedSkillSha256",
+        "rubricScore",
+        "successful",
+        "inputSha256",
+        "transcript",
+        "engineStdoutSha256",
+        "engineStderrSha256"
+      ],
+      "properties": {
+        "runId": { "$ref": "#/definitions/digest" },
+        "status": {
+          "type": "string",
+          "enum": ["passed", "failed", "timed_out", "output_limit", "spawn_error", "invalid_result"]
+        },
+        "activated": { "type": ["boolean", "null"] },
+        "loadedSkillSha256": {
+          "anyOf": [{ "$ref": "#/definitions/digest" }, { "type": "null" }]
+        },
+        "rubricScore": {
+          "anyOf": [{ "type": "number", "minimum": 0, "maximum": 100 }, { "type": "null" }]
+        },
+        "successful": { "type": "boolean" },
+        "inputSha256": { "$ref": "#/definitions/digest" },
+        "transcript": { "$ref": "#/definitions/transcriptEvidence" },
+        "engineStdoutSha256": { "$ref": "#/definitions/digest" },
+        "engineStderrSha256": { "$ref": "#/definitions/digest" }
+      }
+    },
+    "repetitionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repetition", "baseline", "withSkill"],
+      "properties": {
+        "repetition": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "baseline": { "$ref": "#/definitions/legEvidence" },
+        "withSkill": { "$ref": "#/definitions/legEvidence" }
+      }
+    },
+    "scenarioEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "expectedActivation", "runs"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "expectedActivation": { "type": "boolean" },
+        "runs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": { "$ref": "#/definitions/repetitionEvidence" }
+        }
+      }
+    }
+  }
+}
