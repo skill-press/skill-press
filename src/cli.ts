@@ -1,5 +1,8 @@
 import { join } from "node:path";
 
+import { checkProject } from "./check/project.js";
+import type { SkillPressCheckReport } from "./check/types.js";
+import { ProjectConfigError } from "./config/errors.js";
 import { CapabilityBriefError, ProjectCreationError } from "./create/errors.js";
 import { loadCapabilityBrief } from "./create/load.js";
 import { renderCapabilityProject } from "./create/render.js";
@@ -28,8 +31,9 @@ Options:
 
 Commands:
   create             Create a complete canonical skill project from a strict brief
+  check              Validate a project and report local readiness
 
-The check, test, eval, package, publish, status, and doctor commands will be
+The test, eval, package, publish, status, and doctor commands will be
 enabled as their independently reviewed implementation slices land.
 `;
 
@@ -45,6 +49,17 @@ Options:
   -h, --help                 Show this help
 `;
 
+const CHECK_HELP = `Validate a SkillPress project and report local readiness.
+
+Usage:
+  skillpress check [--project <directory>] [--json]
+
+Options:
+  --project <directory>  Project root containing skillpress.yaml; defaults to the current directory
+  --json                 Emit one stable JSON object
+  -h, --help             Show this help
+`;
+
 interface CliIssue {
   readonly code: string;
   readonly path: string;
@@ -54,6 +69,11 @@ interface CliIssue {
 interface CreateArguments {
   readonly brief: string;
   readonly output: string;
+  readonly json: boolean;
+}
+
+interface CheckArguments {
+  readonly project: string;
   readonly json: boolean;
 }
 
@@ -87,6 +107,10 @@ export function renderHelp(): string {
 
 export function renderCreateHelp(): string {
   return CREATE_HELP;
+}
+
+export function renderCheckHelp(): string {
+  return CHECK_HELP;
 }
 
 function assertPathArgument(flag: string, value: string | undefined): string {
@@ -134,6 +158,27 @@ function parseCreateArguments(args: readonly string[]): CreateArguments {
   return { brief, output, json };
 }
 
+function parseCheckArguments(args: readonly string[]): CheckArguments {
+  let project = ".";
+  let projectProvided = false;
+  let json = false;
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (argument === "--json") {
+      if (json) throw new CliUsageError("--json may be specified only once.");
+      json = true;
+    } else if (argument === "--project") {
+      if (projectProvided) throw new CliUsageError("--project may be specified only once.");
+      project = assertPathArgument("--project", args[index + 1]);
+      projectProvided = true;
+      index += 1;
+    } else {
+      throw new CliUsageError("Unknown check argument.");
+    }
+  }
+  return { project, json };
+}
+
 function wantsJson(args: readonly string[]): boolean {
   return args.includes("--json");
 }
@@ -170,9 +215,13 @@ async function writeError(
   }
 }
 
-async function writeInternalFailure(io: CliIo, json: boolean): Promise<CliExitCode> {
+async function writeInternalFailure(
+  io: CliIo,
+  json: boolean,
+  command: string,
+): Promise<CliExitCode> {
   await writeError(io, json, "internal", "SkillPress could not complete the command.", [
-    { code: "create.internal", path: "/", message: "unexpected internal failure" },
+    { code: `${command}.internal`, path: "/", message: "unexpected internal failure" },
   ]);
   return 1;
 }
@@ -279,7 +328,46 @@ async function runCreate(args: readonly string[], io: CliIo): Promise<CliExitCod
       );
       return unsafe ? 4 : 1;
     }
-    return writeInternalFailure(io, json);
+    return writeInternalFailure(io, json, "create");
+  }
+}
+
+function humanCheckReport(report: SkillPressCheckReport): string {
+  const errors = report.diagnostics.filter((entry) => entry.severity === "error").length;
+  const warnings = report.diagnostics.length - errors;
+  const details = report.diagnostics
+    .map((entry) => `- ${entry.path}: ${entry.message} [${entry.code}]`)
+    .join("\n");
+  return [
+    `Readiness: ${report.score}/100 (minimum ${report.minimum})`,
+    `Eligible: ${report.eligible ? "yes" : "no"}`,
+    `Status: ${report.ok ? "pass" : "fail"}`,
+    `Diagnostics: ${errors} error(s), ${warnings} warning(s)`,
+    ...(details === "" ? [] : [details]),
+    "",
+  ].join("\n");
+}
+
+async function runCheck(args: readonly string[], io: CliIo): Promise<CliExitCode> {
+  const json = wantsJson(args);
+  try {
+    const parsed = parseCheckArguments(args);
+    const report = await checkProject(parsed.project);
+    const output = parsed.json
+      ? `${JSON.stringify({ command: "check", ...report })}\n`
+      : humanCheckReport(report);
+    if (!(await writeStdout(io, output))) return 1;
+    return report.ok ? 0 : 3;
+  } catch (error) {
+    if (error instanceof CliUsageError) {
+      await writeError(io, json, "usage", error.message, error.issues);
+      return 2;
+    }
+    if (error instanceof ProjectConfigError) {
+      await writeError(io, json, "project.invalid", error.message, error.issues);
+      return 3;
+    }
+    return writeInternalFailure(io, json, "check");
   }
 }
 
@@ -339,6 +427,13 @@ export async function runCli(args: readonly string[], io: CliIo = defaultIo): Pr
       return (await writeStdout(capturedIo, renderCreateHelp())) ? 0 : 1;
     }
     return runCreate(capturedArgs.slice(1), capturedIo);
+  }
+
+  if (capturedArgs[0] === "check") {
+    if ((capturedArgs[1] === "--help" || capturedArgs[1] === "-h") && capturedArgs.length === 2) {
+      return (await writeStdout(capturedIo, renderCheckHelp())) ? 0 : 1;
+    }
+    return runCheck(capturedArgs.slice(1), capturedIo);
   }
 
   return usageFailure(

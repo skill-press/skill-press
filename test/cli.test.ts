@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { renderCreateHelp, renderHelp, runCli } from "../src/cli.js";
+import { renderCheckHelp, renderCreateHelp, renderHelp, runCli } from "../src/cli.js";
 import { ProjectCreationError } from "../src/create/errors.js";
 import { VERSION } from "../src/version.js";
 
@@ -76,6 +76,14 @@ describe("SkillPress CLI scaffold", () => {
 
     await expect(runCli(["create", flag as string], capture.io)).resolves.toBe(0);
     expect(capture.stdout).toEqual([renderCreateHelp()]);
+    expect(capture.stderr).toEqual([]);
+  });
+
+  it.each([["--help"], ["-h"]])("renders check help for %s", async (flag) => {
+    const capture = captureIo();
+
+    await expect(runCli(["check", flag as string], capture.io)).resolves.toBe(0);
+    expect(capture.stdout).toEqual([renderCheckHelp()]);
     expect(capture.stderr).toEqual([]);
   });
 
@@ -237,6 +245,101 @@ describe("SkillPress CLI scaffold", () => {
         expect.objectContaining({ path: "skills/incident-summary/SKILL.md" }),
       ]),
     });
+  });
+
+  it("checks a generated project in human and JSON modes", async () => {
+    const parent = await temporaryDirectory();
+    const output = join(parent, "project");
+    const creation = captureIo();
+    await expect(
+      runCli(["create", "--brief", briefPath, "--output", output], creation.io),
+    ).resolves.toBe(0);
+
+    const human = captureIo();
+    await expect(runCli(["check", "--project", output], human.io)).resolves.toBe(0);
+    expect(human.stderr).toEqual([]);
+    expect(human.stdout).toHaveLength(1);
+    expect(human.stdout[0]).toContain("Readiness: 100/100");
+    expect(human.stdout[0]).toContain("Status: pass");
+
+    const json = captureIo();
+    await expect(runCli(["check", "--json", "--project", output], json.io)).resolves.toBe(0);
+    expect(json.stderr).toEqual([]);
+    expect(JSON.parse(json.stdout[0] as string)).toMatchObject({
+      command: "check",
+      schemaVersion: 1,
+      ok: true,
+      eligible: true,
+      score: 100,
+      minimum: 90,
+    });
+  });
+
+  it("returns the complete failed check report with exit 3", async () => {
+    const parent = await temporaryDirectory();
+    const output = join(parent, "project");
+    await runCli(["create", "--brief", briefPath, "--output", output], captureIo().io);
+    const skillPath = join(output, "skills/incident-summary/SKILL.md");
+    const skill = await readFile(skillPath, "utf8");
+    await writeFile(skillPath, skill.replace("# Incident Summary", "# TODO: finish title"));
+    const capture = captureIo();
+
+    await expect(runCli(["check", "--project", output, "--json"], capture.io)).resolves.toBe(3);
+
+    expect(capture.stderr).toEqual([]);
+    const report = JSON.parse(capture.stdout[0] as string) as Record<string, unknown>;
+    expect(report).toMatchObject({ command: "check", ok: false, eligible: false, score: 40 });
+    expect(JSON.stringify(report)).not.toContain(skillPath);
+
+    const human = captureIo();
+    await expect(runCli(["check", "--project", output], human.io)).resolves.toBe(3);
+    expect(human.stderr).toEqual([]);
+    expect(human.stdout[0]).toContain("Eligible: no");
+    expect(human.stdout[0]).toContain("Status: fail");
+  });
+
+  it("reports an invalid project configuration as a stable command error", async () => {
+    const project = await temporaryDirectory();
+    const capture = captureIo();
+
+    await expect(runCli(["check", "--project", project, "--json"], capture.io)).resolves.toBe(3);
+
+    expect(capture.stdout).toEqual([]);
+    expect(capture.stderr).toHaveLength(1);
+    expect(JSON.parse(capture.stderr[0] as string)).toMatchObject({
+      ok: false,
+      code: "project.invalid",
+      issues: [expect.objectContaining({ code: "config.read" })],
+    });
+  });
+
+  it("does not render terminal-unsafe diagnostic paths in human output", async () => {
+    const parent = await temporaryDirectory();
+    const output = join(parent, "project");
+    await runCli(["create", "--brief", briefPath, "--output", output], captureIo().io);
+    await writeFile(join(output, "skills/incident-summary/bad\nFORGED.env"), "secret=false\n");
+    const capture = captureIo();
+
+    await expect(runCli(["check", "--project", output], capture.io)).resolves.toBe(3);
+
+    expect(capture.stderr).toEqual([]);
+    expect(capture.stdout.join("")).toContain("skill resource tree cannot be validated safely");
+    expect(capture.stdout.join("")).toContain("skills/incident-summary/.");
+    expect(capture.stdout.join("")).not.toContain("FORGED");
+    expect(capture.stdout.join("")).not.toContain("\nFORGED");
+  });
+
+  it.each([
+    { args: ["check", "--project"], message: "requires a path" },
+    { args: ["check", "--project", ".", "--project", "."], message: "only once" },
+    { args: ["check", "--json", "--json"], message: "only once" },
+    { args: ["check", "extra"], message: "Unknown check argument" },
+  ])("rejects invalid check arguments: $message", async ({ args, message }) => {
+    const capture = captureIo();
+
+    await expect(runCli(args, capture.io)).resolves.toBe(2);
+    expect(capture.stdout).toEqual([]);
+    expect(capture.stderr.join("")).toContain(message);
   });
 
   it("classifies invalid briefs as exit 3", async () => {

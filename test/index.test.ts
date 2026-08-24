@@ -7,7 +7,9 @@ describe("public API", () => {
     expect(skillpress.VERSION).toMatch(/^\d+\.\d+\.\d+$/);
     expect(skillpress.renderHelp()).toContain(skillpress.VERSION);
     expect(skillpress.renderCreateHelp()).toContain("skillpress create");
+    expect(skillpress.renderCheckHelp()).toContain("skillpress check");
     expect(skillpress.runCli).toBeTypeOf("function");
+    expect(skillpress.checkProject).toBeTypeOf("function");
     expect(skillpress.ProjectCreationError).toBeTypeOf("function");
     expect(skillpress.writeRenderedProject).toBeTypeOf("function");
     expect(skillpress.validateAgentSkill).toBeTypeOf("function");
