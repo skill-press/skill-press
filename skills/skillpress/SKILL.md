@@ -1,6 +1,6 @@
 ---
 name: skillpress
-description: Build, evaluate, package, or publish a production Agent Skill when the work needs canonical source, behavioral evidence, reproducible artifacts, or registry-safe release handling.
+description: Use when the user asks to create or harden an Agent Skill, check or diagnose skill readiness, run Tessl Quality or Impact evaluation, reproducibly package a skill, publish a skill to a registry, inspect provider status, or recover a partial release. Do not use for ordinary writing, general app development, or unrelated package publishing.
 license: MIT
 compatibility: Requires Node.js 22 or newer; sandboxed evaluation additionally requires Docker or Podman.
 ---
@@ -38,8 +38,10 @@ Read only the references needed for the current request.
 7. Stage only clean tracked canonical files and create deterministic artifacts for that exact
    commit. When a configured target requires a public source/CI checkpoint, obtain separate
    source-push authority, satisfy that target's branch and CI rules without creating a tag or
-   Release, then run an all-target dry run. Resolve provider prerequisites and rerun a fresh
-   complete dry run before requesting separate execution authority.
+   Release, then run an all-target dry run. Inspect every failed preflight; resolve only its
+   identity, credential, first-public approval, license-consent, collision, or capability blocker,
+   authorizing any external remediation separately. Rerun a fresh complete dry run before
+   requesting separate execution authority.
 8. Resume from the private receipt after partial failure. Report each target as published,
    submitted, derived, pending, failed, or blocked according to its actual capability and remote
    verification.
