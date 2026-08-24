@@ -64,6 +64,8 @@ export { createAgentSkillHubPublicationAdapter } from "./publish/adapters/agents
 export type { AgentSkillHubPublicationAdapterOptions } from "./publish/adapters/agentskillhub.js";
 export { createAgentSkillsHubCatalogAdapter } from "./publish/adapters/agent-skills-hub-catalog.js";
 export type { AgentSkillsHubCatalogAdapterOptions } from "./publish/adapters/agent-skills-hub-catalog.js";
+export { createClawHubPublicationAdapter } from "./publish/adapters/clawhub.js";
+export type { ClawHubPublicationAdapterOptions } from "./publish/adapters/clawhub.js";
 export type {
   PublicationAdapterRuntime,
   PublicationCommandExecutor,
