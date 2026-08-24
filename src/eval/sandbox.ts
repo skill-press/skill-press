@@ -77,6 +77,11 @@ const PINNED_IMAGE =
   /^[a-z0-9]+(?:[._-][a-z0-9]+)*(?::[0-9]+)?(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)*@sha256:[a-f0-9]{64}$/u;
 const RUN_ID = /^[a-f0-9]{16,64}$/u;
 const CONTAINER_TARGET = /^\/(?:[a-z0-9][a-z0-9._-]*)(?:\/[a-z0-9][a-z0-9._-]*)*$/u;
+const genuineInvocations = new WeakSet<object>();
+
+export function isGenuineSandboxInvocation(value: unknown): value is SandboxInvocation {
+  return typeof value === "object" && value !== null && genuineInvocations.has(value);
+}
 
 function issue(code: string, path: string, message: string): SandboxPolicyIssue {
   return Object.freeze({ code, path, message });
@@ -298,7 +303,7 @@ export function createSandboxInvocation(request: SandboxRunRequest): SandboxInvo
     ...request.command,
   ];
   const ineligibilityReasons = Object.freeze(pinnedImage ? [] : ["sandbox_image_unpinned"]);
-  return Object.freeze({
+  const invocation = Object.freeze({
     executable: request.backend,
     argv: Object.freeze(argv),
     containerName,
@@ -306,4 +311,6 @@ export function createSandboxInvocation(request: SandboxRunRequest): SandboxInvo
     ineligibilityReasons,
     policy: Object.freeze({ ...policy }),
   });
+  genuineInvocations.add(invocation);
+  return invocation;
 }
