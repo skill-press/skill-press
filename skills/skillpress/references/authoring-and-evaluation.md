@@ -1,5 +1,12 @@
 # Authoring and evaluation
 
+## Plan-only boundary
+
+For every creation, hardening, evaluation, or improvement request limited to a plan, keep all
+checks and mutations explicitly unrun. End with a future execution handoff that names the next
+separately authorized action, its required inputs and gates, and the condition that must stop
+execution; the plan itself grants no execution authority.
+
 ## Create a new project
 
 Start from a complete capability brief and a destination that does not exist:
@@ -71,11 +78,15 @@ details unavailable to the authoring adapter. Stop the improvement loop at its c
 iteration, no-improvement, token, cost, or wall-time limit; do not optimize against disclosed
 holdouts.
 
-Every scenario plan must cover positive, near-miss/non-activation, missing-input failure, and
-adversarial cases, with an explicit training versus private-holdout partition. Iterate only from
-training failures: change the canonical skill, rerun deterministic checks and training evaluation,
-then let the isolated evaluator test the unchanged holdout. Reject a candidate on holdout
-regression; never move a disclosed holdout into training to manufacture improvement.
+The controller/evaluator-owned scenario matrix must contain both training and private-holdout rows,
+cover positive, near-miss/non-activation, missing-input failure, and adversarial cases, and label
+each row's partition rather than describing only an aggregate split. In an author-visible plan,
+context, or execution handoff, represent private rows only with opaque IDs, counts or digests, and
+category coverage that cannot reconstruct their prompts, fixtures, expected results, or rubric
+details; preserve the same role routing during future execution. Iterate only from training
+failures: change the canonical skill, rerun deterministic checks and training evaluation, then let
+the isolated evaluator test the unchanged holdout. Reject a candidate on holdout regression; never
+move a disclosed holdout into training to manufacture improvement.
 
 For the built-in bounded workflow, pass the two complete evidence paths and three separate role
 commands:
