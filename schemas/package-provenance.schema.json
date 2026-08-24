@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/mushanyoung/skillpress/main/schemas/package-provenance.schema.json",
+  "title": "SkillPressPackageProvenance",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "provenanceType",
+    "project",
+    "sourceCommit",
+    "projectConfigSha256",
+    "skillSha256",
+    "tool",
+    "archive",
+    "artifacts"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "provenanceType": { "const": "skillpress.package" },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "skillName"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "version": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "skillName": { "type": "string", "minLength": 1, "maxLength": 64 }
+      }
+    },
+    "sourceCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "projectConfigSha256": { "$ref": "#/definitions/digest" },
+    "skillSha256": { "$ref": "#/definitions/digest" },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "const": "@mushanyoung/skillpress" },
+        "version": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "archive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "compression",
+        "timestamp",
+        "ordering",
+        "regularMode",
+        "executableMode"
+      ],
+      "properties": {
+        "format": { "const": "zip" },
+        "compression": { "const": "store" },
+        "timestamp": { "const": "1980-01-01T00:00:00.000Z" },
+        "ordering": { "const": "utf8-bytewise" },
+        "regularMode": { "const": "0644" },
+        "executableMode": { "const": "0755" }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "bytes", "sha256", "mediaType"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z0-9-]+-[0-9A-Za-z.+-]+[.](?:skill|zip)$" },
+          "bytes": { "type": "integer", "minimum": 1, "maximum": 1073741824 },
+          "sha256": { "$ref": "#/definitions/digest" },
+          "mediaType": { "const": "application/zip" }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  }
+}

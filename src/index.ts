@@ -34,6 +34,12 @@ export type {
   StagedCanonicalSkill,
   StagedSkillFile,
 } from "./package/stage.js";
+export { packageStagedSkill, SkillPackageError } from "./package/archive.js";
+export type {
+  SkillPackageArtifacts,
+  SkillPackageIssue,
+} from "./package/archive.js";
+export type { SkillPressPackageProvenance } from "./package/generated-provenance.js";
 export { checkProject } from "./check/project.js";
 export type {
   ProjectCheckDiagnostic,

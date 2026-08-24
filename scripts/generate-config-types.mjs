@@ -42,6 +42,10 @@ const targets = [
     schema: "schemas/tessl-eval-evidence.schema.json",
     output: "src/tessl/generated-eval-evidence.ts",
   },
+  {
+    schema: "schemas/package-provenance.schema.json",
+    output: "src/package/generated-provenance.ts",
+  },
 ];
 
 let stale = false;
