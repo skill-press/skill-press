@@ -177,8 +177,11 @@ function treeMatches(
     .map(record)
     .filter((entry) => typeof entry?.path === "string" && entry.path.startsWith(prefix));
   if (entries.length === 0) return "absent";
+  if (entries.some((entry) => entry?.type !== "blob" && entry?.type !== "tree")) {
+    return "conflict";
+  }
   const blobs = entries.filter((entry) => entry?.type === "blob");
-  if (blobs.length !== entries.length || blobs.length !== files.length) return "conflict";
+  if (blobs.length !== files.length) return "conflict";
   return files.every((file) => {
     const expectedPath = `${prefix}${file.path}`;
     return blobs.some(
