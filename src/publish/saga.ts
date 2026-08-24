@@ -1,9 +1,12 @@
 import { createHash, randomBytes } from "node:crypto";
 import { chmod, lstat, mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+
+import { Ajv, type ValidateFunction } from "ajv";
 
 import { loadProjectConfig } from "../config/load.js";
 import type { SkillPackageArtifacts } from "../package/archive.js";
+import type { SkillPressPublicationReceipt } from "./generated-receipt.js";
 
 export type PublicationCapability = "publish" | "submit" | "derived";
 export type PublicationTargetStatus =
@@ -24,6 +27,12 @@ export interface PublicationContext {
   readonly sourceCommit: string;
   readonly artifactSha256: string;
   readonly artifactsPath: string;
+  readonly artifacts: {
+    readonly skillArchive: string;
+    readonly zipArchive: string;
+    readonly checksums: string;
+    readonly provenance: string;
+  };
   readonly idempotencyKey: string;
 }
 
@@ -115,6 +124,13 @@ export class PublicationSagaError extends Error {
 
 const RECEIPT_PATH = /^\.skillpress\/publications\/[a-f0-9]{64}\/receipt\.json$/u;
 const IDENTIFIER = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+const ENVIRONMENT_NAME = /^[A-Z][A-Z0-9_]*$/u;
+const receiptSchema = JSON.parse(
+  await readFile(new URL("../../schemas/publication-receipt.schema.json", import.meta.url), "utf8"),
+) as object;
+const validateReceipt = new Ajv({ allErrors: true, strict: true }).compile(
+  receiptSchema,
+) as ValidateFunction<SkillPressPublicationReceipt>;
 
 function issue(code: string, path: string, message: string): PublicationSagaIssue {
   return Object.freeze({ code, path, message });
@@ -154,8 +170,13 @@ async function publicationStorage(root: string, runId: string): Promise<string> 
 }
 
 async function persist(root: string, receipt: PublicationReceipt): Promise<void> {
+  if (!validateReceipt(receipt)) {
+    throw new PublicationSagaError("Publication receipt violated its schema.", [
+      issue("publish.receipt.schema", "/receipt", "internal publication receipt is invalid"),
+    ]);
+  }
   const destination = join(root, receipt.storagePath as string);
-  const temporary = join(resolve(destination, ".."), `.receipt-${randomBytes(16).toString("hex")}`);
+  const temporary = join(dirname(destination), `.receipt-${randomBytes(16).toString("hex")}`);
   await writeFile(temporary, `${JSON.stringify(receipt)}\n`, { flag: "wx", mode: 0o600 });
   await chmod(temporary, 0o600);
   await rename(temporary, destination);
@@ -165,7 +186,20 @@ async function persist(root: string, receipt: PublicationReceipt): Promise<void>
 function adapterSnapshot(adapters: readonly PublicationAdapter[]): PublicationAdapter[] {
   const ids = new Set<string>();
   return adapters.map((adapter) => {
-    if (!IDENTIFIER.test(adapter.id) || ids.has(adapter.id) || adapter.steps.length > 32) {
+    if (
+      !IDENTIFIER.test(adapter.id) ||
+      ids.has(adapter.id) ||
+      adapter.steps.length > 32 ||
+      adapter.steps.some(
+        (step, index) => !IDENTIFIER.test(step) || adapter.steps.indexOf(step) !== index,
+      ) ||
+      adapter.auth.length > 16 ||
+      adapter.auth.some(
+        (name, index) => !ENVIRONMENT_NAME.test(name) || adapter.auth.indexOf(name) !== index,
+      ) ||
+      adapter.rollback.length === 0 ||
+      adapter.rollback.length > 280
+    ) {
       throw new PublicationSagaError("Publication adapter contract is invalid.", [
         issue(
           "publish.adapter.invalid",
@@ -217,24 +251,60 @@ async function loadReceipt(root: string, path: string): Promise<PublicationRecei
       ),
     ]);
   }
-  const metadata = await lstat(join(root, path));
+  const absolute = join(root, path);
+  for (const parent of [
+    join(root, ".skillpress"),
+    join(root, ".skillpress", "publications"),
+    dirname(absolute),
+  ]) {
+    const parentMetadata = await lstat(parent);
+    if (!parentMetadata.isDirectory()) {
+      throw new PublicationSagaError("Resume receipt is unsafe.", [
+        issue("publish.resume.unsafe", "/resume", "receipt parents must be real directories"),
+      ]);
+    }
+  }
+  const metadata = await lstat(absolute);
   if (!metadata.isFile() || (process.platform !== "win32" && (metadata.mode & 0o077) !== 0)) {
     throw new PublicationSagaError("Resume receipt is unsafe.", [
       issue("publish.resume.unsafe", "/resume", "receipt must be a private regular file"),
     ]);
   }
-  const value: unknown = JSON.parse(await readFile(join(root, path), "utf8"));
-  if (
-    value === null ||
-    typeof value !== "object" ||
-    (value as { receiptType?: unknown }).receiptType !== "skillpress.publication" ||
-    !Array.isArray((value as { targets?: unknown }).targets)
-  ) {
+  let value: unknown;
+  try {
+    value = JSON.parse(await readFile(absolute, "utf8"));
+  } catch {
+    value = undefined;
+  }
+  if (!validateReceipt(value)) {
     throw new PublicationSagaError("Resume receipt is invalid.", [
       issue("publish.resume.schema", "/resume", "receipt shape is invalid"),
     ]);
   }
-  return value as PublicationReceipt;
+  return value;
+}
+
+function adapterBinding(adapter: PublicationAdapter): object {
+  return {
+    id: adapter.id,
+    capability: adapter.capability,
+    auth: adapter.auth,
+    rollback: adapter.rollback,
+    steps: adapter.steps,
+  };
+}
+
+function receiptTargetMatchesAdapter(
+  target: PublicationTargetReceipt,
+  adapter: PublicationAdapter,
+): boolean {
+  return (
+    target.id === adapter.id &&
+    target.capability === adapter.capability &&
+    target.auth.join("\0") === adapter.auth.join("\0") &&
+    target.rollback === adapter.rollback &&
+    target.steps.map((step) => step.id).join("\0") === adapter.steps.join("\0")
+  );
 }
 
 /** Plan by default; execute and journal explicitly, with idempotent receipt-based resume. */
@@ -265,7 +335,7 @@ export async function runPublicationSaga(
       sourceCommit: artifacts.sourceCommit,
       version: config.project.version,
       artifactSha256: artifacts.artifactSha256,
-      targets: adapters.map((adapter) => adapter.id),
+      adapters: adapters.map(adapterBinding),
     })}\n`,
   );
   const context: PublicationContext = Object.freeze({
@@ -278,6 +348,12 @@ export async function runPublicationSaga(
     sourceCommit: artifacts.sourceCommit,
     artifactSha256: artifacts.artifactSha256,
     artifactsPath: artifacts.artifactsPath,
+    artifacts: Object.freeze({
+      skillArchive: artifacts.skillArchive,
+      zipArchive: artifacts.zipArchive,
+      checksums: artifacts.checksums,
+      provenance: artifacts.provenance,
+    }),
     idempotencyKey,
   });
   const now = options.now ?? (() => new Date());
@@ -294,8 +370,13 @@ export async function runPublicationSaga(
       receipt.sourceCommit !== artifacts.sourceCommit ||
       receipt.artifactSha256 !== artifacts.artifactSha256 ||
       receipt.projectVersion !== config.project.version ||
-      receipt.targets.map((target) => target.id).join("\0") !==
-        adapters.map((adapter) => adapter.id).join("\0")
+      receipt.execute !== true ||
+      receipt.storagePath !== options.resumeReceiptPath ||
+      receipt.targets.length !== adapters.length ||
+      receipt.targets.some(
+        (target, index) =>
+          !receiptTargetMatchesAdapter(target, adapters[index] as PublicationAdapter),
+      )
     ) {
       throw new PublicationSagaError("Resume receipt does not match current publication.", [
         issue("publish.resume.binding", "/resume", "receipt bindings and target order must match"),

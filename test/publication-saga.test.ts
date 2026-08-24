@@ -209,6 +209,30 @@ describe("publication saga", () => {
         resumeReceiptPath: failed.storagePath as string,
       }),
     ).rejects.toBeInstanceOf(PublicationSagaError);
+    const malformed = JSON.parse(saved) as {
+      targets: Array<{ capability: string; steps: Array<{ status: string }> }>;
+    };
+    (malformed.targets[0] as { steps: Array<{ status: string }> }).steps[0] = {
+      status: "forged",
+    };
+    await writeFile(receiptPath, `${JSON.stringify(malformed)}\n`, { mode: 0o600 });
+    await expect(
+      runPublicationSaga(root, artifacts, [adapter({ calls: [] })], {
+        execute: true,
+        resumeReceiptPath: failed.storagePath as string,
+      }),
+    ).rejects.toBeInstanceOf(PublicationSagaError);
+    const mismatched = JSON.parse(saved) as {
+      targets: Array<{ capability: string }>;
+    };
+    (mismatched.targets[0] as { capability: string }).capability = "submit";
+    await writeFile(receiptPath, `${JSON.stringify(mismatched)}\n`, { mode: 0o600 });
+    await expect(
+      runPublicationSaga(root, artifacts, [adapter({ calls: [] })], {
+        execute: true,
+        resumeReceiptPath: failed.storagePath as string,
+      }),
+    ).rejects.toBeInstanceOf(PublicationSagaError);
     await writeFile(receiptPath, saved, { mode: 0o600 });
     await expect(
       runPublicationSaga(

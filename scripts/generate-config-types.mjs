@@ -46,6 +46,10 @@ const targets = [
     schema: "schemas/package-provenance.schema.json",
     output: "src/package/generated-provenance.ts",
   },
+  {
+    schema: "schemas/publication-receipt.schema.json",
+    output: "src/publish/generated-receipt.ts",
+  },
 ];
 
 let stale = false;
