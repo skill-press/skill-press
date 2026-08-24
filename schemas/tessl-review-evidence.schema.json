@@ -1,0 +1,102 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/mushanyoung/skillpress/main/schemas/tessl-review-evidence.schema.json",
+  "title": "SkillPressTesslReviewEvidence",
+  "description": "Evidence parsed from an actual Tessl CLI lint and quality-review invocation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "evidenceType",
+    "provider",
+    "createdAt",
+    "sourceCommit",
+    "projectConfigSha256",
+    "skillSha256",
+    "cli",
+    "lint",
+    "review",
+    "storagePath",
+    "evidenceEligible",
+    "ineligibilityReasons"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "evidenceType": { "const": "skillpress.tessl-review" },
+    "provider": { "const": "tessl" },
+    "createdAt": { "$ref": "#/definitions/timestamp" },
+    "sourceCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "projectConfigSha256": { "$ref": "#/definitions/digest" },
+    "skillSha256": { "$ref": "#/definitions/digest" },
+    "cli": { "$ref": "#/definitions/cli" },
+    "lint": { "$ref": "#/definitions/invocation" },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "passed",
+        "commandSha256",
+        "stdoutSha256",
+        "stderrSha256",
+        "runId",
+        "qualityScore",
+        "validationPassed"
+      ],
+      "properties": {
+        "passed": { "type": "boolean" },
+        "commandSha256": { "$ref": "#/definitions/digest" },
+        "stdoutSha256": { "$ref": "#/definitions/digest" },
+        "stderrSha256": { "$ref": "#/definitions/digest" },
+        "runId": { "type": ["string", "null"], "maxLength": 200 },
+        "qualityScore": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "validationPassed": { "type": "boolean" }
+      }
+    },
+    "storagePath": {
+      "type": "string",
+      "pattern": "^\\.skillpress/tessl/[a-f0-9]{64}$"
+    },
+    "evidenceEligible": { "type": "boolean" },
+    "ineligibilityReasons": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["custom_executor", "dirty_inputs", "source_changed", "untrusted_cli"]
+      }
+    }
+  },
+  "definitions": {
+    "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$"
+    },
+    "cli": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "executableSha256", "commandSha256", "stdoutSha256", "stderrSha256"],
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$"
+        },
+        "executableSha256": { "$ref": "#/definitions/digest" },
+        "commandSha256": { "$ref": "#/definitions/digest" },
+        "stdoutSha256": { "$ref": "#/definitions/digest" },
+        "stderrSha256": { "$ref": "#/definitions/digest" }
+      }
+    },
+    "invocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "commandSha256", "stdoutSha256", "stderrSha256"],
+      "properties": {
+        "passed": { "type": "boolean" },
+        "commandSha256": { "$ref": "#/definitions/digest" },
+        "stdoutSha256": { "$ref": "#/definitions/digest" },
+        "stderrSha256": { "$ref": "#/definitions/digest" }
+      }
+    }
+  }
+}

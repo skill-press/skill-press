@@ -34,6 +34,14 @@ const targets = [
     schema: "schemas/improve-report.schema.json",
     output: "src/improve/generated-report.ts",
   },
+  {
+    schema: "schemas/tessl-review-evidence.schema.json",
+    output: "src/tessl/generated-review-evidence.ts",
+  },
+  {
+    schema: "schemas/tessl-eval-evidence.schema.json",
+    output: "src/tessl/generated-eval-evidence.ts",
+  },
 ];
 
 let stale = false;
@@ -48,6 +56,7 @@ for (const target of targets) {
       semi: true,
       singleQuote: false,
       tabWidth: 2,
+      trailingComma: "all",
       useTabs: false,
     },
     unreachableDefinitions: true,

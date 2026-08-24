@@ -95,7 +95,7 @@ export interface Tests {
       argv: [string, ...string[]];
       cwd?: RelativePath;
       timeoutSeconds: number;
-    }[]
+    }[],
   ];
 }
 /**
@@ -148,6 +148,6 @@ export interface Publish {
       | "agentskillhub-dev"
       | "agent-skills-hub-catalog"
       | "clawhub"
-    )[]
+    )[],
   ];
 }

@@ -1,8 +1,10 @@
+import { execFile } from "node:child_process";
 import { realpathSync } from "node:fs";
-import { lstat, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 import { parse, stringify } from "yaml";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,7 +16,9 @@ import {
   renderEvalHelp,
   renderHelp,
   renderHumanEvalReport,
+  renderHumanTesslReport,
   renderTestHelp,
+  renderTesslHelp,
   runCli,
 } from "../src/cli.js";
 import { ProjectCreationError } from "../src/create/errors.js";
@@ -24,6 +28,7 @@ import { VERSION } from "../src/version.js";
 const briefPath = fileURLToPath(new URL("fixtures/create/complete-brief.yaml", import.meta.url));
 const temporaryRoot = realpathSync(tmpdir());
 const temporaryDirectories: string[] = [];
+const execFileAsync = promisify(execFile);
 
 function captureIo(): {
   readonly stdout: string[];
@@ -112,6 +117,286 @@ describe("SkillPress CLI scaffold", () => {
     await expect(runCli(["eval", flag as string], capture.io)).resolves.toBe(0);
     expect(capture.stdout).toEqual([renderEvalHelp()]);
     expect(capture.stderr).toEqual([]);
+  });
+
+  it.each([["--help"], ["-h"]])("renders tessl help for %s", async (flag) => {
+    const capture = captureIo();
+
+    await expect(runCli(["tessl", flag as string], capture.io)).resolves.toBe(0);
+    expect(capture.stdout).toEqual([renderTesslHelp()]);
+    expect(capture.stderr).toEqual([]);
+  });
+
+  it.each([
+    ["missing operation", ["tessl"]],
+    ["unknown operation", ["tessl", "score"]],
+    ["missing eval fields", ["tessl", "eval", "--source", "evals"]],
+    [
+      "invalid integer",
+      ["tessl", "eval", "--source", "evals", "--agent", "a", "--model", "m", "--runs", "1.5"],
+    ],
+    [
+      "review-only option",
+      ["tessl", "eval", "--workspace", "w", "--source", "evals", "--agent", "a", "--model", "m"],
+    ],
+    ["duplicate project", ["tessl", "review", "--project", ".", "--project", "."]],
+    ["duplicate JSON", ["tessl", "review", "--json", "--json"]],
+    ["duplicate executable", ["tessl", "review", "--executable", "one", "--executable", "two"]],
+    ["duplicate timeout", ["tessl", "review", "--timeout", "1", "--timeout", "2"]],
+    ["duplicate workspace", ["tessl", "review", "--workspace", "one", "--workspace", "two"]],
+    [
+      "duplicate source",
+      ["tessl", "eval", "--source", "one", "--source", "two", "--agent", "a", "--model", "m"],
+    ],
+    [
+      "duplicate agent",
+      ["tessl", "eval", "--source", "evals", "--agent", "a", "--agent", "b", "--model", "m"],
+    ],
+    [
+      "duplicate model",
+      ["tessl", "eval", "--source", "evals", "--agent", "a", "--model", "m", "--model", "n"],
+    ],
+    [
+      "duplicate runs",
+      [
+        "tessl",
+        "eval",
+        "--source",
+        "evals",
+        "--agent",
+        "a",
+        "--model",
+        "m",
+        "--runs",
+        "1",
+        "--runs",
+        "2",
+      ],
+    ],
+    [
+      "duplicate poll interval",
+      [
+        "tessl",
+        "eval",
+        "--source",
+        "evals",
+        "--agent",
+        "a",
+        "--model",
+        "m",
+        "--poll-interval-ms",
+        "1",
+        "--poll-interval-ms",
+        "2",
+      ],
+    ],
+    [
+      "unsafe integer",
+      [
+        "tessl",
+        "eval",
+        "--source",
+        "evals",
+        "--agent",
+        "a",
+        "--model",
+        "m",
+        "--runs",
+        "999999999999999999999999999999",
+      ],
+    ],
+    ["unknown review option", ["tessl", "review", "--other"]],
+  ] as const)("returns usage exit 2 for tessl %s", async (_name, args) => {
+    const capture = captureIo();
+    await expect(runCli(args, capture.io)).resolves.toBe(2);
+    expect(capture.stdout).toEqual([]);
+    expect(capture.stderr).toHaveLength(1);
+  });
+
+  it("captures Tessl review and eval CLI evidence without accepting an untrusted executable", async () => {
+    const parent = await temporaryDirectory();
+    const project = join(parent, "project");
+    await expect(
+      runCli(["create", "--brief", briefPath, "--output", project], captureIo().io),
+    ).resolves.toBe(0);
+    await mkdir(join(project, "tessl-evals"));
+    await writeFile(join(project, "tessl-evals/scenario.json"), "{}\n");
+    await execFileAsync("git", ["init", "-q"], { cwd: project });
+    await execFileAsync("git", ["add", "."], { cwd: project });
+    await execFileAsync(
+      "git",
+      [
+        "-c",
+        "user.name=SkillPress Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "-qm",
+        "fixture",
+      ],
+      { cwd: project },
+    );
+    const executable = join(parent, "tessl-fake");
+    await writeFile(
+      executable,
+      `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[0] === "--version") console.log("0.99.0");
+else if (args[0] === "skill") console.log("lint passed");
+else if (args[0] === "review") console.log(JSON.stringify({reviewRunId:"review-1",validation:{overallPassed:true},review:{reviewScore:93}}));
+else if (args[0] === "eval" && args[1] === "run") console.log(JSON.stringify({evalRunId:"eval-1",agent:"codex",model:"model",scenariosCount:1}));
+else if (args[0] === "eval" && args[1] === "view") console.log(JSON.stringify({data:{id:"eval-1",attributes:{status:"completed",scenarios:[{fingerprint:"case",solutions:[{variant:"baseline",assessmentResults:[{score:2,max_score:10}]},{variant:"with-context",assessmentResults:[{score:9,max_score:10}]}]}]}}}));
+else process.exit(2);
+`,
+    );
+    await chmod(executable, 0o755);
+
+    const review = captureIo();
+    await expect(
+      runCli(
+        [
+          "tessl",
+          "review",
+          "--project",
+          project,
+          "--executable",
+          executable,
+          "--workspace",
+          "workspace",
+          "--timeout",
+          "2",
+          "--json",
+        ],
+        review.io,
+      ),
+    ).resolves.toBe(3);
+    expect(review.stderr).toEqual([]);
+    const reviewEvidence = JSON.parse(review.stdout[0] as string);
+    expect(reviewEvidence).toMatchObject({
+      command: "tessl.review",
+      review: { qualityScore: 93 },
+      evidenceEligible: false,
+      ineligibilityReasons: ["untrusted_cli"],
+    });
+    expect(renderHumanTesslReport(reviewEvidence)).toContain("Tessl Quality: 93/100");
+    expect(
+      renderHumanTesslReport({
+        ...reviewEvidence,
+        evidenceEligible: true,
+        ineligibilityReasons: [],
+        review: { ...reviewEvidence.review, validationPassed: false },
+      }),
+    ).toContain("Evidence eligible: yes");
+
+    const evaluation = captureIo();
+    await expect(
+      runCli(
+        [
+          "tessl",
+          "eval",
+          "--project",
+          project,
+          "--source",
+          "tessl-evals",
+          "--agent",
+          "codex",
+          "--model",
+          "model",
+          "--runs",
+          "1",
+          "--poll-interval-ms",
+          "1",
+          "--executable",
+          executable,
+          "--timeout",
+          "2",
+          "--json",
+        ],
+        evaluation.io,
+      ),
+    ).resolves.toBe(3);
+    expect(evaluation.stderr).toEqual([]);
+    const evalEvidence = JSON.parse(evaluation.stdout[0] as string);
+    expect(evalEvidence).toMatchObject({
+      command: "tessl.eval",
+      impactScore: 90,
+      baselineScore: 20,
+      impactDelta: 70,
+      evidenceEligible: false,
+      ineligibilityReasons: ["untrusted_cli"],
+    });
+    expect(renderHumanTesslReport(evalEvidence)).toContain("Tessl Impact: 90/100");
+
+    await expect(
+      runCli(["tessl", "review", "--project", project, "--executable", executable], {
+        stdout: () => {
+          throw new Error("closed output");
+        },
+        stderr: () => undefined,
+      }),
+    ).resolves.toBe(1);
+  });
+
+  it("classifies Tessl project, executable, and default eval failures", async () => {
+    const missing = await temporaryDirectory();
+    const projectFailure = captureIo();
+    await expect(
+      runCli(["tessl", "review", "--project", missing, "--json"], projectFailure.io),
+    ).resolves.toBe(3);
+    expect(JSON.parse(projectFailure.stderr[0] as string)).toMatchObject({
+      code: "tessl.invalid",
+    });
+
+    const parent = await temporaryDirectory();
+    const project = join(parent, "project");
+    await runCli(["create", "--brief", briefPath, "--output", project], captureIo().io);
+    await execFileAsync("git", ["init", "-q"], { cwd: project });
+    await execFileAsync("git", ["add", "."], { cwd: project });
+    await execFileAsync(
+      "git",
+      [
+        "-c",
+        "user.name=SkillPress Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "-qm",
+        "fixture",
+      ],
+      { cwd: project },
+    );
+    const cliFailure = captureIo();
+    await expect(
+      runCli(["tessl", "review", "--project", project, "--json"], cliFailure.io),
+    ).resolves.toBe(3);
+    expect(JSON.parse(cliFailure.stderr[0] as string)).toMatchObject({
+      code: "tessl.invalid",
+      issues: [expect.objectContaining({ code: "tessl.cli.missing" })],
+    });
+
+    const evalDefaults = captureIo();
+    await expect(
+      runCli(
+        [
+          "tessl",
+          "eval",
+          "--project",
+          project,
+          "--source",
+          "skills/incident-summary",
+          "--agent",
+          "codex",
+          "--model",
+          "model",
+          "--json",
+        ],
+        evalDefaults.io,
+      ),
+    ).resolves.toBe(3);
   });
 
   it.each([

@@ -3,10 +3,25 @@ export {
   renderCreateHelp,
   renderEvalHelp,
   renderHelp,
+  renderHumanTesslReport,
+  renderTesslHelp,
   renderTestHelp,
   runCli,
 } from "./cli.js";
 export type { CliExitCode, CliIo } from "./cli.js";
+export {
+  captureTesslEvalEvidence,
+  captureTesslReviewEvidence,
+  TesslEvidenceError,
+} from "./tessl/evidence.js";
+export type {
+  TesslCommandExecutor,
+  TesslEvalOptions,
+  TesslEvidenceIssue,
+  TesslReviewOptions,
+} from "./tessl/evidence.js";
+export type { SkillPressTesslEvalEvidence } from "./tessl/generated-eval-evidence.js";
+export type { SkillPressTesslReviewEvidence } from "./tessl/generated-review-evidence.js";
 export { checkProject } from "./check/project.js";
 export type {
   ProjectCheckDiagnostic,

@@ -41,6 +41,8 @@ Run the deterministic local gates from a project root:
 skillpress check --project .
 skillpress test --project .
 skillpress eval --project . --image <image@sha256:digest> --model <model> -- <adapter-argv...>
+skillpress tessl review --project . --workspace <workspace>
+skillpress tessl eval --project . --source tessl-evals --agent <agent> --model <model>
 ```
 
 `check` reports a local readiness score and fails closed on invalid canonical skills, missing or
@@ -58,6 +60,20 @@ adapter consumed the exact request digest and loaded the staged skill digest. Ra
 with-skill results remain under ignored, private `.skillpress/runs/` storage; the returned evidence
 contains hashes and redacted excerpts. Local behavioral evidence remains distinct from Tessl
 Quality and Impact evidence.
+
+`tessl review` invokes the official `tessl skill lint` and `tessl review run quality --json`
+commands. `tessl eval` invokes the official paired `tessl eval run --json` workflow, polls its run
+identifier with `tessl eval view --json`, and derives Impact only from the returned scenario
+assessments. There is no flag or API for entering scores by hand. Raw bounded provider output is
+stored with private permissions under ignored `.skillpress/tessl/` directories; public evidence
+retains command/output digests, source bindings, scores, and eligibility reasons.
+
+Evidence is release-ineligible when relevant Git inputs are dirty or change during a run, when a
+scenario baseline is absent or regresses, when a test executor is injected, or when the Tessl
+executable does not match a digest from the signed pinned release. SkillPress currently trusts
+official Tessl CLI 0.99.0. Authenticate it with `tessl auth login`, then confirm the identity with
+`tessl auth whoami --json`. See [the Tessl evidence contract](docs/TESSL.md) for the exact commands,
+pin update procedure, and failure boundaries.
 
 The library export `runBoundedImprovement` coordinates the improvement lifecycle for an author
 adapter. The adapter receives only frozen training scenarios, measured training failures, and

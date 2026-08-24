@@ -196,7 +196,7 @@ export interface Publish {
       | "agentskillhub-dev"
       | "agent-skills-hub-catalog"
       | "clawhub"
-    )[]
+    )[],
   ];
 }
 /**

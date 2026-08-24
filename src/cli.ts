@@ -12,6 +12,13 @@ import { EvaluationRunError, runPairedEvaluation } from "./eval/paired.js";
 import type { SkillPressPairedEvaluationEvidence } from "./eval/generated-evidence.js";
 import { SandboxPolicyError } from "./eval/sandbox.js";
 import { isSafePathInput } from "./path-safety.js";
+import {
+  captureTesslEvalEvidence,
+  captureTesslReviewEvidence,
+  TesslEvidenceError,
+} from "./tessl/evidence.js";
+import type { SkillPressTesslEvalEvidence } from "./tessl/generated-eval-evidence.js";
+import type { SkillPressTesslReviewEvidence } from "./tessl/generated-review-evidence.js";
 import { runProjectTests } from "./test/project.js";
 import type { ProjectTestReport } from "./test/types.js";
 import { VERSION } from "./version.js";
@@ -40,9 +47,37 @@ Commands:
   check              Validate a project and report local readiness
   test               Run deterministic project test commands without a shell
   eval               Run paired baseline/with-skill evaluation in a sandbox
+  tessl              Capture official Tessl Quality and Impact evidence
 
 The package, publish, status, and doctor commands will be
 enabled as their independently reviewed implementation slices land.
+`;
+
+const TESSL_HELP = `Capture release evidence using the official Tessl CLI.
+
+Usage:
+  skillpress tessl review [options]
+  skillpress tessl eval --source <directory> --agent <agent> --model <model> [options]
+
+Common options:
+  --project <directory>     Project root; defaults to the current directory
+  --executable <path>       Official Tessl CLI; defaults to tessl on PATH
+  --timeout <seconds>       Bounded provider timeout; defaults to 2700
+  --json                    Emit one stable JSON object
+  -h, --help                Show this help
+
+Review options:
+  --workspace <name>        Tessl workspace passed to the quality review
+
+Eval options:
+  --source <directory>      Tessl eval source inside the project
+  --agent <agent>           Exact Tessl agent identifier
+  --model <model>           Exact Tessl model identifier
+  --runs <count>            Repetitions from 1 to 10; defaults to 1
+  --poll-interval-ms <ms>   Poll interval from 1 to 60000; defaults to 30000
+
+Only evidence from a pinned, trusted Tessl CLI and unchanged committed inputs can satisfy a
+release gate. Provider authentication and scores are never inferred or entered manually.
 `;
 
 const CREATE_HELP = `Create a canonical SkillPress project from a complete capability brief.
@@ -129,6 +164,29 @@ interface ArgumentSnapshot {
   readonly jsonRequested: boolean;
 }
 
+interface TesslCommonArguments {
+  readonly project: string;
+  readonly executable?: string;
+  readonly timeoutSeconds?: number;
+  readonly json: boolean;
+}
+
+interface TesslReviewArguments extends TesslCommonArguments {
+  readonly operation: "review";
+  readonly workspace?: string;
+}
+
+interface TesslEvalArguments extends TesslCommonArguments {
+  readonly operation: "eval";
+  readonly source: string;
+  readonly agent: string;
+  readonly model: string;
+  readonly runs?: number;
+  readonly pollIntervalMs?: number;
+}
+
+type TesslArguments = TesslReviewArguments | TesslEvalArguments;
+
 class CliUsageError extends Error {
   readonly issues: readonly CliIssue[];
 
@@ -166,6 +224,10 @@ export function renderTestHelp(): string {
 
 export function renderEvalHelp(): string {
   return EVAL_HELP;
+}
+
+export function renderTesslHelp(): string {
+  return TESSL_HELP;
 }
 
 function assertPathArgument(flag: string, value: string | undefined): string {
@@ -242,6 +304,111 @@ function argumentValue(flag: string, value: string | undefined): string {
     throw new CliUsageError(`${flag} requires a value.`);
   }
   return value;
+}
+
+function integerArgument(flag: string, value: string | undefined): number {
+  const text = argumentValue(flag, value);
+  if (!/^(?:0|[1-9][0-9]*)$/u.test(text)) {
+    throw new CliUsageError(`${flag} requires a decimal integer.`);
+  }
+  const parsed = Number(text);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new CliUsageError(`${flag} requires a safe decimal integer.`);
+  }
+  return parsed;
+}
+
+function parseTesslArguments(args: readonly string[]): TesslArguments {
+  const operation = args[0];
+  if (operation !== "review" && operation !== "eval") {
+    throw new CliUsageError("tessl requires review or eval.");
+  }
+  let project = ".";
+  let projectProvided = false;
+  let executable: string | undefined;
+  let timeoutSeconds: number | undefined;
+  let workspace: string | undefined;
+  let source: string | undefined;
+  let agent: string | undefined;
+  let model: string | undefined;
+  let runs: number | undefined;
+  let pollIntervalMs: number | undefined;
+  let json = false;
+  for (let index = 1; index < args.length; index += 1) {
+    const argument = args[index];
+    if (argument === "--json") {
+      if (json) throw new CliUsageError("--json may be specified only once.");
+      json = true;
+    } else if (argument === "--project") {
+      if (projectProvided) throw new CliUsageError("--project may be specified only once.");
+      project = assertPathArgument("--project", args[index + 1]);
+      projectProvided = true;
+      index += 1;
+    } else if (argument === "--executable") {
+      if (executable !== undefined) {
+        throw new CliUsageError("--executable may be specified only once.");
+      }
+      executable = assertPathArgument("--executable", args[index + 1]);
+      index += 1;
+    } else if (argument === "--timeout") {
+      if (timeoutSeconds !== undefined) {
+        throw new CliUsageError("--timeout may be specified only once.");
+      }
+      timeoutSeconds = integerArgument("--timeout", args[index + 1]);
+      index += 1;
+    } else if (operation === "review" && argument === "--workspace") {
+      if (workspace !== undefined) {
+        throw new CliUsageError("--workspace may be specified only once.");
+      }
+      workspace = argumentValue("--workspace", args[index + 1]);
+      index += 1;
+    } else if (operation === "eval" && argument === "--source") {
+      if (source !== undefined) throw new CliUsageError("--source may be specified only once.");
+      source = assertPathArgument("--source", args[index + 1]);
+      index += 1;
+    } else if (operation === "eval" && argument === "--agent") {
+      if (agent !== undefined) throw new CliUsageError("--agent may be specified only once.");
+      agent = argumentValue("--agent", args[index + 1]);
+      index += 1;
+    } else if (operation === "eval" && argument === "--model") {
+      if (model !== undefined) throw new CliUsageError("--model may be specified only once.");
+      model = argumentValue("--model", args[index + 1]);
+      index += 1;
+    } else if (operation === "eval" && argument === "--runs") {
+      if (runs !== undefined) throw new CliUsageError("--runs may be specified only once.");
+      runs = integerArgument("--runs", args[index + 1]);
+      index += 1;
+    } else if (operation === "eval" && argument === "--poll-interval-ms") {
+      if (pollIntervalMs !== undefined) {
+        throw new CliUsageError("--poll-interval-ms may be specified only once.");
+      }
+      pollIntervalMs = integerArgument("--poll-interval-ms", args[index + 1]);
+      index += 1;
+    } else {
+      throw new CliUsageError(`Unknown tessl ${operation} argument.`);
+    }
+  }
+  const common = {
+    project,
+    ...(executable === undefined ? {} : { executable }),
+    ...(timeoutSeconds === undefined ? {} : { timeoutSeconds }),
+    json,
+  };
+  if (operation === "review") {
+    return { operation, ...common, ...(workspace === undefined ? {} : { workspace }) };
+  }
+  if (source === undefined || agent === undefined || model === undefined) {
+    throw new CliUsageError("tessl eval requires --source, --agent, and --model.");
+  }
+  return {
+    operation,
+    ...common,
+    source,
+    agent,
+    model,
+    ...(runs === undefined ? {} : { runs }),
+    ...(pollIntervalMs === undefined ? {} : { pollIntervalMs }),
+  };
 }
 
 function parseEvalArguments(args: readonly string[]): EvalArguments {
@@ -591,6 +758,75 @@ async function runEval(args: readonly string[], io: CliIo): Promise<CliExitCode>
   }
 }
 
+export function renderHumanTesslReport(
+  evidence: SkillPressTesslReviewEvidence | SkillPressTesslEvalEvidence,
+): string {
+  const scoreLines =
+    evidence.evidenceType === "skillpress.tessl-review"
+      ? [
+          `Tessl Quality: ${evidence.review.qualityScore}/100`,
+          `Official validation: ${evidence.review.validationPassed ? "pass" : "fail"}`,
+        ]
+      : [
+          `Tessl Impact: ${evidence.impactScore}/100`,
+          `Baseline: ${evidence.baselineScore}/100`,
+          `Delta: ${evidence.impactDelta} points`,
+        ];
+  return [
+    ...scoreLines,
+    `Evidence eligible: ${evidence.evidenceEligible ? "yes" : "no"}`,
+    `Evidence: ${evidence.storagePath}/evidence.json`,
+    ...(evidence.ineligibilityReasons.length === 0
+      ? []
+      : [`Ineligible: ${evidence.ineligibilityReasons.join(", ")}`]),
+    "",
+  ].join("\n");
+}
+
+async function runTessl(args: readonly string[], io: CliIo): Promise<CliExitCode> {
+  const json = wantsJson(args);
+  try {
+    const parsed = parseTesslArguments(args);
+    const evidence =
+      parsed.operation === "review"
+        ? await captureTesslReviewEvidence(parsed.project, {
+            ...(parsed.executable === undefined ? {} : { executable: parsed.executable }),
+            ...(parsed.timeoutSeconds === undefined
+              ? {}
+              : { timeoutSeconds: parsed.timeoutSeconds }),
+            ...(parsed.workspace === undefined ? {} : { workspace: parsed.workspace }),
+          })
+        : await captureTesslEvalEvidence(parsed.project, {
+            source: parsed.source,
+            agent: parsed.agent,
+            model: parsed.model,
+            ...(parsed.executable === undefined ? {} : { executable: parsed.executable }),
+            ...(parsed.timeoutSeconds === undefined
+              ? {}
+              : { timeoutSeconds: parsed.timeoutSeconds }),
+            ...(parsed.runs === undefined ? {} : { runs: parsed.runs }),
+            ...(parsed.pollIntervalMs === undefined
+              ? {}
+              : { pollIntervalMs: parsed.pollIntervalMs }),
+          });
+    const output = parsed.json
+      ? `${JSON.stringify({ command: `tessl.${parsed.operation}`, ...evidence })}\n`
+      : renderHumanTesslReport(evidence);
+    if (!(await writeStdout(io, output))) return 1;
+    return evidence.evidenceEligible ? 0 : 3;
+  } catch (error) {
+    if (error instanceof CliUsageError) {
+      await writeError(io, json, "usage", error.message, error.issues);
+      return 2;
+    }
+    if (error instanceof ProjectConfigError || error instanceof TesslEvidenceError) {
+      await writeError(io, json, "tessl.invalid", error.message, error.issues);
+      return 3;
+    }
+    return writeInternalFailure(io, json, "tessl");
+  }
+}
+
 async function usageFailure(
   args: readonly string[],
   io: CliIo,
@@ -668,6 +904,13 @@ export async function runCli(args: readonly string[], io: CliIo = defaultIo): Pr
       return (await writeStdout(capturedIo, renderEvalHelp())) ? 0 : 1;
     }
     return runEval(capturedArgs.slice(1), capturedIo);
+  }
+
+  if (capturedArgs[0] === "tessl") {
+    if ((capturedArgs[1] === "--help" || capturedArgs[1] === "-h") && capturedArgs.length === 2) {
+      return (await writeStdout(capturedIo, renderTesslHelp())) ? 0 : 1;
+    }
+    return runTessl(capturedArgs.slice(1), capturedIo);
   }
 
   return usageFailure(
