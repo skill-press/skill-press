@@ -51,8 +51,8 @@ export interface TesslReviewOptions extends CommonOptions {
 
 export interface TesslEvalOptions extends CommonOptions {
   readonly source: string;
-  readonly agent: string;
-  readonly model: string;
+  readonly agent?: string;
+  readonly model?: string;
   readonly runs?: number;
   readonly pollIntervalMs?: number;
   readonly wait?: (milliseconds: number) => Promise<void>;
@@ -763,8 +763,8 @@ export async function captureTesslEvalEvidence(
   const runs = options.runs ?? 1;
   const pollIntervalMs = options.pollIntervalMs ?? 30_000;
   if (
-    !boundedIdentifier(options.agent, 100) ||
-    !boundedIdentifier(options.model, 200) ||
+    (options.agent !== undefined && !boundedIdentifier(options.agent, 100)) ||
+    (options.model !== undefined && !boundedIdentifier(options.model, 200)) ||
     !Number.isSafeInteger(runs) ||
     runs < 1 ||
     runs > 10 ||
@@ -773,7 +773,11 @@ export async function captureTesslEvalEvidence(
     pollIntervalMs > 60_000
   ) {
     throw new TesslEvidenceError("Tessl eval options are invalid.", [
-      issue("tessl.option.eval", "/options", "agent, model, runs, or polling limit is invalid"),
+      issue(
+        "tessl.option.eval",
+        "/options",
+        "agent/model selection, runs, or polling limit is invalid",
+      ),
     ]);
   }
   const root = await realpath(resolve(projectDirectory));
@@ -786,10 +790,8 @@ export async function captureTesslEvalEvidence(
     "eval",
     "run",
     "--json",
-    "--agent",
-    options.agent,
-    "--model",
-    options.model,
+    ...(options.agent === undefined ? [] : ["--agent", options.agent]),
+    ...(options.model === undefined ? [] : ["--model", options.model]),
     "--runs",
     String(runs),
     sourcePath,
@@ -802,17 +804,27 @@ export async function captureTesslEvalEvidence(
     ]);
   }
   const start = parseObjectOutput(startResult, "/start");
+  const startAgent = start.agent;
+  const startModel = start.model;
   if (
     typeof start.evalRunId !== "string" ||
     !boundedIdentifier(start.evalRunId, 200) ||
-    start.agent !== options.agent ||
-    start.model !== options.model ||
+    typeof startAgent !== "string" ||
+    !boundedIdentifier(startAgent, 100) ||
+    typeof startModel !== "string" ||
+    !boundedIdentifier(startModel, 200) ||
+    (options.agent !== undefined && startAgent !== options.agent) ||
+    (options.model !== undefined && startModel !== options.model) ||
     !Number.isSafeInteger(start.scenariosCount) ||
     Number(start.scenariosCount) < 1 ||
     Number(start.scenariosCount) > 256
   ) {
     throw new TesslEvidenceError("Tessl eval submission binding is invalid.", [
-      issue("tessl.eval.start_shape", "/start", "run id, agent, model, and count must match"),
+      issue(
+        "tessl.eval.start_shape",
+        "/start",
+        "run id, selected agent/model, and count must match provider output",
+      ),
     ]);
   }
   const runId = start.evalRunId;
@@ -896,8 +908,8 @@ export async function captureTesslEvalEvidence(
     scenarioSourceSha256,
     cli: context.cli,
     runId,
-    agent: options.agent,
-    model: options.model,
+    agent: startAgent,
+    model: startModel,
     runs,
     impactScore,
     baselineScore,

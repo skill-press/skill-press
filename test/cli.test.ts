@@ -230,7 +230,7 @@ describe("SkillPress CLI scaffold", () => {
   it.each([
     ["missing operation", ["tessl"]],
     ["unknown operation", ["tessl", "score"]],
-    ["missing eval fields", ["tessl", "eval", "--source", "evals"]],
+    ["missing eval source", ["tessl", "eval"]],
     [
       "invalid integer",
       ["tessl", "eval", "--source", "evals", "--agent", "a", "--model", "m", "--runs", "1.5"],
@@ -492,10 +492,6 @@ else process.exit(2);
           project,
           "--source",
           "skills/incident-summary",
-          "--agent",
-          "codex",
-          "--model",
-          "model",
           "--executable",
           missingExecutable,
           "--json",

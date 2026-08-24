@@ -93,9 +93,15 @@ tessl api-key create --workspace <workspace> --name skillpress-release-<YYYYMMDD
   --role publisher --expiry-date <YYYY-MM-DDT00:00:00Z>
 export TESSL_TOKEN='<value-shown-once>'
 node dist/bin.js tessl review --project . --workspace <workspace> --json
-node dist/bin.js tessl eval --project . --source <tessl-eval-source> \
-  --agent <agent> --model <model> --json
+node dist/bin.js tessl eval --project . \
+  --source .skillpress/tessl-evals/<set> --json
 ```
+
+If the Tessl workspace plan does not allow explicit model selection, omit both selection flags.
+Otherwise add `--agent <agent>` and/or `--model <model>`. The evidence still records the
+provider-resolved identities and binds the exact invocation. Keep generated or holdout sources in
+the ignored private path shown above; SkillPress digests their complete contents across capture and
+release-gate verification.
 
 Retain the two returned private evidence paths. Immediately before staging a release, re-open and
 revalidate them against current Git inputs:

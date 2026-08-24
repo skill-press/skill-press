@@ -455,12 +455,29 @@ async function verifyRawEvidence(
       skillPath,
     ]),
   );
-  const startResult = await verifyInvocation(
-    root,
-    evaluation.storagePath,
-    "eval-start",
-    evaluation.start,
-    tesslCommandDigest(evaluation.cli.executableSha256, [
+  const evalStartCandidates = [
+    ["eval", "run", "--json", "--runs", String(evaluation.runs), evalSource],
+    [
+      "eval",
+      "run",
+      "--json",
+      "--agent",
+      evaluation.agent,
+      "--runs",
+      String(evaluation.runs),
+      evalSource,
+    ],
+    [
+      "eval",
+      "run",
+      "--json",
+      "--model",
+      evaluation.model,
+      "--runs",
+      String(evaluation.runs),
+      evalSource,
+    ],
+    [
       "eval",
       "run",
       "--json",
@@ -471,7 +488,20 @@ async function verifyRawEvidence(
       "--runs",
       String(evaluation.runs),
       evalSource,
-    ]),
+    ],
+  ] as const;
+  const evalStartArgv =
+    evalStartCandidates.find(
+      (argv) =>
+        tesslCommandDigest(evaluation.cli.executableSha256, argv) ===
+        evaluation.start.commandSha256,
+    ) ?? evalStartCandidates[3];
+  const startResult = await verifyInvocation(
+    root,
+    evaluation.storagePath,
+    "eval-start",
+    evaluation.start,
+    tesslCommandDigest(evaluation.cli.executableSha256, evalStartArgv),
   );
   const evalResult = await verifyInvocation(
     root,

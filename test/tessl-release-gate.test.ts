@@ -246,6 +246,27 @@ describe("Tessl release gate", () => {
     expect(Object.isFrozen(report.scores)).toBe(true);
   });
 
+  it("accepts omitted provider selections only when the exact command is bound", async () => {
+    const selections = [[], ["--agent", "codex"], ["--model", "model"]] as const;
+    for (const selection of selections) {
+      const value = await fixture();
+      const evalFile = join(value.root, value.evalPath);
+      const evaluation = JSON.parse(await readFile(evalFile, "utf8"));
+      evaluation.start.commandSha256 = tesslCommandDigest(trustedDigest, [
+        "eval",
+        "run",
+        "--json",
+        ...selection,
+        "--runs",
+        "1",
+        "tessl-evals",
+      ]);
+      await writePrivateJson(evalFile, evaluation);
+
+      expect((await gate(value)).passed).toBe(true);
+    }
+  });
+
   it("rejects stale and future evidence without weakening score thresholds", async () => {
     const value = await fixture();
     const stale = await gate(value, new Date("2026-09-02T00:00:01.000Z"));

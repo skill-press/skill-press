@@ -477,6 +477,63 @@ describe("Tessl official evidence bridge", () => {
     expect(JSON.stringify(evidence)).not.toContain("scenario-one");
   });
 
+  it("binds provider defaults when either or both selection flags are omitted", async () => {
+    const cases = [
+      {
+        selection: {},
+        resolved: { agent: "claude", model: "provider-default" },
+        flags: [],
+      },
+      {
+        selection: { agent: "codex" },
+        resolved: { agent: "codex", model: "provider-default" },
+        flags: ["--agent", "codex"],
+      },
+      {
+        selection: { model: "gpt-fixed" },
+        resolved: { agent: "claude", model: "gpt-fixed" },
+        flags: ["--model", "gpt-fixed"],
+      },
+    ] as const;
+    for (const value of cases) {
+      const fixture = await project();
+      const observed: string[][] = [];
+      const executor = executorFor((args) => {
+        if (args[0] === "--version") return result("0.99.0\n");
+        if (args[1] === "run") {
+          return result(
+            JSON.stringify({
+              evalRunId: "eval-run-1",
+              ...value.resolved,
+              scenariosCount: 2,
+            }),
+          );
+        }
+        return result(JSON.stringify(completedEval()));
+      }, observed);
+      const evidence = await captureTesslEvalEvidence(fixture.root, {
+        source: "tessl-evals",
+        ...value.selection,
+        runs: 2,
+        executable: fixture.executable,
+        executor,
+        pollIntervalMs: 1,
+        wait: async () => undefined,
+      });
+
+      expect(observed[1]).toEqual([
+        "eval",
+        "run",
+        "--json",
+        ...value.flags,
+        "--runs",
+        "2",
+        "tessl-evals",
+      ]);
+      expect(evidence).toMatchObject({ ...value.resolved, runs: 2 });
+    }
+  });
+
   it("makes missing baselines and any per-scenario regression explicitly ineligible", async () => {
     const fixture = await project();
     const value = completedEval();

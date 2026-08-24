@@ -62,7 +62,7 @@ const TESSL_HELP = `Capture release evidence using the official Tessl CLI.
 
 Usage:
   skillpress tessl review [options]
-  skillpress tessl eval --source <directory> --agent <agent> --model <model> [options]
+  skillpress tessl eval --source <directory> [options]
 
 Common options:
   --project <directory>     Project root; defaults to the current directory
@@ -76,8 +76,8 @@ Review options:
 
 Eval options:
   --source <directory>      Tessl eval source inside the project
-  --agent <agent>           Exact Tessl agent identifier
-  --model <model>           Exact Tessl model identifier
+  --agent <agent>           Optional exact Tessl agent; omit for the provider default
+  --model <model>           Optional exact Tessl model; omit for the provider default
   --runs <count>            Repetitions from 1 to 10; defaults to 1
   --poll-interval-ms <ms>   Poll interval from 1 to 60000; defaults to 30000
 
@@ -184,8 +184,8 @@ interface TesslReviewArguments extends TesslCommonArguments {
 interface TesslEvalArguments extends TesslCommonArguments {
   readonly operation: "eval";
   readonly source: string;
-  readonly agent: string;
-  readonly model: string;
+  readonly agent?: string;
+  readonly model?: string;
   readonly runs?: number;
   readonly pollIntervalMs?: number;
 }
@@ -426,15 +426,15 @@ function parseTesslArguments(args: readonly string[]): TesslArguments {
       ...(workspace === undefined ? {} : { workspace }),
     };
   }
-  if (source === undefined || agent === undefined || model === undefined) {
-    throw new CliUsageError("tessl eval requires --source, --agent, and --model.");
+  if (source === undefined) {
+    throw new CliUsageError("tessl eval requires --source.");
   }
   return {
     operation,
     ...common,
     source,
-    agent,
-    model,
+    ...(agent === undefined ? {} : { agent }),
+    ...(model === undefined ? {} : { model }),
     ...(runs === undefined ? {} : { runs }),
     ...(pollIntervalMs === undefined ? {} : { pollIntervalMs }),
   };
@@ -831,8 +831,8 @@ async function runTessl(args: readonly string[], io: CliIo): Promise<CliExitCode
           })
         : await captureTesslEvalEvidence(parsed.project, {
             source: parsed.source,
-            agent: parsed.agent,
-            model: parsed.model,
+            ...(parsed.agent === undefined ? {} : { agent: parsed.agent }),
+            ...(parsed.model === undefined ? {} : { model: parsed.model }),
             ...(parsed.executable === undefined ? {} : { executable: parsed.executable }),
             ...(parsed.timeoutSeconds === undefined
               ? {}

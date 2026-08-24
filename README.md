@@ -41,7 +41,7 @@ skillpress check --project .
 skillpress test --project .
 skillpress eval --project . --image <image@sha256:digest> --model <model> -- <adapter-argv...>
 skillpress tessl review --project . --workspace <workspace>
-skillpress tessl eval --project . --source tessl-evals --agent <agent> --model <model>
+skillpress tessl eval --project . --source .skillpress/tessl-evals/<set>
 ```
 
 The CLI also exposes the complete gated workflow:
@@ -51,16 +51,20 @@ skillpress improve --training-evidence <training-evidence.json> \
   --holdout-evidence <holdout-evidence.json> \
   --author-command <author> --reviewer-command <reviewer> --evaluator-command <evaluator>
 skillpress package --review-evidence <review-evidence.json> \
-  --eval-evidence <eval-evidence.json> --eval-source tessl-evals
+  --eval-evidence <eval-evidence.json> --eval-source .skillpress/tessl-evals/<set>
 skillpress status --review-evidence <review-evidence.json> \
-  --eval-evidence <eval-evidence.json> --eval-source tessl-evals \
+  --eval-evidence <eval-evidence.json> --eval-source .skillpress/tessl-evals/<set> \
   --artifacts <private-artifacts-directory>
 skillpress doctor --review-evidence <review-evidence.json> \
-  --eval-evidence <eval-evidence.json> --eval-source tessl-evals
+  --eval-evidence <eval-evidence.json> --eval-source .skillpress/tessl-evals/<set>
 skillpress publish --artifacts <private-artifacts-directory> \
   --review-evidence <review-evidence.json> --eval-evidence <eval-evidence.json> \
-  --eval-source tessl-evals
+  --eval-source .skillpress/tessl-evals/<set>
 ```
+
+Keep generated or holdout Tessl scenarios under the ignored private
+`.skillpress/tessl-evals/` tree. Add `--agent` and/or `--model` only when the workspace plan permits
+explicit selection; omitting them uses the provider defaults.
 
 `publish` is a non-mutating dry run unless `--execute` is supplied. Resume an executed partial run
 with `--execute --resume <private-receipt.json>`. Run each command with `--help` for provider
@@ -87,7 +91,9 @@ Quality and Impact evidence.
 `tessl review` invokes the official `tessl skill lint` and `tessl review run quality --json`
 commands. `tessl eval` invokes the official paired `tessl eval run --json` workflow, polls its run
 identifier with `tessl eval view --json`, and derives Impact only from the returned scenario
-assessments. There is no flag or API for entering scores by hand. Raw bounded provider output is
+assessments. Omit `--agent` and `--model` to use Tessl's provider defaults when a workspace plan
+does not permit explicit model selection. The resolved provider identities remain bound in the
+evidence. There is no flag or API for entering scores by hand. Raw bounded provider output is
 stored with private permissions under ignored `.skillpress/tessl/` directories; public evidence
 retains command/output digests, source bindings, scores, and eligibility reasons.
 
