@@ -115,6 +115,8 @@ function completedEval(overrides: Record<string, unknown> = {}): Record<string, 
       id: "eval-run-1",
       attributes: {
         status: "completed",
+        agent: "codex",
+        model: "gpt-fixed",
         scenarios: [
           {
             fingerprint: "scenario-one",
@@ -501,15 +503,9 @@ describe("Tessl official evidence bridge", () => {
       const executor = executorFor((args) => {
         if (args[0] === "--version") return result("0.99.0\n");
         if (args[1] === "run") {
-          return result(
-            JSON.stringify({
-              evalRunId: "eval-run-1",
-              ...value.resolved,
-              scenariosCount: 2,
-            }),
-          );
+          return result(JSON.stringify({ evalRunId: "eval-run-1", scenariosCount: 2 }));
         }
-        return result(JSON.stringify(completedEval()));
+        return result(JSON.stringify(completedEval(value.resolved)));
       }, observed);
       const evidence = await captureTesslEvalEvidence(fixture.root, {
         source: "tessl-evals",
@@ -580,6 +576,11 @@ describe("Tessl official evidence bridge", () => {
         args[1] === "run"
           ? result('{"evalRunId":"x","agent":"wrong","model":"gpt-fixed","scenariosCount":2}')
           : undefined,
+    ],
+    [
+      "result identity mismatch",
+      (args: readonly string[]) =>
+        args[1] === "view" ? result(JSON.stringify(completedEval({ agent: "wrong" }))) : undefined,
     ],
     [
       "view failure",

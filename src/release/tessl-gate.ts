@@ -331,8 +331,8 @@ function verifyEvalOutputs(
   const start = extractJsonObject(startBytes);
   if (
     start.evalRunId !== evidence.runId ||
-    start.agent !== evidence.agent ||
-    start.model !== evidence.model ||
+    (start.agent !== undefined && start.agent !== evidence.agent) ||
+    (start.model !== undefined && start.model !== evidence.model) ||
     start.scenariosCount !== evidence.scenarios.length
   ) {
     throw new TypeError("eval start");
@@ -341,6 +341,9 @@ function verifyEvalOutputs(
   const data = result.data;
   if (!isRecord(data) || data.id !== evidence.runId || !isRecord(data.attributes)) {
     throw new TypeError("eval result");
+  }
+  if (data.attributes.agent !== evidence.agent || data.attributes.model !== evidence.model) {
+    throw new TypeError("eval identity");
   }
   const rawScenarios = data.attributes.scenarios;
   if (data.attributes.status !== "completed" || !Array.isArray(rawScenarios)) {

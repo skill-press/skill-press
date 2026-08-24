@@ -347,7 +347,7 @@ if (args[0] === "--version") console.log("0.99.0");
 else if (args[0] === "skill") console.log("lint passed");
 else if (args[0] === "review") console.log(JSON.stringify({reviewRunId:"review-1",validation:{overallPassed:true},review:{reviewScore:93}}));
 else if (args[0] === "eval" && args[1] === "run") console.log(JSON.stringify({evalRunId:"eval-1",agent:"codex",model:"model",scenariosCount:1}));
-else if (args[0] === "eval" && args[1] === "view") console.log(JSON.stringify({data:{id:"eval-1",attributes:{status:"completed",scenarios:[{fingerprint:"case",solutions:[{variant:"baseline",assessmentResults:[{score:2,max_score:10}]},{variant:"with-context",assessmentResults:[{score:9,max_score:10}]}]}]}}}));
+else if (args[0] === "eval" && args[1] === "view") console.log(JSON.stringify({data:{id:"eval-1",attributes:{status:"completed",agent:"codex",model:"model",scenarios:[{fingerprint:"case",solutions:[{variant:"baseline",assessmentResults:[{score:2,max_score:10}]},{variant:"with-context",assessmentResults:[{score:9,max_score:10}]}]}]}}}));
 else process.exit(2);
 `,
     );

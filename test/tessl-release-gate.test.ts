@@ -68,6 +68,8 @@ function executor(): TesslCommandExecutor {
           id: "eval-1",
           attributes: {
             status: "completed",
+            agent: "codex",
+            model: "model",
             scenarios: [
               {
                 fingerprint: "one",
@@ -262,9 +264,31 @@ describe("Tessl release gate", () => {
         "tessl-evals",
       ]);
       await writePrivateJson(evalFile, evaluation);
+      await replaceRawStdout(
+        value,
+        value.evalPath,
+        "start",
+        "eval-start",
+        '{"evalRunId":"eval-1","scenariosCount":2}\n',
+      );
 
       expect((await gate(value)).passed).toBe(true);
     }
+  });
+
+  it("rejects a resolved agent or model that drifts in the raw final result", async () => {
+    const value = await fixture();
+    const evalFile = join(value.root, value.evalPath);
+    const evaluation = JSON.parse(await readFile(evalFile, "utf8"));
+    const raw = JSON.parse(
+      await readFile(join(value.root, evaluation.storagePath, "eval-result.stdout"), "utf8"),
+    );
+    raw.data.attributes.agent = "different-agent";
+    await replaceRawStdout(value, value.evalPath, "result", "eval-result", JSON.stringify(raw));
+
+    expect((await gate(value)).issues.map((entry) => entry.code)).toContain(
+      "release.evidence.output",
+    );
   });
 
   it("rejects stale and future evidence without weakening score thresholds", async () => {

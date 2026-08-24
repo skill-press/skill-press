@@ -681,6 +681,8 @@ function parseCompletedEval(
 ): {
   readonly scenarios: SkillPressTesslEvalEvidence["scenarios"];
   readonly missingBaseline: boolean;
+  readonly agent: string;
+  readonly model: string;
 } {
   const data = value.data;
   if (!isRecord(data) || data.id !== expectedRunId || !isRecord(data.attributes)) {
@@ -691,6 +693,18 @@ function parseCompletedEval(
   if (data.attributes.status !== "completed" || !Array.isArray(data.attributes.scenarios)) {
     throw new TesslEvidenceError("Tessl eval did not complete successfully.", [
       issue("tessl.eval.status", "/result", "eval status must be completed"),
+    ]);
+  }
+  const agent = data.attributes.agent;
+  const model = data.attributes.model;
+  if (
+    typeof agent !== "string" ||
+    !boundedIdentifier(agent, 100) ||
+    typeof model !== "string" ||
+    !boundedIdentifier(model, 200)
+  ) {
+    throw new TesslEvidenceError("Tessl eval result identity is invalid.", [
+      issue("tessl.eval.identity", "/result", "completed eval must identify its agent and model"),
     ]);
   }
   if (data.attributes.scenarios.length < 1 || data.attributes.scenarios.length > 256) {
@@ -751,7 +765,7 @@ function parseCompletedEval(
       delta: withContextScore - baselineScore,
     };
   }) as SkillPressTesslEvalEvidence["scenarios"];
-  return { scenarios, missingBaseline };
+  return { scenarios, missingBaseline, agent, model };
 }
 
 /** Capture Impact only by submitting and polling an actual paired Tessl CLI eval run. */
@@ -809,12 +823,14 @@ export async function captureTesslEvalEvidence(
   if (
     typeof start.evalRunId !== "string" ||
     !boundedIdentifier(start.evalRunId, 200) ||
-    typeof startAgent !== "string" ||
-    !boundedIdentifier(startAgent, 100) ||
-    typeof startModel !== "string" ||
-    !boundedIdentifier(startModel, 200) ||
-    (options.agent !== undefined && startAgent !== options.agent) ||
-    (options.model !== undefined && startModel !== options.model) ||
+    (startAgent !== undefined &&
+      (typeof startAgent !== "string" ||
+        !boundedIdentifier(startAgent, 100) ||
+        (options.agent !== undefined && startAgent !== options.agent))) ||
+    (startModel !== undefined &&
+      (typeof startModel !== "string" ||
+        !boundedIdentifier(startModel, 200) ||
+        (options.model !== undefined && startModel !== options.model))) ||
     !Number.isSafeInteger(start.scenariosCount) ||
     Number(start.scenariosCount) < 1 ||
     Number(start.scenariosCount) > 256
@@ -870,6 +886,20 @@ export async function captureTesslEvalEvidence(
   }
   await writeRaw(context.storage, "eval-result", finalResult);
   const parsed = parseCompletedEval(finalValue, runId);
+  if (
+    (options.agent !== undefined && parsed.agent !== options.agent) ||
+    (options.model !== undefined && parsed.model !== options.model) ||
+    (startAgent !== undefined && parsed.agent !== startAgent) ||
+    (startModel !== undefined && parsed.model !== startModel)
+  ) {
+    throw new TesslEvidenceError("Tessl eval resolved identity changed.", [
+      issue(
+        "tessl.eval.identity",
+        "/result",
+        "completed agent/model must match the request and any start identity",
+      ),
+    ]);
+  }
   if (parsed.scenarios.length !== Number(start.scenariosCount)) {
     throw new TesslEvidenceError("Tessl eval scenario count changed.", [
       issue(
@@ -908,8 +938,8 @@ export async function captureTesslEvalEvidence(
     scenarioSourceSha256,
     cli: context.cli,
     runId,
-    agent: startAgent,
-    model: startModel,
+    agent: parsed.agent,
+    model: parsed.model,
     runs,
     impactScore,
     baselineScore,
