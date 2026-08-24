@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { digestBoundedTree } from "../src/evidence/tree-digest.js";
 import type { CapturedCommand, CapturedCommandResult } from "../src/process/capture.js";
@@ -175,6 +175,44 @@ describe("askill publication adapter", () => {
     );
     expect(await readFile(projection, "utf8")).toBe(projectedMarkdown);
     expect((await stat(projection)).mode & 0o777).toBe(0o600);
+  });
+
+  it("forwards only the configured platform login directories", async () => {
+    const names = [
+      "XDG_CONFIG_HOME",
+      "XDG_DATA_HOME",
+      "XDG_STATE_HOME",
+      "APPDATA",
+      "LOCALAPPDATA",
+      "USERPROFILE",
+    ] as const;
+    const original = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+    try {
+      for (const name of names) process.env[name] = `/private/${name.toLowerCase()}`;
+      vi.resetModules();
+      const reloaded = await import("../src/publish/adapters/askill.js");
+      const { context } = await fixture();
+      let environment: Readonly<Record<string, string>> | undefined;
+      const adapter = reloaded.createAskillPublicationAdapter({
+        author: "mushanyoung",
+        executor: async (command) => {
+          environment = command.env;
+          return result("", false);
+        },
+      });
+      await adapter.preflight(context);
+      for (const name of names) {
+        expect(environment?.[name]).toBe(`/private/${name.toLowerCase()}`);
+      }
+      expect(environment).not.toHaveProperty("AWS_SECRET_ACCESS_KEY");
+    } finally {
+      for (const name of names) {
+        const value = original[name];
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+      vi.resetModules();
+    }
   });
 
   it("reuses only an exact remote raw projection and skips authentication and mutation", async () => {

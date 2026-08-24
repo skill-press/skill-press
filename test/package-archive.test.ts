@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
-import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -251,4 +251,21 @@ describe("deterministic package archives", () => {
       SkillPackageError,
     );
   });
+
+  it.runIf(process.platform !== "win32")(
+    "rejects a staged canonical root redirected through a symbolic link",
+    async () => {
+      const root = await project();
+      const staged = await stageCanonicalSkill(root);
+      const packaged = await packageStagedSkill(root, staged);
+      const canonical = join(root, staged.stagingPath, staged.skillPath);
+      const redirected = join(root, staged.stagingPath, "redirected-canonical");
+      await rename(canonical, redirected);
+      await symlink(redirected, canonical, "dir");
+
+      await expect(loadPackagedSkill(root, packaged.artifactsPath)).rejects.toBeInstanceOf(
+        SkillPackageError,
+      );
+    },
+  );
 });

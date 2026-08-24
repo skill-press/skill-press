@@ -197,6 +197,23 @@ describe("GitHub publication adapter", () => {
       code: "repository_unavailable",
     });
 
+    let pushCalls = 0;
+    const unavailablePush = createGitHubPublicationAdapter({
+      executor: async () => {
+        pushCalls += 1;
+        if (pushCalls === 1) return result("{}");
+        if (pushCalls === 2) {
+          return result(
+            JSON.stringify({ isPrivate: false, nameWithOwner: "mushanyoung/skillpress" }),
+          );
+        }
+        return result("", false);
+      },
+    });
+    await expect(unavailablePush.preflight(context)).resolves.toMatchObject({
+      code: "push_unavailable",
+    });
+
     let calls = 0;
     const invalid = createGitHubPublicationAdapter({
       executor: async () => {
