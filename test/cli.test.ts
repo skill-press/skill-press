@@ -219,7 +219,7 @@ describe("SkillPress CLI scaffold", () => {
 
     expect(capture.stderr).toEqual([]);
     expect(capture.stdout).toEqual([
-      `Created ${output}\nCanonical skill: ${join(output, "skills/incident-summary")}\nFiles: 7\n`,
+      `Created ${output}\nCanonical skill: ${join(output, "skills/incident-summary")}\nFiles: 8\n`,
     ]);
     await expect(
       readFile(join(output, "skills/incident-summary/SKILL.md"), "utf8"),

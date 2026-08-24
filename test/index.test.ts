@@ -12,6 +12,10 @@ describe("public API", () => {
     expect(skillpress.runCli).toBeTypeOf("function");
     expect(skillpress.checkProject).toBeTypeOf("function");
     expect(skillpress.runProjectTests).toBeTypeOf("function");
+    expect(skillpress.loadEvaluationSuite).toBeTypeOf("function");
+    expect(skillpress.loadEvaluationRubric).toBeTypeOf("function");
+    expect(skillpress.loadProjectEvaluationInputs).toBeTypeOf("function");
+    expect(skillpress.EvaluationInputError).toBeTypeOf("function");
     expect(skillpress.MAX_TEST_OUTPUT_BYTES).toBe(1024 * 1024);
     expect(skillpress.ProjectCreationError).toBeTypeOf("function");
     expect(skillpress.writeRenderedProject).toBeTypeOf("function");

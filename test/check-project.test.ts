@@ -1,4 +1,4 @@
-import { realpathSync } from "node:fs";
+import { realpathSync, symlinkSync } from "node:fs";
 import { mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -100,6 +100,20 @@ describe("project readiness check", () => {
     );
   });
 
+  it("does not accept a symbolic link as a required evaluation input", async () => {
+    const root = await generatedProject();
+    const rubricPath = join(root, "evals/rubric.yaml");
+    await unlink(rubricPath);
+    symlinkSync(join(root, "evals/training.yaml"), rubricPath);
+
+    const report = await checkProject(root);
+
+    expect(report.ok).toBe(false);
+    expect(report.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "project.scenarios_missing", path: "evals/rubric.yaml" }),
+    );
+  });
+
   it("requires project and canonical skill names to agree", async () => {
     const root = await generatedProject();
     const configPath = join(root, "skillpress.yaml");
@@ -112,6 +126,24 @@ describe("project readiness check", () => {
     expect(report.score).toBe(90);
     expect(report.diagnostics).toContainEqual(
       expect.objectContaining({ code: "project.skill_name_mismatch", path: "/skill/name" }),
+    );
+  });
+
+  it("fails readiness when evaluation inputs are semantically invalid", async () => {
+    const root = await generatedProject();
+    const rubricPath = join(root, "evals/rubric.yaml");
+    const rubric = await readFile(rubricPath, "utf8");
+    await writeFile(rubricPath, rubric.replace("weight: 40", "weight: 39"));
+
+    const report = await checkProject(root);
+
+    expect(report.ok).toBe(false);
+    expect(report.score).toBe(90);
+    expect(report.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "eval.rubric.weight_total", path: "/criteria" }),
+    );
+    expect(report.criteria).toContainEqual(
+      expect.objectContaining({ id: "scenarios", passed: false, earned: 0 }),
     );
   });
 
@@ -145,7 +177,7 @@ describe("project readiness check", () => {
     expect(report.ok).toBe(false);
     expect(
       report.diagnostics.filter((entry) => entry.code === "project.scenarios_missing"),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
   });
 
   it("rejects ambiguous API paths before filesystem inspection", async () => {

@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/mushanyoung/skillpress/main/schemas/eval-rubric.schema.json",
+  "title": "SkillPressEvaluationRubric",
+  "description": "A versioned, weighted rubric for paired behavioral evaluation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "name", "criteria"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "name": {
+      "$ref": "#/definitions/portableName"
+    },
+    "criteria": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/definitions/criterion"
+      }
+    }
+  },
+  "definitions": {
+    "portableName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "criterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "description", "weight", "evaluator"],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/portableName"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 1000
+        },
+        "weight": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "evaluator": {
+          "type": "string",
+          "enum": ["deterministic", "judge"]
+        }
+      }
+    }
+  }
+}

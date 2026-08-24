@@ -96,6 +96,7 @@ describe("capability brief rendering", () => {
       ".gitignore",
       "LICENSE",
       "evals/holdout.yaml",
+      "evals/rubric.yaml",
       "evals/training.yaml",
       "skillpress.yaml",
       "skills/incident-summary/LICENSE",
@@ -158,7 +159,7 @@ describe("capability brief rendering", () => {
     expect(fileContent(rendered, "skills/incident-summary/SKILL.md")).toContain(
       "# 事件交接摘要 🧯",
     );
-    expect(rendered.files.map((file) => file.path)).toHaveLength(7);
+    expect(rendered.files.map((file) => file.path)).toHaveLength(8);
   });
 
   it("escapes hostile block constructs while preserving the fixed Markdown structure", async () => {

@@ -14,6 +14,14 @@ const targets = [
     schema: "schemas/capability-brief.schema.json",
     output: "src/create/generated.ts",
   },
+  {
+    schema: "schemas/eval-suite.schema.json",
+    output: "src/eval/generated-suite.ts",
+  },
+  {
+    schema: "schemas/eval-rubric.schema.json",
+    output: "src/eval/generated-rubric.ts",
+  },
 ];
 
 let stale = false;

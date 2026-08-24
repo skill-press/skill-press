@@ -2,6 +2,8 @@ import { lstat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { loadProjectConfig } from "../config/load.js";
+import { EvaluationInputError } from "../eval/errors.js";
+import { loadProjectEvaluationInputs } from "../eval/load.js";
 import { isSafePathInput } from "../path-safety.js";
 import { validateAgentSkill } from "../validate/agent-skill.js";
 import type { AgentSkillDiagnostic } from "../validate/types.js";
@@ -125,19 +127,30 @@ export async function checkProject(
     }
   }
 
-  const scenarioPaths = ["evals/training.yaml", "evals/holdout.yaml"] as const;
+  const scenarioPaths = ["evals/training.yaml", "evals/holdout.yaml", "evals/rubric.yaml"] as const;
   const scenarioStates = await Promise.all(
     scenarioPaths.map((path) => isRegularProjectFile(root, path)),
   );
-  const scenariosPassed = scenarioStates.every(Boolean);
+  let scenariosPassed = scenarioStates.every(Boolean);
   for (let index = 0; index < scenarioPaths.length; index += 1) {
     if (!scenarioStates[index]) {
       diagnostics.push(
         diagnostic(
           "project.scenarios_missing",
           scenarioPaths[index] as string,
-          "training and holdout scenario files must be regular files",
+          "training, holdout, and rubric inputs must be regular files",
         ),
+      );
+    }
+  }
+  if (scenariosPassed) {
+    try {
+      await loadProjectEvaluationInputs(root);
+    } catch (error) {
+      if (!(error instanceof EvaluationInputError)) throw error;
+      scenariosPassed = false;
+      diagnostics.push(
+        ...error.issues.map((entry) => diagnostic(entry.code, entry.path, entry.message)),
       );
     }
   }
@@ -181,7 +194,7 @@ export async function checkProject(
       },
       {
         id: "scenarios",
-        label: "Training and holdout scenario inputs",
+        label: "Training, holdout, and rubric inputs",
         weight: 10,
         passed: scenariosPassed,
       },

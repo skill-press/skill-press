@@ -13,6 +13,19 @@ export { CONFIG_FILE_NAME, loadProjectConfig, MAX_CONFIG_BYTES } from "./config/
 export { ProjectConfigError } from "./config/errors.js";
 export type { ConfigIssue } from "./config/errors.js";
 export type { SkillPressProject } from "./config/generated.js";
+export { EvaluationInputError } from "./eval/errors.js";
+export type { EvaluationInputIssue } from "./eval/errors.js";
+export type { SkillPressEvaluationRubric } from "./eval/generated-rubric.js";
+export type { SkillPressEvaluationSuite } from "./eval/generated-suite.js";
+export {
+  EVALUATION_RUBRIC_PATH,
+  HOLDOUT_SUITE_PATH,
+  loadEvaluationRubric,
+  loadEvaluationSuite,
+  loadProjectEvaluationInputs,
+  TRAINING_SUITE_PATH,
+} from "./eval/load.js";
+export type { ProjectEvaluationInputs } from "./eval/load.js";
 export { CapabilityBriefError, ProjectCreationError } from "./create/errors.js";
 export type {
   CapabilityBriefIssue,

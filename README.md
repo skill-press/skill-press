@@ -42,8 +42,10 @@ skillpress check --project .
 skillpress test --project .
 ```
 
-`check` reports a local readiness score and fails closed on invalid canonical skills, missing
-licenses or scenario inputs, and project identity mismatches. It never reports a Tessl score.
+`check` reports a local readiness score and fails closed on invalid canonical skills, missing or
+invalid scenario/rubric inputs, and project identity mismatches. Scenario suites reject duplicate
+or leaked holdout cases after Unicode-aware normalization; rubric weights must total exactly 100.
+It never reports a Tessl score.
 `test` explicitly runs the configured argv without a shell, confines configured working
 directories to the project tree, bounds output and time, and retains only byte counts and digests.
 It is a local project-test runner, not the sandbox for untrusted behavioral evaluation.
@@ -74,8 +76,9 @@ SkillPress distinguishes local readiness from Tessl's official Quality and Impac
 only report the latter when current Tessl evidence exists, and the release profile defaults to a
 minimum of 90 for both.
 
-This repository self-hosts the same contract through `skillpress.yaml`, `skills/skillpress`, and
-the paired `evals/training.yaml` and private-authoring-boundary `evals/holdout.yaml` inputs.
+This repository self-hosts the same contract through `skillpress.yaml`, `skills/skillpress`, the
+paired `evals/training.yaml` and private-authoring-boundary `evals/holdout.yaml` inputs, and
+`evals/rubric.yaml`.
 
 See [the reviewed implementation plan](docs/PLAN.md) for architecture, security boundaries,
 registry capabilities, and the small-commit delivery sequence.
