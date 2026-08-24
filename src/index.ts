@@ -44,6 +44,22 @@ export {
   DEFAULT_SANDBOX_RESOURCE_POLICY,
   SandboxPolicyError,
 } from "./eval/sandbox.js";
+export type { SkillPressImprovementReport } from "./improve/generated-report.js";
+export { ImprovementLoopError, runBoundedImprovement } from "./improve/state-machine.js";
+export type {
+  ImprovementAuthorContext,
+  ImprovementBudgets,
+  ImprovementCallbacks,
+  ImprovementCandidateFile,
+  ImprovementEvaluation,
+  ImprovementFeedback,
+  ImprovementInitialState,
+  ImprovementLoopIssue,
+  ImprovementLoopOptions,
+  ImprovementProposal,
+  ImprovementReview,
+  TrainingScenarioContext,
+} from "./improve/state-machine.js";
 export type {
   SandboxBackend,
   SandboxInvocation,

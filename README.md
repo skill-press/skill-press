@@ -59,6 +59,14 @@ with-skill results remain under ignored, private `.skillpress/runs/` storage; th
 contains hashes and redacted excerpts. Local behavioral evidence remains distinct from Tessl
 Quality and Impact evidence.
 
+The library export `runBoundedImprovement` coordinates the improvement lifecycle for an author
+adapter. The adapter receives only frozen training scenarios, measured training failures, and
+remaining budgets. A proposal is a complete canonical-skill snapshot limited to `SKILL.md`,
+`LICENSE`, `assets/`, `references/`, and `scripts/`; SkillPress then enforces independent review,
+deterministic checks, measurable training improvement, and only afterward holdout non-regression.
+The loop stops on repeated non-improvement or iteration, token, cost, and wall-time limits. Its
+schema-validated report records digests and metrics, never candidate contents or holdout prompts.
+
 The package also exposes the strict canonical-skill validator used by later readiness and release
 gates:
 

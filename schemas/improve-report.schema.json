@@ -1,0 +1,133 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/mushanyoung/skillpress/main/schemas/improve-report.schema.json",
+  "title": "SkillPressImprovementReport",
+  "description": "A bounded improvement-loop report without candidate file contents or holdout prompts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "reportType",
+    "startedAt",
+    "finishedAt",
+    "success",
+    "stopReason",
+    "initialCandidateSha256",
+    "finalCandidateSha256",
+    "trainingScenarioSetSha256",
+    "holdoutScenarioSetSha256",
+    "budget",
+    "iterations"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "reportType": { "const": "skillpress.improve" },
+    "startedAt": { "$ref": "#/definitions/timestamp" },
+    "finishedAt": { "$ref": "#/definitions/timestamp" },
+    "success": { "type": "boolean" },
+    "stopReason": {
+      "type": "string",
+      "enum": [
+        "target_reached",
+        "iteration_limit",
+        "no_improvement",
+        "token_budget",
+        "cost_budget",
+        "wall_time_budget",
+        "author_failed",
+        "invalid_proposal",
+        "review_rejected",
+        "deterministic_failed",
+        "training_regression",
+        "scenario_set_changed",
+        "holdout_regression",
+        "accept_failed"
+      ]
+    },
+    "initialCandidateSha256": { "$ref": "#/definitions/digest" },
+    "finalCandidateSha256": { "$ref": "#/definitions/digest" },
+    "trainingScenarioSetSha256": { "$ref": "#/definitions/digest" },
+    "holdoutScenarioSetSha256": { "$ref": "#/definitions/digest" },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["iterationsUsed", "tokensUsed", "costUsd", "wallMilliseconds"],
+      "properties": {
+        "iterationsUsed": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "tokensUsed": { "type": "integer", "minimum": 0 },
+        "costUsd": { "type": "number", "minimum": 0 },
+        "wallMilliseconds": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "iterations": {
+      "type": "array",
+      "maxItems": 20,
+      "items": { "$ref": "#/definitions/iteration" }
+    }
+  },
+  "definitions": {
+    "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["successRate", "activationPrecision", "safetyRate"],
+      "properties": {
+        "successRate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "activationPrecision": { "type": "number", "minimum": 0, "maximum": 1 },
+        "safetyRate": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "iteration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "iteration",
+        "baseCandidateSha256",
+        "proposalSha256",
+        "candidateSha256",
+        "decision",
+        "tokensUsed",
+        "costUsd",
+        "training",
+        "holdout"
+      ],
+      "properties": {
+        "iteration": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "baseCandidateSha256": { "$ref": "#/definitions/digest" },
+        "proposalSha256": {
+          "anyOf": [{ "$ref": "#/definitions/digest" }, { "type": "null" }]
+        },
+        "candidateSha256": {
+          "anyOf": [{ "$ref": "#/definitions/digest" }, { "type": "null" }]
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "accepted",
+            "author_failed",
+            "invalid_proposal",
+            "review_rejected",
+            "deterministic_failed",
+            "training_regression",
+            "scenario_set_changed",
+            "holdout_regression",
+            "accept_failed",
+            "budget_exceeded"
+          ]
+        },
+        "tokensUsed": { "type": "integer", "minimum": 0 },
+        "costUsd": { "type": "number", "minimum": 0 },
+        "training": {
+          "anyOf": [{ "$ref": "#/definitions/metrics" }, { "type": "null" }]
+        },
+        "holdout": {
+          "anyOf": [{ "$ref": "#/definitions/metrics" }, { "type": "null" }]
+        }
+      }
+    }
+  }
+}

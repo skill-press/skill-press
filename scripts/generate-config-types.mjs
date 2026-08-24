@@ -30,6 +30,10 @@ const targets = [
     schema: "schemas/eval-evidence.schema.json",
     output: "src/eval/generated-evidence.ts",
   },
+  {
+    schema: "schemas/improve-report.schema.json",
+    output: "src/improve/generated-report.ts",
+  },
 ];
 
 let stale = false;
