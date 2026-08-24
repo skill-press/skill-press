@@ -11,6 +11,7 @@ import type { SkillPackageArtifacts } from "../src/package/archive.js";
 import {
   type PublicationAdapter,
   PublicationSagaError,
+  readPublicationReceipt,
   runPublicationSaga,
 } from "../src/publish/saga.js";
 
@@ -104,6 +105,16 @@ describe("publication saga", () => {
     expect(state.calls).toEqual(["create", "upload", "upload"]);
     expect(resumed.targets[0]?.status).toBe("verified");
     expect(JSON.stringify(resumed)).not.toContain("provider secret detail");
+    const inspected = await readPublicationReceipt(root, resumed.storagePath as string);
+    expect(inspected).toEqual(resumed);
+    expect(Object.isFrozen(inspected.targets[0])).toBe(true);
+    const receiptFile = join(root, resumed.storagePath as string);
+    const mismatchedRun = JSON.parse(await readFile(receiptFile, "utf8"));
+    mismatchedRun.runId = "d".repeat(64);
+    await writeFile(receiptFile, `${JSON.stringify(mismatchedRun)}\n`, { mode: 0o600 });
+    await expect(
+      readPublicationReceipt(root, resumed.storagePath as string),
+    ).rejects.toBeInstanceOf(PublicationSagaError);
   });
 
   it("blocks execution on preflight and records derived targets without claiming publish", async () => {
@@ -285,6 +296,80 @@ describe("publication saga", () => {
       execute: true,
     });
     expect(derivedReceipt.targets[0]).toMatchObject({ remoteId: "organic", status: "derived" });
+  });
+
+  it("rejects schema-valid receipts with incoherent execution and target semantics", async () => {
+    const root = await project();
+    const completed = await runPublicationSaga(root, artifacts, [adapter({ calls: [] })], {
+      execute: true,
+    });
+    const path = join(root, completed.storagePath as string);
+    const original = await readFile(path, "utf8");
+    type MutableReceipt = {
+      execute: boolean;
+      status: string;
+      storagePath: string | null;
+      targets: Array<{
+        capability: string;
+        status: string;
+        preflight: { ok: boolean };
+        steps: Array<{ id: string; status: string }>;
+      }>;
+    };
+    const mutations: Array<(receipt: MutableReceipt) => void> = [
+      (receipt) => {
+        receipt.execute = false;
+      },
+      (receipt) => {
+        receipt.status = "dry_run";
+      },
+      (receipt) => {
+        const target = receipt.targets[0] as MutableReceipt["targets"][number];
+        target.capability = "derived";
+        target.status = "running";
+        target.steps = [];
+        receipt.status = "running";
+      },
+      (receipt) => {
+        const target = receipt.targets[0] as MutableReceipt["targets"][number];
+        target.capability = "derived";
+        target.status = "derived";
+      },
+      (receipt) => {
+        (receipt.targets[0]?.steps[0] as { status: string }).status = "pending";
+      },
+      (receipt) => {
+        const target = receipt.targets[0] as MutableReceipt["targets"][number];
+        target.status = "preflight_failed";
+      },
+      (receipt) => {
+        const target = receipt.targets[0] as MutableReceipt["targets"][number];
+        target.status = "planned";
+        target.preflight.ok = false;
+        receipt.status = "running";
+      },
+      (receipt) => {
+        (receipt.targets[0] as MutableReceipt["targets"][number]).status = "planned";
+      },
+      (receipt) => {
+        receipt.status = "failed";
+      },
+      (receipt) => {
+        receipt.status = "blocked";
+      },
+    ];
+    for (const mutate of mutations) {
+      const receipt = JSON.parse(original) as MutableReceipt;
+      mutate(receipt);
+      await writeFile(path, `${JSON.stringify(receipt)}\n`, { mode: 0o600 });
+      await expect(
+        readPublicationReceipt(root, completed.storagePath as string),
+      ).rejects.toBeInstanceOf(PublicationSagaError);
+    }
+    await writeFile(path, "not-json\n", { mode: 0o600 });
+    await expect(
+      readPublicationReceipt(root, completed.storagePath as string),
+    ).rejects.toBeInstanceOf(PublicationSagaError);
   });
 
   it.runIf(process.platform !== "win32")(

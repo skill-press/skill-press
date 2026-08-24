@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/mushanyoung/skillpress/main/schemas/improve-adapter-request.schema.json",
+  "title": "SkillPressImprovementAdapterRequest",
+  "description": "Private request passed to one external SkillPress improvement role adapter.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "requestType", "requestId", "operation", "payload"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "requestType": { "const": "skillpress.improve-adapter-request" },
+    "requestId": { "$ref": "#/definitions/digest" },
+    "operation": {
+      "type": "string",
+      "enum": ["author", "review", "evaluate-training", "evaluate-holdout"]
+    },
+    "payload": {
+      "type": "object",
+      "description": "Operation-specific context. Author payloads contain training context only; holdout suites are sent only to evaluate-holdout."
+    }
+  },
+  "definitions": {
+    "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  }
+}

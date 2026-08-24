@@ -35,6 +35,14 @@ const targets = [
     output: "src/improve/generated-report.ts",
   },
   {
+    schema: "schemas/improve-adapter-response.schema.json",
+    output: "src/improve/generated-adapter-response.ts",
+  },
+  {
+    schema: "schemas/improve-adapter-request.schema.json",
+    output: "src/improve/generated-adapter-request.ts",
+  },
+  {
     schema: "schemas/tessl-review-evidence.schema.json",
     output: "src/tessl/generated-review-evidence.ts",
   },

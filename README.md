@@ -45,6 +45,28 @@ skillpress tessl review --project . --workspace <workspace>
 skillpress tessl eval --project . --source tessl-evals --agent <agent> --model <model>
 ```
 
+The CLI also exposes the complete gated workflow:
+
+```bash
+skillpress improve --training-evidence <training-evidence.json> \
+  --holdout-evidence <holdout-evidence.json> \
+  --author-command <author> --reviewer-command <reviewer> --evaluator-command <evaluator>
+skillpress package --review-evidence <review-evidence.json> \
+  --eval-evidence <eval-evidence.json> --eval-source tessl-evals
+skillpress status --review-evidence <review-evidence.json> \
+  --eval-evidence <eval-evidence.json> --eval-source tessl-evals \
+  --artifacts <private-artifacts-directory>
+skillpress doctor --review-evidence <review-evidence.json> \
+  --eval-evidence <eval-evidence.json> --eval-source tessl-evals
+skillpress publish --artifacts <private-artifacts-directory> \
+  --review-evidence <review-evidence.json> --eval-evidence <eval-evidence.json> \
+  --eval-source tessl-evals
+```
+
+`publish` is a non-mutating dry run unless `--execute` is supplied. Resume an executed partial run
+with `--execute --resume <private-receipt.json>`. Run each command with `--help` for provider
+identity and executable options; ClawHub additionally requires explicit `--accept-clawhub-mit0`.
+
 `check` reports a local readiness score and fails closed on invalid canonical skills, missing or
 invalid scenario/rubric inputs, and project identity mismatches. Scenario suites reject duplicate
 or leaked holdout cases after Unicode-aware normalization; rubric weights must total exactly 100.
@@ -81,11 +103,14 @@ configured thresholds. See [the release-gate contract](docs/RELEASE_GATES.md). T
 packaging, and publication APIs do not accept score flags, and remote mutation must not begin
 unless the returned gate report passed.
 
-The library export `runBoundedImprovement` coordinates the improvement lifecycle for an author
-adapter. The adapter receives only frozen training scenarios, measured training failures, and
-remaining budgets. A proposal is a complete canonical-skill snapshot limited to `SKILL.md`,
-`LICENSE`, `assets/`, `references/`, and `scripts/`; SkillPress then enforces independent review,
-deterministic checks, measurable training improvement, and only afterward holdout non-regression.
+The `improve` command and library export `runBoundedImprovement` coordinate the improvement
+lifecycle. Three explicit role commands receive schema-versioned request/response files in fresh
+private temporary directories and run without a shell. The author receives only the current
+candidate, frozen training scenarios, measured training failures, and remaining budgets; holdout
+inputs are delivered only to the evaluator. A proposal is a complete canonical-skill snapshot
+limited to `SKILL.md`, `LICENSE`, `assets/`, `references/`, and `scripts/`; SkillPress then enforces
+review, deterministic validation, measurable training improvement, and only afterward holdout
+non-regression. Accepted candidates replace the canonical tree with a private rollback backup.
 The loop stops on repeated non-improvement or iteration, token, cost, and wall-time limits. Its
 schema-validated report records digests and metrics, never candidate contents or holdout prompts.
 

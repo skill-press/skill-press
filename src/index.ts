@@ -1,9 +1,14 @@
 export {
   renderCheckHelp,
   renderCreateHelp,
+  renderDoctorHelp,
   renderEvalHelp,
   renderHelp,
   renderHumanTesslReport,
+  renderImproveHelp,
+  renderPackageHelp,
+  renderPublishHelp,
+  renderStatusHelp,
   renderTesslHelp,
   renderTestHelp,
   runCli,
@@ -22,7 +27,10 @@ export type {
 } from "./tessl/evidence.js";
 export type { SkillPressTesslEvalEvidence } from "./tessl/generated-eval-evidence.js";
 export type { SkillPressTesslReviewEvidence } from "./tessl/generated-review-evidence.js";
-export { checkTesslReleaseGate, TesslReleaseGateError } from "./release/tessl-gate.js";
+export {
+  checkTesslReleaseGate,
+  TesslReleaseGateError,
+} from "./release/tessl-gate.js";
 export type {
   TesslReleaseGateIssue,
   TesslReleaseGateOptions,
@@ -34,13 +42,30 @@ export type {
   StagedCanonicalSkill,
   StagedSkillFile,
 } from "./package/stage.js";
-export { packageStagedSkill, SkillPackageError } from "./package/archive.js";
+export {
+  loadPackagedSkill,
+  packageStagedSkill,
+  SkillPackageError,
+} from "./package/archive.js";
 export type {
+  LoadedSkillPackageArtifacts,
   SkillPackageArtifacts,
   SkillPackageIssue,
 } from "./package/archive.js";
 export type { SkillPressPackageProvenance } from "./package/generated-provenance.js";
-export { PublicationSagaError, runPublicationSaga } from "./publish/saga.js";
+export {
+  PublicationSagaError,
+  readPublicationReceipt,
+  runPublicationSaga,
+} from "./publish/saga.js";
+export { inspectProjectStatus } from "./status/project.js";
+export type {
+  ProjectStatusIssue,
+  ProjectStatusOptions,
+  ProjectStatusReport,
+} from "./status/project.js";
+export { diagnoseProject } from "./doctor/project.js";
+export type { DoctorCheck, DoctorOptions, DoctorReport } from "./doctor/project.js";
 export type {
   PublicationAdapter,
   PublicationArtifact,
@@ -85,8 +110,16 @@ export type {
 } from "./check/types.js";
 export { MAX_TEST_OUTPUT_BYTES } from "./process/run.js";
 export { runProjectTests } from "./test/project.js";
-export type { ProjectTestReport, TestCommandResult, TestCommandStatus } from "./test/types.js";
-export { CONFIG_FILE_NAME, loadProjectConfig, MAX_CONFIG_BYTES } from "./config/load.js";
+export type {
+  ProjectTestReport,
+  TestCommandResult,
+  TestCommandStatus,
+} from "./test/types.js";
+export {
+  CONFIG_FILE_NAME,
+  loadProjectConfig,
+  MAX_CONFIG_BYTES,
+} from "./config/load.js";
 export { ProjectConfigError } from "./config/errors.js";
 export type { ConfigIssue } from "./config/errors.js";
 export type { SkillPressProject } from "./config/generated.js";
@@ -115,7 +148,33 @@ export {
   SandboxPolicyError,
 } from "./eval/sandbox.js";
 export type { SkillPressImprovementReport } from "./improve/generated-report.js";
-export { ImprovementLoopError, runBoundedImprovement } from "./improve/state-machine.js";
+export { runCommandImprovement } from "./improve/command-workflow.js";
+export type {
+  CommandImprovementOptions,
+  CommandImprovementResult,
+  ImprovementAdapterOperation,
+  ImprovementRoleCommand,
+} from "./improve/command-workflow.js";
+export {
+  ImprovementWorkflowError,
+  improvementWorkflowIssue,
+} from "./improve/workflow-error.js";
+export type { ImprovementWorkflowIssue } from "./improve/workflow-error.js";
+export {
+  candidateFilesFromDirectory,
+  improvementCandidateSha256,
+  loadImprovementProjectInputs,
+} from "./improve/project-input.js";
+export type {
+  ImprovementEvidencePaths,
+  ImprovementProjectInputs,
+} from "./improve/project-input.js";
+export type { SkillPressImprovementAdapterRequest } from "./improve/generated-adapter-request.js";
+export type { SkillPressImprovementAdapterResponse } from "./improve/generated-adapter-response.js";
+export {
+  ImprovementLoopError,
+  runBoundedImprovement,
+} from "./improve/state-machine.js";
 export type {
   ImprovementAuthorContext,
   ImprovementBudgets,
@@ -148,7 +207,10 @@ export type { SkillPressCapabilityBrief } from "./create/generated.js";
 export { loadCapabilityBrief } from "./create/load.js";
 export type { ResolvedCapabilityBrief } from "./create/load.js";
 export { renderCapabilityProject } from "./create/render.js";
-export type { RenderedCapabilityProject, RenderedProjectFile } from "./create/render.js";
+export type {
+  RenderedCapabilityProject,
+  RenderedProjectFile,
+} from "./create/render.js";
 export { writeRenderedProject } from "./create/write.js";
 export type {
   CreatedCapabilityProject,

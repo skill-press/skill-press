@@ -72,6 +72,14 @@ describe("bounded captured command runner", () => {
       maxOutputBytes: 1024,
     });
     expect(stderrOverflow.status).toBe("output_limit");
+
+    const stdoutOverflow = await runCapturedCommand({
+      argv: [process.execPath, "-e", "process.stdout.write(Buffer.alloc(2048,97))"],
+      cwd: process.cwd(),
+      timeoutSeconds: 2,
+      maxOutputBytes: 1024,
+    });
+    expect(stdoutOverflow.status).toBe("output_limit");
   });
 
   it("rejects unsafe resource limits", async () => {
@@ -113,5 +121,28 @@ describe("bounded captured command runner", () => {
         maxOutputBytes: 17 * 1024 * 1024,
       }),
     ).rejects.toThrow(TypeError);
+  });
+
+  it("does not spawn for a pre-aborted signal and terminates an active command on abort", async () => {
+    const before = new AbortController();
+    before.abort();
+    await expect(
+      runCapturedCommand({
+        argv: ["missing-command-must-not-spawn"],
+        cwd: process.cwd(),
+        timeoutSeconds: 2,
+        signal: before.signal,
+      }),
+    ).resolves.toMatchObject({ status: "aborted", exitCode: null, signal: null });
+
+    const active = new AbortController();
+    const running = runCapturedCommand({
+      argv: [process.execPath, "-e", "setInterval(() => undefined, 1000)"],
+      cwd: process.cwd(),
+      timeoutSeconds: 2,
+      signal: active.signal,
+    });
+    setTimeout(() => active.abort(), 20);
+    await expect(running).resolves.toMatchObject({ status: "aborted" });
   });
 });

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmod, lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
 import { join, posix } from "node:path";
 
 import { Ajv, type ValidateFunction } from "ajv";
@@ -23,6 +23,10 @@ export interface SkillPackageArtifacts {
   readonly checksumsBytes: number;
   readonly artifactSha256: string;
   readonly artifactBytes: number;
+}
+
+export interface LoadedSkillPackageArtifacts extends SkillPackageArtifacts {
+  readonly sourceCommit: string;
 }
 
 export interface SkillPackageIssue {
@@ -56,6 +60,8 @@ const validateProvenance = new Ajv({ allErrors: true, strict: true }).compile(
   provenanceSchema,
 ) as ValidateFunction<SkillPressPackageProvenance>;
 const CRC_TABLE = new Uint32Array(256);
+const ARTIFACTS_PATH = /^\.skillpress\/staging\/[a-f0-9]{64}\/artifacts$/u;
+const MAX_LOADED_ARTIFACT_BYTES = 64 * 1024 * 1024;
 for (let index = 0; index < CRC_TABLE.length; index += 1) {
   let value = index;
   for (let bit = 0; bit < 8; bit += 1) value = (value >>> 1) ^ (0xedb88320 & -(value & 1));
@@ -68,6 +74,50 @@ function issue(code: string, path: string, message: string): SkillPackageIssue {
 
 function sha256(value: string | Buffer): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function sameMetadata(
+  before: Awaited<ReturnType<typeof lstat>>,
+  after: Awaited<ReturnType<typeof lstat>>,
+): boolean {
+  return (
+    before.dev === after.dev &&
+    before.ino === after.ino &&
+    before.mode === after.mode &&
+    before.size === after.size &&
+    before.mtimeMs === after.mtimeMs &&
+    before.ctimeMs === after.ctimeMs
+  );
+}
+
+async function readPrivateArtifact(path: string, label: string): Promise<Buffer> {
+  const before = await lstat(path);
+  if (
+    !before.isFile() ||
+    before.size < 1 ||
+    before.size > MAX_LOADED_ARTIFACT_BYTES ||
+    (process.platform !== "win32" && (before.mode & 0o077) !== 0)
+  ) {
+    throw new SkillPackageError("Packaged artifacts are unsafe.", [
+      issue(
+        "package.load.unsafe",
+        `/artifacts/${label}`,
+        "artifact must be a bounded private regular file",
+      ),
+    ]);
+  }
+  const value = await readFile(path);
+  const after = await lstat(path);
+  if (value.byteLength !== before.size || !sameMetadata(before, after)) {
+    throw new SkillPackageError("A packaged artifact changed while it was read.", [
+      issue(
+        "package.load.changed",
+        `/artifacts/${label}`,
+        "artifact identity and content must remain stable",
+      ),
+    ]);
+  }
+  return value;
 }
 
 function crc32(bytes: Buffer): number {
@@ -173,7 +223,11 @@ async function readStagedFiles(
         issue("package.stage.file", "/staging", "staged file metadata and content must match"),
       ]);
     }
-    result.push({ path: posix.join(skillName, file.path), contents, executable: file.executable });
+    result.push({
+      path: posix.join(skillName, file.path),
+      contents,
+      executable: file.executable,
+    });
   }
   return result;
 }
@@ -200,8 +254,14 @@ export async function packageStagedSkill(
   const artifactsPath = `${staged.stagingPath}/artifacts`;
   const output = join(root, artifactsPath);
   await mkdir(output, { mode: 0o700 });
-  await writeFile(join(output, skillArchive), archive, { flag: "wx", mode: 0o600 });
-  await writeFile(join(output, zipArchive), archive, { flag: "wx", mode: 0o600 });
+  await writeFile(join(output, skillArchive), archive, {
+    flag: "wx",
+    mode: 0o600,
+  });
+  await writeFile(join(output, zipArchive), archive, {
+    flag: "wx",
+    mode: 0o600,
+  });
   const artifact = (name: string) => ({
     name,
     bytes: archive.byteLength,
@@ -254,7 +314,10 @@ export async function packageStagedSkill(
     ].join("\n")}\n`,
   );
   const checksumsSha256 = sha256(checksumBytes);
-  await writeFile(join(output, checksumName), checksumBytes, { flag: "wx", mode: 0o600 });
+  await writeFile(join(output, checksumName), checksumBytes, {
+    flag: "wx",
+    mode: 0o600,
+  });
   for (const name of [skillArchive, zipArchive, checksumName, provenanceName]) {
     await chmod(join(output, name), 0o600);
   }
@@ -271,5 +334,153 @@ export async function packageStagedSkill(
     checksumsBytes: checksumBytes.byteLength,
     artifactSha256: archiveSha256,
     artifactBytes: archive.byteLength,
+  });
+}
+
+/** Reload a private package only after proving its path, provenance, checksums, and bytes. */
+export async function loadPackagedSkill(
+  projectDirectory: string,
+  artifactsPath: string,
+): Promise<LoadedSkillPackageArtifacts> {
+  if (!ARTIFACTS_PATH.test(artifactsPath)) {
+    throw new SkillPackageError("Packaged artifact path is invalid.", [
+      issue(
+        "package.load.path",
+        "/artifactsPath",
+        "artifact path must identify private SkillPress staging storage",
+      ),
+    ]);
+  }
+  const root = await realpath(projectDirectory);
+  const output = join(root, artifactsPath);
+  const pathParts = artifactsPath.split("/");
+  const directories = [
+    join(root, pathParts[0] as string),
+    join(root, pathParts[0] as string, pathParts[1] as string),
+    join(root, pathParts[0] as string, pathParts[1] as string, pathParts[2] as string),
+    output,
+  ];
+  for (const path of directories) {
+    const metadata = await lstat(path);
+    if (
+      !metadata.isDirectory() ||
+      (process.platform !== "win32" && (metadata.mode & 0o077) !== 0)
+    ) {
+      throw new SkillPackageError("Packaged artifact storage is unsafe.", [
+        issue(
+          "package.load.unsafe",
+          "/artifactsPath",
+          "artifact parents must be private real directories",
+        ),
+      ]);
+    }
+  }
+  if ((await realpath(output)) !== output) {
+    throw new SkillPackageError("Packaged artifact storage is unsafe.", [
+      issue(
+        "package.load.unsafe",
+        "/artifactsPath",
+        "artifact storage cannot traverse symbolic links",
+      ),
+    ]);
+  }
+
+  const config = await loadProjectConfig(root);
+  const baseName = `${config.project.name}-${config.project.version}`;
+  const skillArchive = `${baseName}.skill`;
+  const zipArchive = `${baseName}.zip`;
+  const checksums = "SHA256SUMS";
+  const provenance = "provenance.json";
+  const expectedNames = [checksums, provenance, skillArchive, zipArchive].sort();
+  const names = (await readdir(output)).sort();
+  if (names.join("\0") !== expectedNames.join("\0")) {
+    throw new SkillPackageError("Packaged artifact inventory is invalid.", [
+      issue(
+        "package.load.inventory",
+        "/artifacts",
+        "artifact storage must contain the exact package inventory",
+      ),
+    ]);
+  }
+
+  const skillBytes = await readPrivateArtifact(join(output, skillArchive), skillArchive);
+  const zipBytes = await readPrivateArtifact(join(output, zipArchive), zipArchive);
+  const provenanceBytes = await readPrivateArtifact(join(output, provenance), provenance);
+  const checksumBytes = await readPrivateArtifact(join(output, checksums), checksums);
+  if (!skillBytes.equals(zipBytes)) {
+    throw new SkillPackageError("Packaged archives do not match.", [
+      issue(
+        "package.load.archive",
+        "/artifacts",
+        ".skill and .zip archives must be byte-identical",
+      ),
+    ]);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(provenanceBytes.toString("utf8"));
+  } catch {
+    parsed = undefined;
+  }
+  if (!validateProvenance(parsed)) {
+    throw new SkillPackageError("Package provenance is invalid.", [
+      issue(
+        "package.load.provenance",
+        "/artifacts/provenance.json",
+        "provenance must satisfy its versioned schema",
+      ),
+    ]);
+  }
+  const loadedProvenance = parsed;
+  const configBytes = await readFile(join(root, "skillpress.yaml"));
+  const artifactSha256 = sha256(skillBytes);
+  const provenanceSha256 = sha256(provenanceBytes);
+  if (
+    loadedProvenance.project.name !== config.project.name ||
+    loadedProvenance.project.version !== config.project.version ||
+    loadedProvenance.project.skillName !== config.skill.name ||
+    loadedProvenance.projectConfigSha256 !== sha256(configBytes) ||
+    loadedProvenance.artifacts.length !== 2 ||
+    loadedProvenance.artifacts[0]?.name !== skillArchive ||
+    loadedProvenance.artifacts[1]?.name !== zipArchive ||
+    loadedProvenance.artifacts.some(
+      (artifact) => artifact.sha256 !== artifactSha256 || artifact.bytes !== skillBytes.byteLength,
+    )
+  ) {
+    throw new SkillPackageError("Package provenance does not bind current artifacts.", [
+      issue(
+        "package.load.binding",
+        "/artifacts",
+        "project, configuration, names, sizes, and digests must match provenance",
+      ),
+    ]);
+  }
+  const expectedChecksums = Buffer.from(
+    `${artifactSha256}  ${skillArchive}\n${artifactSha256}  ${zipArchive}\n${provenanceSha256}  ${provenance}\n`,
+  );
+  if (!checksumBytes.equals(expectedChecksums)) {
+    throw new SkillPackageError("Package checksums are invalid.", [
+      issue(
+        "package.load.checksums",
+        "/artifacts/SHA256SUMS",
+        "checksums must exactly bind all packaged files",
+      ),
+    ]);
+  }
+  return Object.freeze({
+    schemaVersion: 1,
+    artifactsPath,
+    skillArchive,
+    zipArchive,
+    checksums,
+    provenance,
+    provenanceSha256,
+    provenanceBytes: provenanceBytes.byteLength,
+    checksumsSha256: sha256(checksumBytes),
+    checksumsBytes: checksumBytes.byteLength,
+    artifactSha256,
+    artifactBytes: skillBytes.byteLength,
+    sourceCommit: loadedProvenance.sourceCommit,
   });
 }

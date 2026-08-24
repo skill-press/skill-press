@@ -38,9 +38,22 @@ describe("operating documentation contracts", () => {
     expect(readme).toContain("docs/OPERATIONS.md");
     expect(readme).toContain("docs/SECURITY.md");
     expect(readme).toContain("docs/REGISTRIES.md");
-    expect(operations).toContain(
-      "`package`, `publish`, `status`, and `doctor` are not CLI commands",
-    );
+    for (const command of [
+      "create",
+      "improve",
+      "check",
+      "test",
+      "eval",
+      "tessl",
+      "package",
+      "publish",
+      "status",
+      "doctor",
+    ]) {
+      expect(operations).toContain(`\`${command}\``);
+    }
+    expect(operations).toContain("Publication is a dry run unless `--execute` is explicit");
+    expect(operations).toContain("--training-evidence");
     expect(operations).toContain("checkTesslReleaseGate");
     expect(operations).toContain("resumeReceiptPath");
     expect(operations).toContain("npm run package:verify");

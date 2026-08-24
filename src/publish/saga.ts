@@ -158,6 +158,49 @@ function freeze<T>(value: T): T {
   return value;
 }
 
+function validReceiptSemantics(receipt: PublicationReceipt): boolean {
+  const expectedStorage = `.skillpress/publications/${receipt.runId}/receipt.json`;
+  if (receipt.storagePath !== null && receipt.storagePath !== expectedStorage) return false;
+  if (!receipt.execute) {
+    if (receipt.status !== "dry_run" || receipt.storagePath !== null) return false;
+  } else if (receipt.status === "dry_run") {
+    return false;
+  }
+  for (const target of receipt.targets) {
+    const completed = target.steps.every((step) => step.status === "completed");
+    if (target.capability === "derived") {
+      if (
+        target.status !== "derived" &&
+        target.status !== "planned" &&
+        target.status !== "preflight_failed"
+      ) {
+        return false;
+      }
+      if (target.steps.length !== 0) return false;
+    } else if (target.status === "verified" && !completed) {
+      return false;
+    }
+    if (target.status === "preflight_failed" && target.preflight.ok) return false;
+    if (target.status !== "preflight_failed" && !target.preflight.ok) return false;
+  }
+  if (
+    receipt.status === "completed" &&
+    receipt.targets.some((target) => target.status !== "verified" && target.status !== "derived")
+  ) {
+    return false;
+  }
+  if (
+    receipt.status === "failed" &&
+    !receipt.targets.some((target) => target.status === "failed")
+  ) {
+    return false;
+  }
+  if (receipt.status === "blocked" && !receipt.targets.some((target) => !target.preflight.ok)) {
+    return false;
+  }
+  return true;
+}
+
 async function publicationStorage(root: string, runId: string): Promise<string> {
   const privateRoot = join(root, ".skillpress");
   const parent = join(privateRoot, "publications");
@@ -180,7 +223,7 @@ async function publicationStorage(root: string, runId: string): Promise<string> 
 }
 
 async function persist(root: string, receipt: PublicationReceipt): Promise<void> {
-  if (!validateReceipt(receipt)) {
+  if (!validateReceipt(receipt) || !validReceiptSemantics(receipt)) {
     throw new PublicationSagaError("Publication receipt violated its schema.", [
       issue("publish.receipt.schema", "/receipt", "internal publication receipt is invalid"),
     ]);
@@ -286,12 +329,31 @@ async function loadReceipt(root: string, path: string): Promise<PublicationRecei
   } catch {
     value = undefined;
   }
-  if (!validateReceipt(value)) {
+  if (!validateReceipt(value) || !validReceiptSemantics(value)) {
     throw new PublicationSagaError("Resume receipt is invalid.", [
       issue("publish.resume.schema", "/resume", "receipt shape is invalid"),
     ]);
   }
   return value;
+}
+
+/** Read a private persisted receipt without running provider preflights or mutations. */
+export async function readPublicationReceipt(
+  projectDirectory: string,
+  receiptPath: string,
+): Promise<PublicationReceipt> {
+  const root = await realpath(resolve(projectDirectory));
+  const receipt = await loadReceipt(root, receiptPath);
+  if (receipt.storagePath !== receiptPath) {
+    throw new PublicationSagaError("Publication receipt storage binding is invalid.", [
+      issue(
+        "publish.receipt.binding",
+        "/receipt",
+        "receipt storagePath must match its private file path",
+      ),
+    ]);
+  }
+  return freeze(structuredClone(receipt));
 }
 
 function adapterBinding(adapter: PublicationAdapter): object {

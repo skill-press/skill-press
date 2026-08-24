@@ -2,6 +2,9 @@ import { join } from "node:path";
 
 import { checkProject } from "./check/project.js";
 import type { SkillPressCheckReport } from "./check/types.js";
+import { DOCTOR_HELP, runDoctorCommand, runStatusCommand, STATUS_HELP } from "./cli/inspect.js";
+import { IMPROVE_HELP, runImproveCommand } from "./cli/improve.js";
+import { PACKAGE_HELP, PUBLISH_HELP, runPackageCommand, runPublishCommand } from "./cli/release.js";
 import { ProjectConfigError } from "./config/errors.js";
 import { CapabilityBriefError, ProjectCreationError } from "./create/errors.js";
 import { loadCapabilityBrief } from "./create/load.js";
@@ -48,9 +51,11 @@ Commands:
   test               Run deterministic project test commands without a shell
   eval               Run paired baseline/with-skill evaluation in a sandbox
   tessl              Capture official Tessl Quality and Impact evidence
-
-The package, publish, status, and doctor commands will be
-enabled as their independently reviewed implementation slices land.
+  package            Create reproducible, provenance-bound release artifacts
+  publish            Plan, execute, and resume verified publication
+  status             Summarize gates, evidence, and publication state
+  doctor             Diagnose environment and release prerequisites
+  improve            Run the bounded author/review/evaluation loop
 `;
 
 const TESSL_HELP = `Capture release evidence using the official Tessl CLI.
@@ -230,6 +235,26 @@ export function renderTesslHelp(): string {
   return TESSL_HELP;
 }
 
+export function renderPackageHelp(): string {
+  return PACKAGE_HELP;
+}
+
+export function renderPublishHelp(): string {
+  return PUBLISH_HELP;
+}
+
+export function renderStatusHelp(): string {
+  return STATUS_HELP;
+}
+
+export function renderDoctorHelp(): string {
+  return DOCTOR_HELP;
+}
+
+export function renderImproveHelp(): string {
+  return IMPROVE_HELP;
+}
+
 function assertPathArgument(flag: string, value: string | undefined): string {
   if (value === undefined || value.startsWith("--")) {
     throw new CliUsageError(`${flag} requires a path value.`);
@@ -395,7 +420,11 @@ function parseTesslArguments(args: readonly string[]): TesslArguments {
     json,
   };
   if (operation === "review") {
-    return { operation, ...common, ...(workspace === undefined ? {} : { workspace }) };
+    return {
+      operation,
+      ...common,
+      ...(workspace === undefined ? {} : { workspace }),
+    };
   }
   if (source === undefined || agent === undefined || model === undefined) {
     throw new CliUsageError("tessl eval requires --source, --agent, and --model.");
@@ -524,7 +553,11 @@ async function writeInternalFailure(
   command: string,
 ): Promise<CliExitCode> {
   await writeError(io, json, "internal", "SkillPress could not complete the command.", [
-    { code: `${command}.internal`, path: "/", message: "unexpected internal failure" },
+    {
+      code: `${command}.internal`,
+      path: "/",
+      message: "unexpected internal failure",
+    },
   ]);
   return 1;
 }
@@ -911,6 +944,41 @@ export async function runCli(args: readonly string[], io: CliIo = defaultIo): Pr
       return (await writeStdout(capturedIo, renderTesslHelp())) ? 0 : 1;
     }
     return runTessl(capturedArgs.slice(1), capturedIo);
+  }
+
+  if (capturedArgs[0] === "package") {
+    if ((capturedArgs[1] === "--help" || capturedArgs[1] === "-h") && capturedArgs.length === 2) {
+      return (await writeStdout(capturedIo, renderPackageHelp())) ? 0 : 1;
+    }
+    return runPackageCommand(capturedArgs.slice(1), capturedIo);
+  }
+
+  if (capturedArgs[0] === "publish") {
+    if ((capturedArgs[1] === "--help" || capturedArgs[1] === "-h") && capturedArgs.length === 2) {
+      return (await writeStdout(capturedIo, renderPublishHelp())) ? 0 : 1;
+    }
+    return runPublishCommand(capturedArgs.slice(1), capturedIo);
+  }
+
+  if (capturedArgs[0] === "status") {
+    if ((capturedArgs[1] === "--help" || capturedArgs[1] === "-h") && capturedArgs.length === 2) {
+      return (await writeStdout(capturedIo, renderStatusHelp())) ? 0 : 1;
+    }
+    return runStatusCommand(capturedArgs.slice(1), capturedIo);
+  }
+
+  if (capturedArgs[0] === "doctor") {
+    if ((capturedArgs[1] === "--help" || capturedArgs[1] === "-h") && capturedArgs.length === 2) {
+      return (await writeStdout(capturedIo, renderDoctorHelp())) ? 0 : 1;
+    }
+    return runDoctorCommand(capturedArgs.slice(1), capturedIo);
+  }
+
+  if (capturedArgs[0] === "improve") {
+    if ((capturedArgs[1] === "--help" || capturedArgs[1] === "-h") && capturedArgs.length === 2) {
+      return (await writeStdout(capturedIo, renderImproveHelp())) ? 0 : 1;
+    }
+    return runImproveCommand(capturedArgs.slice(1), capturedIo);
   }
 
   return usageFailure(

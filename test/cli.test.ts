@@ -13,10 +13,15 @@ import type { SkillPressProject } from "../src/config/generated.js";
 import {
   renderCheckHelp,
   renderCreateHelp,
+  renderDoctorHelp,
   renderEvalHelp,
   renderHelp,
   renderHumanEvalReport,
   renderHumanTesslReport,
+  renderImproveHelp,
+  renderPackageHelp,
+  renderPublishHelp,
+  renderStatusHelp,
   renderTestHelp,
   renderTesslHelp,
   runCli,
@@ -125,6 +130,101 @@ describe("SkillPress CLI scaffold", () => {
     await expect(runCli(["tessl", flag as string], capture.io)).resolves.toBe(0);
     expect(capture.stdout).toEqual([renderTesslHelp()]);
     expect(capture.stderr).toEqual([]);
+  });
+
+  it.each([
+    { command: "package", help: renderPackageHelp },
+    { command: "publish", help: renderPublishHelp },
+    { command: "status", help: renderStatusHelp },
+    { command: "doctor", help: renderDoctorHelp },
+    { command: "improve", help: renderImproveHelp },
+  ])("renders $command release help", async ({ command, help }) => {
+    for (const flag of ["--help", "-h"]) {
+      const capture = captureIo();
+      await expect(runCli([command, flag], capture.io)).resolves.toBe(0);
+      expect(capture.stdout).toEqual([help()]);
+      expect(capture.stderr).toEqual([]);
+    }
+  });
+
+  it.each([
+    { args: ["package"], message: "--review-evidence is required" },
+    {
+      args: [
+        "package",
+        "--review-evidence",
+        "review",
+        "--eval-evidence",
+        "eval",
+        "--eval-source",
+        "source",
+        "--json",
+        "--json",
+      ],
+      message: "--json may be specified only once",
+    },
+    {
+      args: [
+        "publish",
+        "--artifacts",
+        "artifacts",
+        "--review-evidence",
+        "review",
+        "--eval-evidence",
+        "eval",
+        "--eval-source",
+        "source",
+        "--resume",
+        "receipt",
+      ],
+      message: "--resume requires --execute",
+    },
+    {
+      args: ["publish", "FORGED\u001b[31m"],
+      message: "Unknown release option",
+    },
+  ])("rejects invalid release arguments: $message", async ({ args, message }) => {
+    const capture = captureIo();
+    await expect(runCli(args, capture.io)).resolves.toBe(2);
+    expect(capture.stdout).toEqual([]);
+    expect(capture.stderr).toHaveLength(1);
+    expect(capture.stderr[0]).toContain(message);
+    expect(capture.stderr[0]).not.toContain("FORGED");
+  });
+
+  it("fails package closed before staging when official release evidence is unavailable", async () => {
+    const parent = await temporaryDirectory();
+    const project = join(parent, "release-project");
+    await expect(
+      runCli(["create", "--brief", briefPath, "--output", project], captureIo().io),
+    ).resolves.toBe(0);
+    const capture = captureIo();
+    await expect(
+      runCli(
+        [
+          "package",
+          "--project",
+          project,
+          "--review-evidence",
+          `.skillpress/tessl/${"1".repeat(64)}/evidence.json`,
+          "--eval-evidence",
+          `.skillpress/tessl/${"2".repeat(64)}/evidence.json`,
+          "--eval-source",
+          "evals/tessl",
+          "--json",
+        ],
+        capture.io,
+      ),
+    ).resolves.toBe(3);
+    expect(capture.stdout).toEqual([]);
+    expect(JSON.parse(capture.stderr[0] as string)).toMatchObject({
+      ok: false,
+      code: "release_blocked",
+      issues: [{ code: "release.storage.unavailable" }],
+    });
+    await expect(lstat(join(project, ".skillpress/staging"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 
   it.each([
@@ -504,7 +604,11 @@ else process.exit(2);
       project: { name: "example", version: "1.0.0" },
       suite: "training",
       model: "model",
-      adapter: { backend: "docker", image: "image", commandSha256: "b".repeat(64) },
+      adapter: {
+        backend: "docker",
+        image: "image",
+        commandSha256: "b".repeat(64),
+      },
       skillSha256: "c".repeat(64),
       configSha256: "d".repeat(64),
       repetitions: 3,
@@ -788,7 +892,12 @@ else process.exit(2);
 
     expect(capture.stderr).toEqual([]);
     const report = JSON.parse(capture.stdout[0] as string) as Record<string, unknown>;
-    expect(report).toMatchObject({ command: "check", ok: false, eligible: false, score: 40 });
+    expect(report).toMatchObject({
+      command: "check",
+      ok: false,
+      eligible: false,
+      score: 40,
+    });
     expect(JSON.stringify(report)).not.toContain(skillPath);
 
     const human = captureIo();
@@ -831,7 +940,10 @@ else process.exit(2);
 
   it.each([
     { args: ["check", "--project"], message: "requires a path" },
-    { args: ["check", "--project", ".", "--project", "."], message: "only once" },
+    {
+      args: ["check", "--project", ".", "--project", "."],
+      message: "only once",
+    },
     { args: ["check", "--json", "--json"], message: "only once" },
     { args: ["check", "extra"], message: "Unknown check argument" },
   ])("rejects invalid check arguments: $message", async ({ args, message }) => {
@@ -937,7 +1049,10 @@ else process.exit(2);
 
   it.each([
     { args: ["test", "--project"], message: "requires a path" },
-    { args: ["test", "--project", ".", "--project", "."], message: "only once" },
+    {
+      args: ["test", "--project", ".", "--project", "."],
+      message: "only once",
+    },
     { args: ["test", "--json", "--json"], message: "only once" },
     { args: ["test", "extra"], message: "Unknown test argument" },
   ])("rejects invalid test arguments: $message", async ({ args, message }) => {
@@ -952,7 +1067,9 @@ else process.exit(2);
     const parent = await temporaryDirectory();
     const invalidBrief = join(parent, "invalid.yaml");
     const output = join(parent, "project");
-    await writeFile(invalidBrief, "schemaVersion: 1\nname: partial\n", { mode: 0o600 });
+    await writeFile(invalidBrief, "schemaVersion: 1\nname: partial\n", {
+      mode: 0o600,
+    });
     const capture = captureIo();
 
     await expect(
@@ -1028,7 +1145,11 @@ else process.exit(2);
     const output = join(parent, "project");
     const stderr: string[] = [];
     const forged = new ProjectCreationError("attacker-controlled message", "unsafe-output", [
-      { code: "attacker.issue", path: "/secret", message: "attacker-controlled detail" },
+      {
+        code: "attacker.issue",
+        path: "/secret",
+        message: "attacker-controlled detail",
+      },
     ]);
 
     await expect(

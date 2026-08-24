@@ -11,7 +11,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { loadCapabilityBrief } from "../src/create/load.js";
 import { renderCapabilityProject } from "../src/create/render.js";
 import { writeRenderedProject } from "../src/create/write.js";
-import { packageStagedSkill, SkillPackageError } from "../src/package/archive.js";
+import {
+  loadPackagedSkill,
+  packageStagedSkill,
+  SkillPackageError,
+} from "../src/package/archive.js";
 import { stageCanonicalSkill } from "../src/package/stage.js";
 
 const execFileAsync = promisify(execFile);
@@ -126,5 +130,94 @@ describe("deterministic package archives", () => {
     const staged = structuredClone(await stageCanonicalSkill(root));
     staged.files[0].sha256 = "0".repeat(64);
     await expect(packageStagedSkill(root, staged)).rejects.toBeInstanceOf(SkillPackageError);
+  });
+
+  it("reloads an exact private package for resumable publication", async () => {
+    const root = await project();
+    const staged = await stageCanonicalSkill(root);
+    const packaged = await packageStagedSkill(root, staged);
+
+    await expect(loadPackagedSkill(root, packaged.artifactsPath)).resolves.toEqual({
+      ...packaged,
+      sourceCommit: staged.sourceCommit,
+    });
+  });
+
+  it("rejects unsafe paths, inventory drift, permissive files, and checksum tampering", async () => {
+    const pathRoot = await project();
+    await expect(
+      loadPackagedSkill(pathRoot, ".skillpress/staging/not-a-run/artifacts"),
+    ).rejects.toBeInstanceOf(SkillPackageError);
+
+    const inventoryRoot = await project();
+    const inventory = await packageStagedSkill(
+      inventoryRoot,
+      await stageCanonicalSkill(inventoryRoot),
+    );
+    await writeFile(join(inventoryRoot, inventory.artifactsPath, "extra"), "x", { mode: 0o600 });
+    await expect(loadPackagedSkill(inventoryRoot, inventory.artifactsPath)).rejects.toBeInstanceOf(
+      SkillPackageError,
+    );
+
+    if (process.platform !== "win32") {
+      const modeRoot = await project();
+      const mode = await packageStagedSkill(modeRoot, await stageCanonicalSkill(modeRoot));
+      await chmod(join(modeRoot, mode.artifactsPath, mode.skillArchive), 0o644);
+      await expect(loadPackagedSkill(modeRoot, mode.artifactsPath)).rejects.toBeInstanceOf(
+        SkillPackageError,
+      );
+    }
+
+    const checksumRoot = await project();
+    const checksum = await packageStagedSkill(
+      checksumRoot,
+      await stageCanonicalSkill(checksumRoot),
+    );
+    await writeFile(join(checksumRoot, checksum.artifactsPath, checksum.checksums), "0".repeat(64));
+    await expect(loadPackagedSkill(checksumRoot, checksum.artifactsPath)).rejects.toBeInstanceOf(
+      SkillPackageError,
+    );
+  });
+
+  it("rejects unsafe parent storage, divergent archives, invalid provenance, and stale bindings", async () => {
+    if (process.platform !== "win32") {
+      const parentRoot = await project();
+      const parent = await packageStagedSkill(parentRoot, await stageCanonicalSkill(parentRoot));
+      await chmod(join(parentRoot, ".skillpress"), 0o755);
+      await expect(loadPackagedSkill(parentRoot, parent.artifactsPath)).rejects.toBeInstanceOf(
+        SkillPackageError,
+      );
+    }
+
+    const divergentRoot = await project();
+    const divergent = await packageStagedSkill(
+      divergentRoot,
+      await stageCanonicalSkill(divergentRoot),
+    );
+    const divergentZipPath = join(divergentRoot, divergent.artifactsPath, divergent.zipArchive);
+    const divergentBytes = await readFile(divergentZipPath);
+    const finalIndex = divergentBytes.length - 1;
+    divergentBytes[finalIndex] = (divergentBytes[finalIndex] as number) ^ 1;
+    await writeFile(divergentZipPath, divergentBytes);
+    await expect(loadPackagedSkill(divergentRoot, divergent.artifactsPath)).rejects.toBeInstanceOf(
+      SkillPackageError,
+    );
+
+    const invalidRoot = await project();
+    const invalid = await packageStagedSkill(invalidRoot, await stageCanonicalSkill(invalidRoot));
+    await writeFile(join(invalidRoot, invalid.artifactsPath, invalid.provenance), "not-json\n");
+    await expect(loadPackagedSkill(invalidRoot, invalid.artifactsPath)).rejects.toBeInstanceOf(
+      SkillPackageError,
+    );
+
+    const staleRoot = await project();
+    const stale = await packageStagedSkill(staleRoot, await stageCanonicalSkill(staleRoot));
+    const provenancePath = join(staleRoot, stale.artifactsPath, stale.provenance);
+    const provenance = JSON.parse(await readFile(provenancePath, "utf8"));
+    provenance.project.name = "different";
+    await writeFile(provenancePath, `${JSON.stringify(provenance)}\n`);
+    await expect(loadPackagedSkill(staleRoot, stale.artifactsPath)).rejects.toBeInstanceOf(
+      SkillPackageError,
+    );
   });
 });

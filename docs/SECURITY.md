@@ -24,6 +24,7 @@ into a security boundary.
 | Path traversal, links, device files, races, and Unicode aliases | safe relative paths, no symlinks/special files, bounded tree snapshots, Unicode collision checks, before/after digests | a same-account hostile process can race portable filesystem calls; isolate mutually untrusted work by OS/container boundary |
 | Secret files or credential-like resources entering a skill | basename rules, semantic secret scans, tracked-only staging, package allowlists | novel encodings and credentials deliberately embedded in otherwise ordinary prose require human review |
 | Shell injection or unbounded subprocesses | argv execution without a shell, explicit cwd, time/output limits, process-group termination | provider binaries and the container runtime remain privileged dependencies |
+| Holdout leakage or hostile improvement roles | separate author/reviewer/evaluator processes; author payload contains training only; schema-bound private request/response files; canonical validation and regression gates before atomic acceptance | role executables are user-authorized host programs and retain that authority; run untrusted roles inside an external OS/container boundary |
 | Fabricated readiness or external scores | separate evidence types; official Tessl CLI pin; raw output hashes; current Git/tree/time binding; gate reparsing | current Tessl CLI output has no detached provider signature, so a hostile filesystem owner is outside the proof model |
 | Duplicate or partial publication | all-target preflight, deterministic idempotency key, per-step private receipt, exact remote verification, resume binding | some providers expose irreversible public history or require manual rollback/review |
 | Dependency/action substitution | exact npm lockfile, generated-source checks, full-SHA official GitHub actions, no release cache, production audit | registry or action-owner compromise still requires pin/lock review and incident response |
@@ -44,6 +45,13 @@ home directory, SSH agent, cloud configuration, and keychain sockets are not mou
 An isolated directory alone is not a sandbox. Unsafe host execution cannot create release-eligible
 evidence. A live network profile must be explicit and should use the narrowest enforceable egress;
 unrestricted networking is not release evidence.
+
+`skillpress improve` runs explicitly supplied role executables on the host without a shell. Each
+call uses a fresh private temporary directory, bounded output and time, and an explicit environment
+allowlist. This isolates role requests from one another but is not an operating-system sandbox.
+The author payload excludes holdout suites; the evaluator alone receives them. Candidate paths,
+file counts, sizes, encodings, Agent Skill structure, measured training progress, holdout
+non-regression, and live project identity are rechecked before the canonical tree is replaced.
 
 ## Credential handling
 
@@ -68,7 +76,7 @@ a redacted incident record, and inspect private raw storage before sharing anyth
 
 ## Evidence and storage
 
-Raw eval, Tessl, staging, and publication state lives under ignored `.skillpress/` directories.
+Raw eval, Tessl, improvement, staging, and publication state lives under ignored `.skillpress/` directories.
 POSIX directories use mode `0700` and evidence/receipt/artifact files use `0600`. Loaders reject
 unsafe path shapes, symlinks, non-regular files, oversized data, permissive receipt/evidence files,
 schema drift, digest mismatch, and concurrent source change.

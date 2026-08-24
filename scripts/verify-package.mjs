@@ -65,6 +65,8 @@ function paths(result) {
     "schemas/skillpress.schema.json",
     "schemas/package-provenance.schema.json",
     "schemas/publication-receipt.schema.json",
+    "schemas/improve-adapter-request.schema.json",
+    "schemas/improve-adapter-response.schema.json",
   ]) {
     if (!values.includes(required)) fail(`required package path is missing: ${required}`);
   }

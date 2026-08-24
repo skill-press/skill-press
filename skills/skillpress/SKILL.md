@@ -55,7 +55,8 @@ Read only the references needed for the current request.
 
 ## Current interface boundary
 
-The CLI exposes `create`, `check`, `test`, `eval`, and `tessl`. In this release, deterministic
-packaging and the publication saga are programmatic TypeScript APIs. Do not invent `skillpress
-package`, `skillpress publish`, `status`, or `doctor` commands until the installed CLI advertises
-them.
+The CLI exposes `create`, `improve`, `check`, `test`, `eval`, `tessl`, `package`, `publish`,
+`status`, and `doctor`; run the installed command's `--help` before constructing optional provider
+arguments. The typed package also exports the underlying APIs. Prefer CLI `package` and `publish`
+for their mandatory current Tessl-gate checks. `publish` is dry-run by default, and neither
+packaging nor inspection grants authority for `--execute`.

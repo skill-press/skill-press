@@ -179,6 +179,11 @@ describe("bounded improvement state machine", () => {
       "review_rejected",
     ],
     [
+      "approved review with unresolved issues",
+      { review: async () => ({ approved: true, issueCodes: ["scope"] }) },
+      "review_rejected",
+    ],
+    [
       "review exception",
       { review: async () => Promise.reject(new Error("review")) },
       "review_rejected",

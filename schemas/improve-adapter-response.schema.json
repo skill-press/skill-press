@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/mushanyoung/skillpress/main/schemas/improve-adapter-response.schema.json",
+  "title": "SkillPressImprovementAdapterResponse",
+  "description": "Strict response written by an external SkillPress improvement role adapter.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "responseType", "operation", "result"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "responseType": { "const": "skillpress.improve-adapter-response" },
+    "operation": {
+      "type": "string",
+      "enum": ["author", "review", "evaluate-training", "evaluate-holdout"]
+    },
+    "result": {
+      "oneOf": [
+        { "$ref": "#/definitions/proposal" },
+        { "$ref": "#/definitions/review" },
+        { "$ref": "#/definitions/evaluation" }
+      ]
+    }
+  },
+  "definitions": {
+    "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "candidateFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "content"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^(?:SKILL[.]md|LICENSE|(?:assets|references|scripts)/[A-Za-z0-9._/-]+)$"
+        },
+        "content": { "type": "string", "maxLength": 2097152 },
+        "executable": { "type": "boolean" }
+      }
+    },
+    "proposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseCandidateSha256", "files", "rationale", "tokensUsed", "costUsd"],
+      "properties": {
+        "baseCandidateSha256": { "$ref": "#/definitions/digest" },
+        "files": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 64,
+          "items": { "$ref": "#/definitions/candidateFile" }
+        },
+        "rationale": { "type": "string", "minLength": 1, "maxLength": 8192 },
+        "tokensUsed": { "type": "integer", "minimum": 0, "maximum": 10000000 },
+        "costUsd": { "type": "number", "minimum": 0, "maximum": 10000 }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approved", "issueCodes"],
+      "properties": {
+        "approved": { "type": "boolean" },
+        "issueCodes": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+          }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["successRate", "activationPrecision", "safetyRate"],
+      "properties": {
+        "successRate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "activationPrecision": { "type": "number", "minimum": 0, "maximum": 1 },
+        "safetyRate": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenarioSetSha256", "metrics"],
+      "properties": {
+        "scenarioSetSha256": { "$ref": "#/definitions/digest" },
+        "metrics": { "$ref": "#/definitions/metrics" }
+      }
+    }
+  }
+}

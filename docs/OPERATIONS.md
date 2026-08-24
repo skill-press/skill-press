@@ -5,10 +5,11 @@ planning and recovery, and the npm release workflow for SkillPress 0.1.0.
 
 ## Current interface boundary
 
-The installed CLI currently implements `create`, `check`, `test`, `eval`, and `tessl`. Staging,
-packaging, release-gate evaluation, adapter construction, publication, and receipt resume are
-public TypeScript APIs. `package`, `publish`, `status`, and `doctor` are not CLI commands in 0.1.0;
-do not turn their help placeholders into operating instructions.
+The installed CLI implements `create`, `improve`, `check`, `test`, `eval`, `tessl`, `package`,
+`publish`, `status`, and `doctor`. The corresponding staging, packaging, release-gate, status,
+diagnostic, adapter-construction, publication, and receipt APIs are also exported for typed
+integrations. CLI `package` and `publish` always recheck official Tessl evidence; there is no
+manual-score path. Publication is a dry run unless `--execute` is explicit.
 
 Use Node.js 22 or newer. The repository quality matrix covers Node.js 22, 24, and 26.
 
@@ -46,6 +47,23 @@ The paired runner uses separate baseline and with-skill sandboxes. It disables n
 default and writes raw results to private ignored `.skillpress/runs/` storage. Local readiness and
 paired behavior are necessary evidence classes, but neither is a Tessl score.
 
+Use the returned complete training and holdout evidence with three explicit role executables:
+
+```bash
+node dist/bin.js improve --project ./my-skill \
+  --training-evidence <training-evidence.json> \
+  --holdout-evidence <holdout-evidence.json> \
+  --author-command <author> --reviewer-command <reviewer> \
+  --evaluator-command <evaluator> --json
+```
+
+Repeat `--author-arg`, `--reviewer-arg`, or `--evaluator-arg` for argv. Environment forwarding is
+an explicit name allowlist through the corresponding `--*-env <NAME>` option. SkillPress appends
+`--skillpress-operation`, `--request`, and `--response`; adapters must write the versioned response
+schema. Each call gets a fresh private temporary directory. The author request contains training
+context only, while holdout scenarios go only to the evaluator. A report with exit code `3` is a
+bounded stop, not an internal failure or permission to bypass a gate.
+
 ## Capture and verify Tessl evidence
 
 Install the pinned official Tessl CLI 0.99.0, authenticate, and confirm the intended workspace.
@@ -61,6 +79,18 @@ node dist/bin.js tessl eval --project . --source <tessl-eval-source> \
 
 Retain the two returned private evidence paths. Immediately before staging a release, re-open and
 revalidate them against current Git inputs:
+
+```bash
+node dist/bin.js package --project . \
+  --review-evidence <review-evidence.json> \
+  --eval-evidence <eval-evidence.json> --eval-source <tessl-eval-source> --json
+```
+
+The command checks the gate before staging and again after private artifacts are written. A source
+change or final-gate failure blocks the result. The returned exact
+`.skillpress/staging/<run-id>/artifacts` path is the only accepted CLI publication input.
+
+The equivalent low-level API is:
 
 ```js
 import {
@@ -81,16 +111,43 @@ const packaged = await packageStagedSkill(projectRoot, staged);
 const artifacts = { ...packaged, sourceCommit: staged.sourceCommit };
 ```
 
-The caller must require `gate.passed` before any remote mutation. The staging/package APIs do not
-accept manual score arguments and do not silently run an external provider gate. They require
-clean tracked canonical inputs, then emit private `.skillpress/staging/` artifacts, checksums, and
-source-bound provenance. Preserve that staging run until every target is verified.
+An API caller must require `gate.passed` before any remote mutation. The low-level staging/package
+APIs do not accept manual score arguments and do not silently run an external provider gate. They
+require clean tracked canonical inputs, then emit private `.skillpress/staging/` artifacts,
+checksums, and source-bound provenance. Preserve that staging run until every target is verified.
+
+Read current local and release state without provider mutation:
+
+```bash
+node dist/bin.js status --project . \
+  --review-evidence <review-evidence.json> --eval-evidence <eval-evidence.json> \
+  --eval-source <tessl-eval-source> --artifacts <artifacts-directory> \
+  --receipt <receipt.json> --json
+node dist/bin.js doctor --project . \
+  --review-evidence <review-evidence.json> --eval-evidence <eval-evidence.json> \
+  --eval-source <tessl-eval-source> --json
+```
+
+`status` verifies local readiness and supplied evidence/package/receipt bindings. `doctor` probes
+only configured local executables, local install-name collisions, runtime support, credential
+context by variable name, and optional Tessl freshness. It never prints credential values or
+contacts registries; the publication dry run remains authoritative for provider identity,
+capability, authentication, and remote collisions.
 
 ## Plan publication
 
-Construct exactly one adapter for each entry in `publish.targets`, in the same order. Adapter
-options bind provider identities; credentials stay in the provider's login store or named
-environment variable.
+The CLI constructs exactly one adapter for each entry in `publish.targets`, in the same order.
+Adapter options bind provider identities; credentials stay in the provider's login store or named
+environment variable. Start with a dry run:
+
+```bash
+node dist/bin.js publish --project . --artifacts <artifacts-directory> \
+  --review-evidence <review-evidence.json> --eval-evidence <eval-evidence.json> \
+  --eval-source <tessl-eval-source> --tessl-workspace <workspace> \
+  --accept-clawhub-mit0 --json
+```
+
+Omit provider flags for targets that are not configured. The equivalent low-level API is:
 
 ```js
 import {
@@ -128,6 +185,15 @@ mutation step. The catalog target is `submit`; an open pull request is not a mer
 
 Only after reviewing a fresh dry run and obtaining publication authority, start execution:
 
+```bash
+node dist/bin.js publish --project . --artifacts <artifacts-directory> \
+  --review-evidence <review-evidence.json> --eval-evidence <eval-evidence.json> \
+  --eval-source <tessl-eval-source> --tessl-workspace <workspace> \
+  --accept-clawhub-mit0 --execute --json
+```
+
+The equivalent API call is:
+
 ```js
 const receipt = await runPublicationSaga(projectRoot, artifacts, adapters, { execute: true });
 ```
@@ -138,6 +204,15 @@ mode `0600` on POSIX systems. The receipt contains credential names, never value
 details.
 
 If `receipt.status === "failed"`, keep the artifacts and resume the exact receipt:
+
+```bash
+node dist/bin.js publish --project . --artifacts <artifacts-directory> \
+  --review-evidence <review-evidence.json> --eval-evidence <eval-evidence.json> \
+  --eval-source <tessl-eval-source> --tessl-workspace <workspace> \
+  --accept-clawhub-mit0 --execute --resume <receipt.json> --json
+```
+
+The equivalent API call is:
 
 ```js
 const resumed = await runPublicationSaga(projectRoot, artifacts, adapters, {

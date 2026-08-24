@@ -7,6 +7,7 @@ export type CapturedCommandStatus =
   | "failed"
   | "spawn_error"
   | "timed_out"
+  | "aborted"
   | "output_limit";
 
 export interface CapturedCommand {
@@ -15,6 +16,7 @@ export interface CapturedCommand {
   readonly timeoutSeconds: number;
   readonly maxOutputBytes?: number;
   readonly env?: Readonly<Record<string, string>>;
+  readonly signal?: AbortSignal;
 }
 
 export interface CapturedCommandResult {
@@ -60,6 +62,7 @@ function environment(additional: Readonly<Record<string, string>> | undefined): 
 /** Run explicit argv without a shell while retaining only bounded output for a strict parser. */
 export async function runCapturedCommand(command: CapturedCommand): Promise<CapturedCommandResult> {
   const startedAt = performance.now();
+  const aborted = (): boolean => command.signal?.aborted === true;
   const maxOutputBytes = command.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
   if (
     !Number.isSafeInteger(command.timeoutSeconds) ||
@@ -73,6 +76,20 @@ export async function runCapturedCommand(command: CapturedCommand): Promise<Capt
   }
   const stdoutHash = createHash("sha256");
   const stderrHash = createHash("sha256");
+  if (aborted()) {
+    return Object.freeze({
+      status: "aborted",
+      exitCode: null,
+      signal: null,
+      durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+      stdout: Buffer.alloc(0),
+      stderr: Buffer.alloc(0),
+      stdoutBytes: 0,
+      stderrBytes: 0,
+      stdoutSha256: stdoutHash.digest("hex"),
+      stderrSha256: stderrHash.digest("hex"),
+    });
+  }
   const stdoutChunks: Buffer[] = [];
   const stderrChunks: Buffer[] = [];
   let stdoutBytes = 0;
@@ -110,6 +127,9 @@ export async function runCapturedCommand(command: CapturedCommand): Promise<Capt
     forcedStatus = status;
     terminate(child, detached);
   };
+  const abort = (): void => force("aborted");
+  command.signal?.addEventListener("abort", abort, { once: true });
+  if (aborted()) abort();
   const retain = (chunk: Buffer, destination: Buffer[]): void => {
     const available = Math.max(0, maxOutputBytes - retainedBytes);
     if (available === 0) return;
@@ -135,6 +155,7 @@ export async function runCapturedCommand(command: CapturedCommand): Promise<Capt
     child.once("error", () => force("spawn_error"));
     child.once("close", (exitCode, signal) => {
       clearTimeout(timeout);
+      command.signal?.removeEventListener("abort", abort);
       resolveResult(
         Object.freeze({
           status: forcedStatus ?? (exitCode === 0 ? "passed" : "failed"),

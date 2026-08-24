@@ -2,7 +2,14 @@
 
 ## Deterministic package boundary
 
-Packaging currently uses the TypeScript API:
+Prefer the CLI because it checks current official Tessl evidence both before and after packaging:
+
+```sh
+skillpress package --project . --review-evidence <review-evidence.json> \
+  --eval-evidence <eval-evidence.json> --eval-source <eval-source> --json
+```
+
+The low-level TypeScript API is available when a typed caller enforces the release gate itself:
 
 ```ts
 import { packageStagedSkill, stageCanonicalSkill } from "@mushanyoung/skillpress";
@@ -35,6 +42,13 @@ workspace/owner identity, explicit MIT-0 consent, and current API tokens belong 
 or their named environment variable; never put them in the canonical skill.
 
 ## Dry run, execute, and resume
+
+Use `skillpress publish` with the exact private artifacts path and the same current evidence.
+Dry-run is the default; `--execute` is explicit and `--resume <receipt>` additionally requires it.
+Supply only the identity/executable options required by configured targets, including
+`--tessl-workspace` and explicit `--accept-clawhub-mit0` when those targets are present.
+
+The low-level API is:
 
 ```ts
 import { runPublicationSaga } from "@mushanyoung/skillpress";

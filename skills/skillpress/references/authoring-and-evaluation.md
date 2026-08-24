@@ -53,3 +53,20 @@ Use training failures to improve instructions. Keep holdout prompts, expected re
 details unavailable to the authoring adapter. Stop the improvement loop at its configured
 iteration, no-improvement, token, cost, or wall-time limit; do not optimize against disclosed
 holdouts.
+
+For the built-in bounded workflow, pass the two complete evidence paths and three separate role
+commands:
+
+```sh
+skillpress improve --project . \
+  --training-evidence <training-evidence.json> \
+  --holdout-evidence <holdout-evidence.json> \
+  --author-command <author> --reviewer-command <reviewer> \
+  --evaluator-command <evaluator> --json
+```
+
+Role commands run without a shell in fresh private temporary directories. SkillPress appends
+operation, request, and response arguments. The author sees the candidate and training context;
+only the evaluator receives holdout suites. Treat exit `3` as an honest bounded stop. Accept a
+candidate only through the workflow's review, deterministic validation, training improvement, and
+holdout non-regression gates.

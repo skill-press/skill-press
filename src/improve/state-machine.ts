@@ -664,6 +664,7 @@ export async function runBoundedImprovement(
       reviewApproved =
         review.approved === true &&
         Array.isArray(review.issueCodes) &&
+        review.issueCodes.length === 0 &&
         review.issueCodes.every((code) => typeof code === "string");
     } catch (error) {
       if (error instanceof ImprovementDeadlineError) return wallFailure(iteration, valid);
