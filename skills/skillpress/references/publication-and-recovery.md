@@ -89,8 +89,14 @@ await runPublicationSaga(projectRoot, artifacts, adapters, {
 
 Do not start a fresh run to hide a partial failure. Adapters recheck identity and remote state
 immediately before mutation, skip only verified or derived targets, reuse only exact existing
-versions, and fail on ambiguous provider errors. Resume only while the source commit, artifact
-digest, project version, adapter order, capability, auth-descriptor names, step plan, rollback
-contract, receipt path and schema, and private storage permissions remain bound and unchanged. A
-completed receipt still needs each target's remote verification; `submitted`, `derived`, pending
-moderation, or human review is not equivalent to published.
+versions, and fail on ambiguous provider errors. Classify read-only remote probes as absent,
+exact-existing, conflicting, unavailable, or still ambiguous when probing the requested immutable
+identity or version. A conflict means that requested identity or version exists with a different
+owner, source, or content digest; only exact-existing is reusable, while conflicting, unavailable,
+and ambiguous states fail closed. Provider lifecycle states such as older, outdated, or pending
+follow only the adapter's explicit update or polling rules and are not exact-existing reuse;
+rejected remains fail closed. Resume only while the source commit, artifact digest, project version,
+adapter order, capability, auth-descriptor names, step plan, rollback contract, receipt path and
+schema, and private storage permissions remain bound and unchanged. A completed receipt still needs
+each target's remote verification; `submitted`, `derived`, pending moderation, or human review is
+not equivalent to published.
