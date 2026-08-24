@@ -4,7 +4,13 @@ import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { CapturedCommandResult } from "../src/process/capture.js";
-import { jsonRecord, passed, runProviderCommand, text } from "../src/publish/adapters/command.js";
+import {
+  jsonRecord,
+  passed,
+  runProviderCommand,
+  runProviderHttp,
+  text,
+} from "../src/publish/adapters/command.js";
 
 const root = realpathSync(tmpdir());
 const oldGhToken = process.env.GH_TOKEN;
@@ -47,12 +53,21 @@ describe("publication provider commands", () => {
     process.env.GH_TOKEN = "gh-test";
     process.env.GITHUB_TOKEN = "github-test";
     let environment: Readonly<Record<string, string>> | undefined;
-    await runProviderCommand(root, ["gh", "api", "user"], {
-      executor: async (command) => {
-        environment = command.env;
-        return result("{}");
+    await runProviderCommand(
+      root,
+      ["gh", "api", "user"],
+      {
+        executor: async (command) => {
+          environment = command.env;
+          return result("{}");
+        },
       },
-    });
+      Object.freeze({
+        GH_TOKEN: process.env.GH_TOKEN,
+        GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+        NO_COLOR: "1",
+      }),
+    );
     expect(environment).toEqual({
       GH_TOKEN: "gh-test",
       GITHUB_TOKEN: "github-test",
@@ -67,5 +82,38 @@ describe("publication provider commands", () => {
     expect(jsonRecord(result("not-json"))).toBeNull();
     expect(jsonRecord(result("{}", false))).toBeNull();
     expect(passed({ ...result(""), signal: "SIGTERM" })).toBe(false);
+  });
+
+  it("bounds production HTTP responses and supports injected clients", async () => {
+    await expect(
+      runProviderHttp({ method: "GET", url: "data:application/json,%7B%22ok%22%3Atrue%7D" }, {}),
+    ).resolves.toEqual({ status: 200, body: '{"ok":true}' });
+    await expect(runProviderHttp({ method: "GET", url: "not-a-url" }, {})).resolves.toEqual({
+      status: 0,
+      body: "",
+    });
+    await expect(
+      runProviderHttp(
+        {
+          method: "POST",
+          url: "data:application/json,%7B%7D",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        },
+        {},
+      ),
+    ).resolves.toMatchObject({ status: 200 });
+    await expect(
+      runProviderHttp(
+        { method: "GET", url: `data:text/plain,${"x".repeat(4 * 1024 * 1024 + 1)}` },
+        {},
+      ),
+    ).resolves.toEqual({ status: 0, body: "" });
+    await expect(
+      runProviderHttp(
+        { method: "POST", url: "https://provider.invalid", body: "{}" },
+        { httpClient: async (request) => ({ status: 201, body: request.body ?? "" }) },
+      ),
+    ).resolves.toEqual({ status: 201, body: "{}" });
   });
 });

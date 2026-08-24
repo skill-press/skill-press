@@ -94,6 +94,33 @@ describe("GitHub publication adapter", () => {
     ]);
   });
 
+  it("projects GitHub tokens without unrelated credentials", async () => {
+    const oldGhToken = process.env.GH_TOKEN;
+    const oldGithubToken = process.env.GITHUB_TOKEN;
+    process.env.GH_TOKEN = "gh-secret";
+    process.env.GITHUB_TOKEN = "github-secret";
+    try {
+      let environment: Readonly<Record<string, string>> | undefined;
+      const adapter = createGitHubPublicationAdapter({
+        executor: async (command) => {
+          environment = command.env;
+          return result("", false);
+        },
+      });
+      await adapter.preflight(context);
+      expect(environment).toEqual({
+        GH_TOKEN: "gh-secret",
+        GITHUB_TOKEN: "github-secret",
+        NO_COLOR: "1",
+      });
+    } finally {
+      if (oldGhToken === undefined) delete process.env.GH_TOKEN;
+      else process.env.GH_TOKEN = oldGhToken;
+      if (oldGithubToken === undefined) delete process.env.GITHUB_TOKEN;
+      else process.env.GITHUB_TOKEN = oldGithubToken;
+    }
+  });
+
   it("publishes exact source and creates an asset-bound release without a shell", async () => {
     const calls: CapturedCommand[] = [];
     const adapter = createGitHubPublicationAdapter({

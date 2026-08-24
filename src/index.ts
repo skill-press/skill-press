@@ -57,9 +57,13 @@ export type {
   PublicationVerification,
 } from "./publish/saga.js";
 export { createGitHubPublicationAdapter } from "./publish/adapters/github.js";
+export { createNpmPublicationAdapter } from "./publish/adapters/npm.js";
 export type {
   PublicationAdapterRuntime,
   PublicationCommandExecutor,
+  PublicationHttpClient,
+  PublicationHttpRequest,
+  PublicationHttpResult,
 } from "./publish/adapters/command.js";
 export { checkProject } from "./check/project.js";
 export type {

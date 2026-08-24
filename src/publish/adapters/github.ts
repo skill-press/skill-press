@@ -10,9 +10,26 @@ import {
   jsonRecord,
   passed,
   type PublicationAdapterRuntime,
-  runProviderCommand,
+  runProviderCommand as runCommand,
   text,
 } from "./command.js";
+
+function runProviderCommand(
+  root: string,
+  argv: readonly [string, ...string[]],
+  runtime: PublicationAdapterRuntime,
+) {
+  return runCommand(
+    root,
+    argv,
+    runtime,
+    Object.freeze({
+      ...(process.env.GH_TOKEN === undefined ? {} : { GH_TOKEN: process.env.GH_TOKEN }),
+      ...(process.env.GITHUB_TOKEN === undefined ? {} : { GITHUB_TOKEN: process.env.GITHUB_TOKEN }),
+      NO_COLOR: "1",
+    }),
+  );
+}
 
 interface GitHubRepository {
   readonly owner: string;
