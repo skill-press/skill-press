@@ -17,6 +17,7 @@ const context: PublicationContext = Object.freeze({
     version: "0.1.0",
     repository: "https://github.com/mushanyoung/skillpress",
   }),
+  skill: Object.freeze({ name: "skillpress", path: "skills/skillpress" }),
   sourceCommit,
   artifactSha256: "a".repeat(64),
   artifactsPath: ".skillpress/staging/x/artifacts",

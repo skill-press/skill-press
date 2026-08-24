@@ -24,6 +24,10 @@ export interface PublicationContext {
     readonly version: string;
     readonly repository: string;
   };
+  readonly skill: {
+    readonly name: string;
+    readonly path: string;
+  };
   readonly sourceCommit: string;
   readonly artifactSha256: string;
   readonly artifactsPath: string;
@@ -350,6 +354,10 @@ export async function runPublicationSaga(
       name: config.project.name,
       version: config.project.version,
       repository: config.project.repository,
+    }),
+    skill: Object.freeze({
+      name: config.skill.name,
+      path: config.skill.path,
     }),
     sourceCommit: artifacts.sourceCommit,
     artifactSha256: artifacts.artifactSha256,
