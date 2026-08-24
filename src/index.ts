@@ -60,6 +60,8 @@ export { createGitHubPublicationAdapter } from "./publish/adapters/github.js";
 export { createNpmPublicationAdapter } from "./publish/adapters/npm.js";
 export { createAskillPublicationAdapter } from "./publish/adapters/askill.js";
 export type { AskillPublicationAdapterOptions } from "./publish/adapters/askill.js";
+export { createAgentSkillHubPublicationAdapter } from "./publish/adapters/agentskillhub.js";
+export type { AgentSkillHubPublicationAdapterOptions } from "./publish/adapters/agentskillhub.js";
 export type {
   PublicationAdapterRuntime,
   PublicationCommandExecutor,
