@@ -1,5 +1,6 @@
 import { realpathSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -199,8 +200,14 @@ describe("GitHub publication adapter", () => {
   it("projects GitHub tokens without unrelated credentials", async () => {
     const oldGhToken = process.env.GH_TOKEN;
     const oldGithubToken = process.env.GITHUB_TOKEN;
+    const oldGhConfig = process.env.GH_CONFIG_DIR;
+    const oldXdgConfig = process.env.XDG_CONFIG_HOME;
+    const oldHome = process.env.HOME;
     process.env.GH_TOKEN = "gh-secret";
     process.env.GITHUB_TOKEN = "github-secret";
+    delete process.env.GH_CONFIG_DIR;
+    delete process.env.XDG_CONFIG_HOME;
+    delete process.env.HOME;
     try {
       let environment: Readonly<Record<string, string>> | undefined;
       const adapter = createGitHubPublicationAdapter({
@@ -213,8 +220,8 @@ describe("GitHub publication adapter", () => {
       expect(environment).toEqual({
         GH_TOKEN: "gh-secret",
         GITHUB_TOKEN: "github-secret",
-        GH_CONFIG_DIR: expect.any(String),
-        HOME: expect.any(String),
+        GH_CONFIG_DIR: join(homedir(), ".config", "gh"),
+        HOME: homedir(),
         GIT_TERMINAL_PROMPT: "0",
         NO_COLOR: "1",
       });
@@ -223,6 +230,12 @@ describe("GitHub publication adapter", () => {
       else process.env.GH_TOKEN = oldGhToken;
       if (oldGithubToken === undefined) delete process.env.GITHUB_TOKEN;
       else process.env.GITHUB_TOKEN = oldGithubToken;
+      if (oldGhConfig === undefined) delete process.env.GH_CONFIG_DIR;
+      else process.env.GH_CONFIG_DIR = oldGhConfig;
+      if (oldXdgConfig === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = oldXdgConfig;
+      if (oldHome === undefined) delete process.env.HOME;
+      else process.env.HOME = oldHome;
     }
   });
 
@@ -383,6 +396,22 @@ describe("GitHub publication adapter", () => {
       },
     });
     await expect(malformed.verify(context)).resolves.toEqual({ ok: false });
+
+    const ambiguousReference = createGitHubPublicationAdapter({
+      executor: async (command) => {
+        if (command.argv[0] === "git") {
+          const reference = command.argv.at(-1) as string;
+          return result(`${commit}\t${reference}\n${commit}\t${reference}\n`);
+        }
+        if (command.argv[1] === "api" && command.argv[2] === "--include") {
+          return releaseResponse();
+        }
+        return result(
+          JSON.stringify({ repositoryTopics: ["agent-skills"], url: context.project.repository }),
+        );
+      },
+    });
+    await expect(ambiguousReference.verify(context)).resolves.toEqual({ ok: false });
   });
 
   it("rejects releases with extra or duplicate assets even when expected assets are present", async () => {
