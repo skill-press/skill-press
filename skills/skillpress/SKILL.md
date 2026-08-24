@@ -35,8 +35,11 @@ Read only the references needed for the current request.
    results outside the authoring loop.
 6. Before release, bind current official Tessl evidence, the committed source, canonical tree,
    scenario tree, CLI binary, and configured thresholds. Never substitute a hand-entered number.
-7. Stage only clean tracked canonical files, create deterministic artifacts, then run publication
-   as a dry run before any explicit execution.
+7. Stage only clean tracked canonical files and create deterministic artifacts for that exact
+   commit. When a configured target requires a public source/CI checkpoint, obtain separate
+   source-push authority, satisfy that target's branch and CI rules without creating a tag or
+   Release, then run an all-target dry run. Resolve provider prerequisites and rerun a fresh
+   complete dry run before requesting separate execution authority.
 8. Resume from the private receipt after partial failure. Report each target as published,
    submitted, derived, pending, failed, or blocked according to its actual capability and remote
    verification.
@@ -45,9 +48,15 @@ Read only the references needed for the current request.
 
 - Creation, checks, tests, packaging, and publication are separate authorities. A request for one
   does not imply permission for later external mutations.
+- Treat every applicable external-mutation boundary separately, including a required public
+  source/CI checkpoint, mutating provider-prerequisite remediation, and the publication saga.
+  Obtain explicit authority immediately before each; a not-applicable checkpoint needs none, and a
+  read-only dry run never grants later authority.
 - Never expose provider credentials to unrelated commands, logs, artifacts, or receipts.
-- Stop before mutation when credentials, provider identity, public approval, license consent,
-  current external evidence, or an enforceable sandbox boundary is missing.
+- Stop at each mutation boundary when its own prerequisites are missing. A source checkpoint needs
+  its source-push authority and repository identity; saga execution additionally needs current
+  external evidence plus every configured provider's identity, credentials, approval, license
+  consent, and enforceable sandbox boundary.
 - Do not synthesize installs for derived registries, bypass human review for submission targets,
   weaken score thresholds, publish from dirty or untracked inputs, or claim unverifiable success.
 - Preserve immutable-version and public-license boundaries in the handoff. A later rollback may be

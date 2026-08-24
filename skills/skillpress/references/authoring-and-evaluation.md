@@ -21,14 +21,31 @@ instead.
    helpers in `scripts/`, and output templates in `assets/` only when they materially help.
 3. Keep frontmatter portable. Provider slugs, versions, visibility, ownership, and license
    conversions belong to target-only projections.
-4. Run:
+4. Make the canonical layout unambiguous. Resolve the configured `skill.path`; do not create a
+   second root-level or provider-specific `SKILL.md`. A complete project normally includes:
+
+   ```text
+   skillpress.yaml
+   skills/<name>/SKILL.md
+   skills/<name>/LICENSE
+   skills/<name>/references/   # only when progressive detail is needed
+   skills/<name>/scripts/      # only deterministic, reviewed helpers
+   evals/training.yaml
+   evals/holdout.yaml
+   evals/rubric.yaml
+   test/ or tests/             # deterministic project tests
+   ```
+
+   Generated provider projections belong under private `.skillpress/` storage and are never a
+   parallel maintained source.
+5. Run:
 
    ```sh
    skillpress check --project . --json
    skillpress test --project . --json
    ```
 
-5. Resolve diagnostics rather than reducing `quality.readinessMinimum`. A local readiness score
+6. Resolve diagnostics rather than reducing `quality.readinessMinimum`. A local readiness score
    measures deterministic completeness and safety; it is not behavioral or external evidence.
 
 `skillpress test` executes the argv configured by the project without a shell. Run it only when the
@@ -53,6 +70,12 @@ Use training failures to improve instructions. Keep holdout prompts, expected re
 details unavailable to the authoring adapter. Stop the improvement loop at its configured
 iteration, no-improvement, token, cost, or wall-time limit; do not optimize against disclosed
 holdouts.
+
+Every scenario plan must cover positive, near-miss/non-activation, missing-input failure, and
+adversarial cases, with an explicit training versus private-holdout partition. Iterate only from
+training failures: change the canonical skill, rerun deterministic checks and training evaluation,
+then let the isolated evaluator test the unchanged holdout. Reject a candidate on holdout
+regression; never move a disclosed holdout into training to manufacture improvement.
 
 For the built-in bounded workflow, pass the two complete evidence paths and three separate role
 commands:
