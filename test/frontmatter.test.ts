@@ -1,9 +1,30 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
+import { Lexer } from "yaml";
 
 import { DiagnosticCollector } from "../src/validate/diagnostics.js";
 import { parseAgentSkillFrontmatter } from "../src/validate/frontmatter.js";
 import { MAX_SKILL_DIAGNOSTICS, MAX_SKILL_FRONTMATTER_BYTES } from "../src/validate/types.js";
 import { skillDocument } from "./helpers/skill-fixtures.js";
+
+function legacyRegExpState(): readonly string[] {
+  const aliases = RegExp as unknown as Readonly<Record<string, string>>;
+  return "input $_ lastMatch $& lastParen $+ leftContext $` rightContext $' $1 $2 $3 $4 $5 $6 $7 $8 $9"
+    .split(" ")
+    .map((alias) => aliases[alias]);
+}
+
+function seedLegacyRegExpState(): void {
+  /^(a)(b)(c)(d)(e)(f)(g)(h)(i)/u.exec("abcdefghi known-benign-tail");
+}
+
+function legacyIndentationExceedsBudget(yaml: string): boolean {
+  return yaml.split(/\r\n|\n|\r/u).some((line) => {
+    const contentOffset = line.search(/[^ ]/u);
+    return (contentOffset === -1 ? line.length : contentOffset) > 64;
+  });
+}
 
 function parse(text: string) {
   const diagnostics = new DiagnosticCollector();
@@ -177,6 +198,120 @@ describe("strict Agent Skills frontmatter parsing", () => {
       ),
       "skill.frontmatter.complexity",
     );
+  });
+
+  it("matches the former indentation language at every boundary", () => {
+    const trailingSpaces = " ".repeat(65);
+    const tails = ["", "x", "\t", "\u00a0", "\u2028", "😀", "\ud800"];
+    for (const separator of ["\n", "\r", "\r\n", "\r\r\n", "\n\r"]) {
+      for (let indentation = 0; indentation <= 65; indentation += 1) {
+        for (const tail of tails) {
+          const yaml = `name: safe${separator}${" ".repeat(indentation)}${tail}${
+            tail === "" ? "" : trailingSpaces
+          }\n`;
+          const expected = indentation === 65;
+          const result = parse(`---\n${yaml}---\nbody\n`);
+          expect(result.codes.includes("skill.frontmatter.complexity")).toBe(expected);
+          expect(legacyIndentationExceedsBudget(yaml)).toBe(expected);
+        }
+      }
+    }
+    expect(parse("---\n---\nbody\n").codes).not.toContain("skill.frontmatter.complexity");
+  });
+
+  it("keeps the envelope byte limit ahead of indentation complexity", () => {
+    const prefix = " ".repeat(65);
+    const exact = `${prefix}${"x".repeat(MAX_SKILL_FRONTMATTER_BYTES - 66)}\n`;
+    const over = `${prefix}${"x".repeat(MAX_SKILL_FRONTMATTER_BYTES - 65)}\n`;
+    expect(exact).toHaveLength(MAX_SKILL_FRONTMATTER_BYTES);
+    expect(parse(`---\n${exact}---\nbody\n`).codes).toEqual(["skill.frontmatter.complexity"]);
+    expect(parse(`---\n${over}---\nbody\n`).codes).toEqual(["skill.frontmatter.too_large"]);
+  });
+
+  it("does not retain over-indented input in legacy RegExp aliases", () => {
+    const secret = "retention-sentinel-frontmatter";
+    const text = `---\n${" ".repeat(65)}${secret}: value\n---\nbody\n`;
+    const diagnostics = new DiagnosticCollector();
+    seedLegacyRegExpState();
+    const before = legacyRegExpState();
+    const parsed = parseAgentSkillFrontmatter(text, diagnostics);
+    const after = legacyRegExpState();
+    const report = diagnostics.finish();
+    expect(before).toHaveLength(19);
+    expect(before[0]).toBe("abcdefghi known-benign-tail");
+    expect(after).toEqual(before);
+    expect(parsed).toBeUndefined();
+    expect(report.diagnostics).toEqual([
+      {
+        code: "skill.frontmatter.complexity",
+        severity: "error",
+        scope: "skillpress",
+        file: "SKILL.md",
+        message: "YAML frontmatter exceeds the parser complexity budget",
+        line: 2,
+        column: 1,
+      },
+    ]);
+    expect(JSON.stringify(report)).not.toContain(secret);
+  });
+
+  it("uses captured indentation intrinsics and returns before the Lexer", () => {
+    const text = `---\n${" ".repeat(65)}private: value\n---\nbody\n`;
+    const diagnostics = new DiagnosticCollector();
+    const targets = [
+      [Reflect, "apply"],
+      [String.prototype, "charCodeAt"],
+      [String.prototype, "split"],
+      [String.prototype, "search"],
+      [RegExp.prototype, "exec"],
+      [RegExp.prototype, "test"],
+      [RegExp.prototype, Symbol.split],
+      [RegExp.prototype, Symbol.search],
+    ] as const;
+    const descriptors = targets.map(([target, key]) =>
+      Object.getOwnPropertyDescriptor(target, key),
+    );
+    const lexerDescriptor = Object.getOwnPropertyDescriptor(Lexer.prototype, "lex");
+    let parsed: ReturnType<typeof parseAgentSkillFrontmatter>;
+    let poisonCalls = 0;
+    let lexerCalls = 0;
+    const poison = () => {
+      poisonCalls += 1;
+      throw new Error("live indentation intrinsic used");
+    };
+    try {
+      for (const [target, key] of targets) {
+        Object.defineProperty(target, key, { configurable: true, value: poison, writable: true });
+      }
+      Object.defineProperty(Lexer.prototype, "lex", {
+        configurable: true,
+        value: () => {
+          lexerCalls += 1;
+          throw new Error("Lexer used on over-indented input");
+        },
+        writable: true,
+      });
+      parsed = parseAgentSkillFrontmatter(text, diagnostics);
+    } finally {
+      Object.defineProperty(Lexer.prototype, "lex", lexerDescriptor as PropertyDescriptor);
+      for (let index = targets.length - 1; index >= 0; index -= 1) {
+        Object.defineProperty(targets[index][0], targets[index][1], descriptors[index]);
+      }
+    }
+    expect(parsed).toBeUndefined();
+    expect([poisonCalls, lexerCalls]).toEqual([0, 0]);
+    expect(diagnostics.finish().diagnostics.map((entry) => entry.code)).toEqual([
+      "skill.frontmatter.complexity",
+    ]);
+  });
+
+  it("keeps the production module free of RegExp execution entry points", () => {
+    const source = readFileSync(new URL("../src/validate/frontmatter.ts", import.meta.url), "utf8");
+    expect(source).not.toContain("RegExp");
+    expect(source).not.toContain("Symbol.");
+    for (const entry of "exec test match matchAll search replace replaceAll split".split(" ")) {
+      expect(source).not.toContain(`.${entry}(`);
+    }
   });
 
   it("requires exact delimiters and rejects source BOMs and controls", () => {

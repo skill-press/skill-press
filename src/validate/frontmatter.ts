@@ -27,6 +27,11 @@ const MAX_YAML_FLOW_DEPTH = 32;
 const MAX_YAML_INDENT = 64;
 const MAX_YAML_TOKENS = 8192;
 const MAX_YAML_NODES = 4096;
+
+// Module initialization is the trust boundary for the indentation scanner.
+const applySnapshot = Reflect.apply;
+const charCodeAtSnapshot = String.prototype.charCodeAt;
+
 const ALLOWED_FIELDS = new Set([
   "name",
   "description",
@@ -36,10 +41,26 @@ const ALLOWED_FIELDS = new Set([
   "allowed-tools",
 ]);
 
+function codeUnitAt(value: string, index: number): number {
+  return applySnapshot(charCodeAtSnapshot, value, [index]) as number;
+}
+
 function exceedsComplexity(yaml: string): boolean {
-  for (const line of yaml.split(/\r\n|\n|\r/u)) {
-    const contentOffset = line.search(/[^ ]/u);
-    if ((contentOffset === -1 ? line.length : contentOffset) > MAX_YAML_INDENT) return true;
+  let indentation = 0;
+  let scanningIndentation = true;
+  for (let index = 0; index < yaml.length; index += 1) {
+    const codeUnit = codeUnitAt(yaml, index);
+    if (codeUnit === 0x0a || codeUnit === 0x0d) {
+      if (codeUnit === 0x0d && codeUnitAt(yaml, index + 1) === 0x0a) index += 1;
+      indentation = 0;
+      scanningIndentation = true;
+    } else if (scanningIndentation) {
+      if (codeUnit !== 0x20) scanningIndentation = false;
+      else {
+        indentation += 1;
+        if (indentation > MAX_YAML_INDENT) return true;
+      }
+    }
   }
   let tokens = 0;
   let flowDepth = 0;
