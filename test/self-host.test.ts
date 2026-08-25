@@ -25,6 +25,7 @@ describe("SkillPress self-hosted project", () => {
 
   it("binds the canonical skill, deterministic tests, and private holdout input", async () => {
     const config = await loadProjectConfig(repositoryRoot);
+    const skill = await readFile(new URL("../skills/skillpress/SKILL.md", import.meta.url), "utf8");
     const holdout = await readFile(new URL("../evals/holdout.yaml", import.meta.url), "utf8");
 
     expect(config.skill).toEqual({
@@ -38,5 +39,8 @@ describe("SkillPress self-hosted project", () => {
     expect(holdout).toContain("suite: holdout");
     expect(holdout).not.toContain("passed:");
     expect(holdout).not.toContain("score:");
+    for (const path of ["evals/training.yaml", "evals/holdout.yaml", "evals/rubric.yaml"]) {
+      expect(skill).toContain(`\`${path}\``);
+    }
   });
 });

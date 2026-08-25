@@ -29,6 +29,9 @@ Read only the references needed for the current request.
    `skillpress.yaml`, canonical `SKILL.md` and `LICENSE`, training/holdout/rubric inputs, and project
    tests explicit. Put provider-only manifests and metadata in generated private projections; never
    present them as canonical project configuration or add registry fields to skill frontmatter.
+   In a plan, name `evals/training.yaml`, `evals/holdout.yaml`, and `evals/rubric.yaml` as distinct
+   inputs; do not collapse them into a generic test or scenario directory. Label every planned
+   scenario row as training or private holdout while revealing private rows only as opaque metadata.
 3. Use `skillpress check --project <root> --json` for deterministic validation and local readiness.
    Treat `eligible: true` only as a local result.
 4. Use `skillpress test --project <root> --json` only for test commands trusted by the project
@@ -36,8 +39,10 @@ Read only the references needed for the current request.
 5. Use paired sandbox evaluation when behavioral proof matters. The controller-owned matrix must
    contain labeled training and private-holdout rows covering positive, near-miss/non-activation,
    missing-input, and adversarial cases; expose only opaque holdout metadata to authors. Make the
-   improvement loop explicit: revise from training failures, rerun deterministic and paired checks,
-   and accept only when the isolated private holdout does not regress.
+   improvement loop an explicit repeated stage, not a one-time check: evaluate training, revise from
+   measured training failures, rerun deterministic and training checks, then have the isolated
+   evaluator run the unchanged private holdout. Accept only when training improves and holdout does
+   not regress.
 6. Before release, bind current official Tessl evidence, the committed source, canonical tree,
    scenario tree, CLI binary, and configured thresholds. Never substitute a hand-entered number.
 7. Stage only clean tracked canonical files and create deterministic artifacts for that exact
