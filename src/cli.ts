@@ -66,7 +66,7 @@ Usage:
 
 Common options:
   --project <directory>     Project root; defaults to the current directory
-  --executable <path>       Official Tessl CLI; defaults to tessl on PATH
+  --executable <path>       Versioned official Tessl CLI; PATH launchers may be untrusted
   --timeout <seconds>       Bounded provider timeout; defaults to 2700
   --json                    Emit one stable JSON object
   -h, --help                Show this help
@@ -82,7 +82,7 @@ Eval options:
   --poll-interval-ms <ms>   Poll interval from 1 to 60000; defaults to 30000
 
 Only evidence from a pinned, trusted Tessl CLI and unchanged committed inputs can satisfy a
-release gate. Impact capture forces fresh provider solves instead of reusing cached cases.
+release gate. Quality and Impact capture force fresh provider results instead of reusing caches.
 Provider authentication and scores are never inferred or entered manually.
 `;
 

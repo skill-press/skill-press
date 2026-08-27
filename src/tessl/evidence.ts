@@ -13,6 +13,7 @@ import {
   type CapturedCommand,
   type CapturedCommandResult,
 } from "../process/capture.js";
+import { withPrivateProviderHome } from "../process/provider-home.js";
 import { validateAgentSkill } from "../validate/agent-skill.js";
 import { tesslCommandDigest } from "./command-digest.js";
 import type { SkillPressTesslEvalEvidence } from "./generated-eval-evidence.js";
@@ -179,9 +180,13 @@ async function hashFile(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
-function providerEnvironment(): Readonly<Record<string, string>> {
+function providerEnvironment(authenticated: boolean): Readonly<Record<string, string>> {
   return Object.freeze({
-    ...(process.env.TESSL_TOKEN === undefined ? {} : { TESSL_TOKEN: process.env.TESSL_TOKEN }),
+    NO_COLOR: "1",
+    TESSL_AUTO_UPDATE_INTERVAL_MINUTES: "0",
+    ...(authenticated && process.env.TESSL_TOKEN !== undefined
+      ? { TESSL_TOKEN: process.env.TESSL_TOKEN }
+      : {}),
   });
 }
 
@@ -205,14 +210,17 @@ async function execute(
   context: Pick<CommonContext, "root" | "executor">,
   argv: readonly [string, ...string[]],
   timeoutSeconds: number,
+  authenticated: boolean,
 ): Promise<CapturedCommandResult> {
-  const result = await context.executor({
-    argv,
-    cwd: context.root,
-    timeoutSeconds,
-    maxOutputBytes: MAX_JSON_TEXT_BYTES,
-    env: providerEnvironment(),
-  });
+  const result = await withPrivateProviderHome(providerEnvironment(authenticated), (environment) =>
+    context.executor({
+      argv,
+      cwd: context.root,
+      timeoutSeconds,
+      maxOutputBytes: MAX_JSON_TEXT_BYTES,
+      env: environment,
+    }),
+  );
   validateCaptured(result);
   return result;
 }
@@ -400,7 +408,7 @@ async function commonContext(
   const executor = options.executor ?? runCapturedCommand;
   const storage = await createStorage(root);
   const versionArgv = [executable, "--version"] as const;
-  const versionResult = await execute({ root, executor }, versionArgv, 30);
+  const versionResult = await execute({ root, executor }, versionArgv, 30, false);
   await writeRaw(storage.path, "version", versionResult);
   if (versionResult.status !== "passed") {
     throw new TesslEvidenceError("Tessl CLI version probe failed.", [
@@ -553,7 +561,7 @@ export async function captureTesslReviewEvidence(
   const context = await commonContext(projectDirectory, options);
   const lintSource = await stageTesslLintPlugin(context);
   const lintArgv = [context.executable, "skill", "lint", lintSource.manifestPath] as const;
-  const lintResult = await execute(context, lintArgv, Math.min(timeout, 300));
+  const lintResult = await execute(context, lintArgv, Math.min(timeout, 300), false);
   await writeRaw(context.storage, "lint", lintResult);
   if (lintResult.status !== "passed") {
     throw new TesslEvidenceError("Tessl skill lint failed.", [
@@ -572,12 +580,13 @@ export async function captureTesslReviewEvidence(
     "run",
     "quality",
     "--json",
+    "--force",
     ...(options.workspace === undefined ? [] : ["--workspace", options.workspace]),
     "--threshold",
     "0",
     context.skillPath,
   ] as readonly [string, ...string[]];
-  const reviewResult = await execute(context, reviewArgv, timeout);
+  const reviewResult = await execute(context, reviewArgv, timeout, true);
   await writeRaw(context.storage, "review", reviewResult);
   if (reviewResult.status !== "passed") {
     throw new TesslEvidenceError("Tessl quality review failed.", [
@@ -811,7 +820,7 @@ export async function captureTesslEvalEvidence(
     String(runs),
     sourcePath,
   ] as const;
-  const startResult = await execute(context, startArgv, Math.min(timeout, 300));
+  const startResult = await execute(context, startArgv, Math.min(timeout, 300), true);
   await writeRaw(context.storage, "eval-start", startResult);
   if (startResult.status !== "passed") {
     throw new TesslEvidenceError("Tessl eval submission failed.", [
@@ -855,7 +864,7 @@ export async function captureTesslEvalEvidence(
   while (clock() < deadline) {
     await wait(Math.min(pollIntervalMs, Math.max(1, deadline - clock())));
     const viewArgv = [context.executable, "eval", "view", "--json", runId] as const;
-    const viewResult = await execute(context, viewArgv, Math.min(60, timeout));
+    const viewResult = await execute(context, viewArgv, Math.min(60, timeout), true);
     if (viewResult.status !== "passed") {
       throw new TesslEvidenceError("Tessl eval result query failed.", [
         issue("tessl.eval.view", "/result", "official Tessl eval view did not complete"),

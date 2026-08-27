@@ -66,7 +66,11 @@ describe("operating documentation contracts", () => {
     expect(operations).toContain("npm run package:verify");
     expect(operations).toContain("tessl api-key create");
     expect(tessl).toContain("tessl api-key create");
+    expect(tessl).toContain("0.101.0");
+    expect(tessl).toContain("tessl review run quality --json --force");
     expect(tessl).toContain("tessl eval run --json --force");
+    expect(tessl).toContain("--executable <absolute-versioned-binary>");
+    expect(tessl).toContain("fresh private temporary HOME");
     expect(operations).not.toContain("tessl auth token");
     for (const target of config.publish.targets) expect(registries).toContain(`\`${target}\``);
     for (const descriptor of [

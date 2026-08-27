@@ -452,6 +452,7 @@ async function verifyRawEvidence(
       "run",
       "quality",
       "--json",
+      "--force",
       ...(review.review.workspace === null ? [] : ["--workspace", review.review.workspace]),
       "--threshold",
       "0",

@@ -70,7 +70,7 @@ uses npm's documented
 
 ## Tessl (`tessl`)
 
-SkillPress pins official Tessl CLI 0.99.0 by executable digest. The adapter projects
+SkillPress pins official Tessl CLI 0.101.0 by executable digest. The adapter projects
 `.tessl-plugin/plugin.json` and the complete canonical tree, requires a public workspace identity,
 and runs `tessl plugin publish --dry-run --skip-evals --verbose` before mutation. First-public
 workspace approval is an external web workflow. Verification downloads the exact immutable public

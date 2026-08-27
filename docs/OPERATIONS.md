@@ -81,7 +81,7 @@ bounded stop, not an internal failure or permission to bypass a gate.
 
 ## Capture and verify Tessl evidence
 
-Install the pinned official Tessl CLI 0.99.0, authenticate, and confirm the intended workspace.
+Install the pinned official Tessl CLI 0.101.0, authenticate, and confirm the intended workspace.
 SkillPress intentionally does not expose the interactive login store to evidence or publication
 subprocesses. Generate a short-lived Tessl API key locally and export it only in the shell that
 launches SkillPress (or Codex); never paste it into chat, `skillpress.yaml`, or the skill.
@@ -92,17 +92,21 @@ tessl auth whoami --json
 tessl api-key create --workspace <workspace> --name skillpress-release-<YYYYMMDD> \
   --role publisher --expiry-date <YYYY-MM-DDT00:00:00Z>
 export TESSL_TOKEN='<value-shown-once>'
-node dist/bin.js tessl review --project . --workspace <workspace> --json
+export TESSL_BIN='<absolute-path-to-extracted-tessl-0.101.0-binary>'
+node dist/bin.js tessl review --project . --workspace <workspace> \
+  --executable "$TESSL_BIN" --json
 node dist/bin.js tessl eval --project . \
-  --source .skillpress/tessl-evals/<set> --json
+  --source .skillpress/tessl-evals/<set> --executable "$TESSL_BIN" --json
 ```
 
 If the Tessl workspace plan does not allow explicit model selection, omit both selection flags.
 Otherwise add `--agent <agent>` and/or `--model <model>`. The evidence still records the
 provider-resolved identities and binds the exact invocation. Keep generated or holdout sources in
 the ignored private path shown above; SkillPress digests their complete contents across capture and
-release-gate verification. Impact capture always passes the native Tessl `--force` flag so cached
-solutions from an older skill context cannot become release evidence.
+release-gate verification. Quality and Impact capture always pass the native Tessl `--force` flag
+so cached provider results from an older skill context cannot become release evidence. Use the same
+explicit versioned binary for `publish --tessl-executable`; an installer or auto-updating launcher
+is not a trusted release executable.
 
 Retain the two returned private evidence paths. Immediately before staging a release, re-open and
 revalidate them against current Git inputs:
@@ -178,7 +182,8 @@ Start with a dry run only after that public-source/CI checkpoint:
 ```bash
 node dist/bin.js publish --project . --artifacts <artifacts-directory> \
   --review-evidence <review-evidence.json> --eval-evidence <eval-evidence.json> \
-  --eval-source <tessl-eval-source> --tessl-workspace <workspace> --json
+  --eval-source <tessl-eval-source> --tessl-workspace <workspace> \
+  --tessl-executable "$TESSL_BIN" --json
 ```
 
 Omit provider flags for targets that are not configured. This self-host configuration intentionally
@@ -197,7 +202,10 @@ import {
 } from "@mushanyoung/skillpress";
 
 const adapters = [
-  createTesslPublicationAdapter({ workspace: "<tessl-workspace>" }),
+  createTesslPublicationAdapter({
+    workspace: "<tessl-workspace>",
+    executable: "<absolute-path-to-extracted-tessl-0.101.0-binary>",
+  }),
   createSkillsShDerivedAdapter({ source: "<github-owner>/<repository>" }),
   createAskillPublicationAdapter({ author: "<github-login>" }),
   createAgentSkillHubPublicationAdapter(),
@@ -227,7 +235,8 @@ Only after reviewing a fresh dry run and obtaining publication authority, start 
 ```bash
 node dist/bin.js publish --project . --artifacts <artifacts-directory> \
   --review-evidence <review-evidence.json> --eval-evidence <eval-evidence.json> \
-  --eval-source <tessl-eval-source> --tessl-workspace <workspace> --execute --json
+  --eval-source <tessl-eval-source> --tessl-workspace <workspace> \
+  --tessl-executable "$TESSL_BIN" --execute --json
 ```
 
 The equivalent API call is:
@@ -247,7 +256,7 @@ If `receipt.status === "failed"`, keep the artifacts and resume the exact receip
 node dist/bin.js publish --project . --artifacts <artifacts-directory> \
   --review-evidence <review-evidence.json> --eval-evidence <eval-evidence.json> \
   --eval-source <tessl-eval-source> --tessl-workspace <workspace> \
-  --execute --resume <receipt.json> --json
+  --tessl-executable "$TESSL_BIN" --execute --resume <receipt.json> --json
 ```
 
 The equivalent API call is:
@@ -287,7 +296,8 @@ under the npm account that owns the `@mushanyoung` scope:
 2. Create a minimal `@mushanyoung/skillpress@0.0.0` package containing only a bootstrap README,
    the MIT license declaration, and the exact GitHub repository URL. Publish it interactively with
    `npm publish --access public --tag bootstrap --provenance=false`; complete the 2FA prompt. This
-   claims the name without assigning the `latest` tag or consuming version `0.1.0`.
+   claims the name without consuming version `0.1.0`. npm may also assign `latest` on this first
+   publication; the formal `0.1.0` release will move `latest` to the production version.
 3. Confirm `npm view @mushanyoung/skillpress@0.0.0 name version dist-tags --json`, then remove the
    disposable directory. The bootstrap version is public and immutable.
 

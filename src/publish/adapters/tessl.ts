@@ -5,6 +5,7 @@ import { delimiter, join, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 
 import type { CapturedCommandResult } from "../../process/capture.js";
+import { withPrivateProviderHome } from "../../process/provider-home.js";
 import { isTrustedTesslCli } from "../../tessl/trusted-cli.js";
 import type {
   PublicationAdapter,
@@ -38,7 +39,7 @@ type Inspection =
   | { readonly status: "match"; readonly remoteId: string; readonly url: string };
 
 const WORKSPACE = /^[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?$/u;
-const CLI_VERSION = "0.99.0";
+const CLI_VERSION = "0.101.0";
 const MAX_UNPACKED_BYTES = 64 * 1024 * 1024;
 const MAX_FILES = 512;
 const MAX_EXECUTABLE_BYTES = 256 * 1024 * 1024;
@@ -216,11 +217,8 @@ function runTessl(
   authenticated: boolean,
   runtime: PublicationAdapterRuntime,
 ) {
-  return runProviderCommand(
-    context.root,
-    [executable, ...argv],
-    runtime,
-    tesslEnvironment(token, authenticated),
+  return withPrivateProviderHome(tesslEnvironment(token, authenticated), (environment) =>
+    runProviderCommand(context.root, [executable, ...argv], runtime, environment),
   );
 }
 

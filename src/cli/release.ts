@@ -66,7 +66,7 @@ Options:
   --execute                   Permit configured remote mutations; default is dry-run
   --resume <receipt>          Resume an executed private publication receipt; requires --execute
   --tessl-workspace <name>    Required when tessl is a configured target
-  --tessl-executable <path>   Official Tessl CLI; defaults to tessl on PATH
+  --tessl-executable <path>   Versioned official Tessl CLI; PATH launchers may be untrusted
   --askill-author <name>      askill.sh author; defaults to project.author.github
   --askill-executable <path>  askill CLI; defaults to askill on PATH
   --catalog-contributor <id>  Catalog fork owner; defaults to project.author.github

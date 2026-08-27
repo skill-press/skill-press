@@ -129,7 +129,7 @@ describe("SkillPress CLI scaffold", () => {
 
     await expect(runCli(["tessl", flag as string], capture.io)).resolves.toBe(0);
     expect(capture.stdout).toEqual([renderTesslHelp()]);
-    expect(renderTesslHelp()).toContain("fresh provider solves");
+    expect(renderTesslHelp()).toContain("force fresh provider results");
     expect(capture.stderr).toEqual([]);
   });
 
@@ -344,7 +344,7 @@ describe("SkillPress CLI scaffold", () => {
       executable,
       `#!/usr/bin/env node
 const args = process.argv.slice(2);
-if (args[0] === "--version") console.log("0.99.0");
+if (args[0] === "--version") console.log("0.101.0");
 else if (args[0] === "skill") console.log("lint passed");
 else if (args[0] === "review") console.log(JSON.stringify({reviewRunId:"review-1",validation:{overallPassed:true},review:{reviewScore:93}}));
 else if (args[0] === "eval" && args[1] === "run") console.log(JSON.stringify({evalRunId:"eval-1",agent:"codex",model:"model",scenariosCount:1}));

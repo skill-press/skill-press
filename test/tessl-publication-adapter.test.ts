@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import {
+  access,
   lstat,
   mkdir,
   mkdtemp,
@@ -34,7 +35,7 @@ license: MIT
 `;
 const remoteId = "mushanyoung/skillpress@0.1.0";
 const remoteUrl = "https://tessl.io/registry/mushanyoung/skillpress/0.1.0";
-const trustedExecutableSha256 = "60db8f2be553fd2221d097dca6f748f9372f54af42ad1329149ae4c180d7dd39";
+const trustedExecutableSha256 = "9494050a66ec8a6f3f82405f7d7c5afccbdc03c1a195a823e07b6bfc5dea2f6c";
 
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true })));
@@ -213,7 +214,7 @@ describe("Tessl publication adapter", () => {
     const calls: CapturedCommand[] = [];
     const publication = adapter(async (command) => {
       calls.push(command);
-      if (command.argv[1] === "--version") return commandResult("0.99.0\n");
+      if (command.argv[1] === "--version") return commandResult("0.101.0\n");
       if (operation(command) === "api --raw") return absent();
       if (operation(command) === "auth whoami") return commandResult(identity());
       return commandResult("Dry run complete — all pre-publish checks passed\n");
@@ -252,12 +253,40 @@ describe("Tessl publication adapter", () => {
         expect.stringContaining("/.skillpress/projections/"),
       ],
     ]);
-    expect(calls[1]?.env).toEqual({ NO_COLOR: "1", TESSL_AUTO_UPDATE_INTERVAL_MINUTES: "0" });
-    expect(calls[2]?.env).toEqual({
-      NO_COLOR: "1",
-      TESSL_AUTO_UPDATE_INTERVAL_MINUTES: "0",
-      TESSL_TOKEN: "tessl-secret",
-    });
+    for (const [index, call] of calls.entries()) {
+      expect(call.env).toMatchObject({
+        NO_COLOR: "1",
+        TESSL_AUTO_UPDATE_INTERVAL_MINUTES: "0",
+      });
+      const home = call.env?.HOME as string;
+      expect(call.env?.USERPROFILE).toBe(home);
+      expect(call.env?.XDG_CONFIG_HOME).toBe(join(home, "config"));
+      expect(call.env?.XDG_DATA_HOME).toBe(join(home, "data"));
+      expect(call.env?.XDG_STATE_HOME).toBe(join(home, "state"));
+      expect(call.env?.XDG_CACHE_HOME).toBe(join(home, "cache"));
+      expect(call.env?.APPDATA).toBe(join(home, "appdata", "roaming"));
+      expect(call.env?.LOCALAPPDATA).toBe(join(home, "appdata", "local"));
+      expect(call.env?.TESSL_TOKEN).toBe(index < 2 ? undefined : "tessl-secret");
+      expect(
+        Object.keys(call.env ?? {})
+          .filter((key) => key !== "TESSL_TOKEN")
+          .sort(),
+      ).toEqual(
+        [
+          "APPDATA",
+          "HOME",
+          "LOCALAPPDATA",
+          "NO_COLOR",
+          "TESSL_AUTO_UPDATE_INTERVAL_MINUTES",
+          "USERPROFILE",
+          "XDG_CACHE_HOME",
+          "XDG_CONFIG_HOME",
+          "XDG_DATA_HOME",
+          "XDG_STATE_HOME",
+        ].sort(),
+      );
+      await expect(access(home)).rejects.toMatchObject({ code: "ENOENT" });
+    }
     expect(JSON.stringify(calls[1])).not.toContain("tessl-secret");
 
     const projected = await projectTesslPlugin(context, "mushanyoung");
@@ -285,7 +314,7 @@ describe("Tessl publication adapter", () => {
     const publication = adapter(async (command) => {
       calls.push(command);
       return command.argv[1] === "--version"
-        ? commandResult("0.99.0\n")
+        ? commandResult("0.101.0\n")
         : commandResult(await archive(context));
     });
     await expect(publication.preflight(context)).resolves.toEqual({
@@ -313,7 +342,7 @@ describe("Tessl publication adapter", () => {
     const calls: CapturedCommand[] = [];
     const publication = adapter(async (command) => {
       calls.push(command);
-      if (command.argv[1] === "--version") return commandResult("0.99.0\n");
+      if (command.argv[1] === "--version") return commandResult("0.101.0\n");
       if (operation(command) === "api --raw") {
         return published ? commandResult(await archive(context)) : absent();
       }
@@ -358,7 +387,7 @@ describe("Tessl publication adapter", () => {
     const context = await fixture();
     const publication = adapter(async (command) =>
       command.argv[1] === "--version"
-        ? commandResult("0.99.0")
+        ? commandResult("0.101.0")
         : commandResult(await archive(context, mutate)),
     );
     await expect(publication.preflight(context)).resolves.toMatchObject({
@@ -394,7 +423,7 @@ describe("Tessl publication adapter", () => {
     const context = await fixture();
     const publication = adapter(async (command) =>
       command.argv[1] === "--version"
-        ? commandResult("0.99.0")
+        ? commandResult("0.101.0")
         : commandResult(await makeArchive(context)),
     );
     await expect(publication.verify(context)).resolves.toEqual({ ok: false });
@@ -410,7 +439,7 @@ describe("Tessl publication adapter", () => {
         workspace: "mushanyoung",
         executable: "tessl-official",
         executableSha256: "0".repeat(64),
-        executor: async () => commandResult("0.99.0"),
+        executor: async () => commandResult("0.101.0"),
       }).preflight(context),
     ).resolves.toMatchObject({ code: "cli_unsupported" });
     await writeFile(join(context.root, "fake-tessl"), "not an official executable", {
@@ -420,14 +449,14 @@ describe("Tessl publication adapter", () => {
       createTesslPublicationAdapter({
         workspace: "mushanyoung",
         executable: "./fake-tessl",
-        executor: async () => commandResult("0.99.0"),
+        executor: async () => commandResult("0.101.0"),
       }).preflight(context),
     ).resolves.toMatchObject({ code: "cli_unsupported" });
     await expect(
       createTesslPublicationAdapter({
         workspace: "mushanyoung",
         executable: "definitely-missing-tessl",
-        executor: async () => commandResult("0.99.0"),
+        executor: async () => commandResult("0.101.0"),
       }).preflight(context),
     ).resolves.toMatchObject({ code: "cli_unsupported" });
     await mkdir(join(context.root, "fake-tessl-directory"));
@@ -435,19 +464,19 @@ describe("Tessl publication adapter", () => {
       createTesslPublicationAdapter({
         workspace: "mushanyoung",
         executable: "./fake-tessl-directory",
-        executor: async () => commandResult("0.99.0"),
+        executor: async () => commandResult("0.101.0"),
       }).preflight(context),
     ).resolves.toMatchObject({ code: "cli_unsupported" });
     await expect(
       adapter(async (command) =>
         command.argv[1] === "--version"
-          ? commandResult("0.99.0")
+          ? commandResult("0.101.0")
           : commandResult('{"error":{"status":500}}', false),
       ).preflight(context),
     ).resolves.toMatchObject({ code: "provider_unavailable" });
     await expect(
       adapter(
-        async (command) => (command.argv[1] === "--version" ? commandResult("0.99.0") : absent()),
+        async (command) => (command.argv[1] === "--version" ? commandResult("0.101.0") : absent()),
         null,
       ).preflight(context),
     ).resolves.toMatchObject({ code: "auth_missing" });
@@ -465,7 +494,7 @@ describe("Tessl publication adapter", () => {
     ]) {
       await expect(
         adapter(async (command) => {
-          if (command.argv[1] === "--version") return commandResult("0.99.0");
+          if (command.argv[1] === "--version") return commandResult("0.101.0");
           if (operation(command) === "api --raw") return absent();
           return commandResult(invalidIdentity);
         }).preflight(context),
@@ -475,7 +504,7 @@ describe("Tessl publication adapter", () => {
     for (const dryRun of [commandResult("failed", false), commandResult("unexpected success")]) {
       await expect(
         adapter(async (command) => {
-          if (command.argv[1] === "--version") return commandResult("0.99.0");
+          if (command.argv[1] === "--version") return commandResult("0.101.0");
           if (operation(command) === "api --raw") return absent();
           if (operation(command) === "auth whoami") return commandResult(identity());
           return dryRun;
@@ -492,7 +521,7 @@ describe("Tessl publication adapter", () => {
     );
     await writeFile(canonical, "changed\n");
     const invalid = adapter(async (command) =>
-      command.argv[1] === "--version" ? commandResult("0.99.0") : absent(),
+      command.argv[1] === "--version" ? commandResult("0.101.0") : absent(),
     );
     await expect(invalid.preflight(context)).resolves.toMatchObject({
       code: "provider_unavailable",
@@ -500,7 +529,7 @@ describe("Tessl publication adapter", () => {
 
     const valid = await fixture();
     const readyExecutor = async (command: CapturedCommand) => {
-      if (command.argv[1] === "--version") return commandResult("0.99.0");
+      if (command.argv[1] === "--version") return commandResult("0.101.0");
       if (operation(command) === "api --raw") return absent();
       if (operation(command) === "auth whoami") return commandResult(identity());
       return commandResult("Dry run complete — all pre-publish checks passed");
@@ -509,7 +538,7 @@ describe("Tessl publication adapter", () => {
 
     let inspections = 0;
     const racing = adapter(async (command) => {
-      if (command.argv[1] === "--version") return commandResult("0.99.0");
+      if (command.argv[1] === "--version") return commandResult("0.101.0");
       if (operation(command) === "api --raw") {
         inspections += 1;
         return inspections === 1 ? absent() : commandResult('{"error":{"status":500}}', false);
@@ -520,7 +549,7 @@ describe("Tessl publication adapter", () => {
     await expect(racing.execute?.(valid, "publish-plugin")).rejects.toThrow(/state changed/u);
 
     const malformedPublish = adapter(async (command) => {
-      if (command.argv[1] === "--version") return commandResult("0.99.0");
+      if (command.argv[1] === "--version") return commandResult("0.101.0");
       if (operation(command) === "api --raw") return absent();
       if (operation(command) === "auth whoami") return commandResult(identity());
       if (command.argv.includes("--dry-run")) {
@@ -535,7 +564,7 @@ describe("Tessl publication adapter", () => {
 
     let changedDuringIdentity = false;
     const projectionRace = adapter(async (command) => {
-      if (command.argv[1] === "--version") return commandResult("0.99.0");
+      if (command.argv[1] === "--version") return commandResult("0.101.0");
       if (operation(command) === "api --raw") return absent();
       if (operation(command) === "auth whoami") {
         if (!changedDuringIdentity) {
@@ -563,7 +592,7 @@ describe("Tessl publication adapter", () => {
     await rm(linkedPath);
     await symlink(linkTarget, linkedPath);
     const unsafe = adapter(async (command) =>
-      command.argv[1] === "--version" ? commandResult("0.99.0") : commandResult("unreachable"),
+      command.argv[1] === "--version" ? commandResult("0.101.0") : commandResult("unreachable"),
     );
     await expect(unsafe.preflight(context)).resolves.toMatchObject({
       code: "provider_unavailable",
@@ -572,7 +601,7 @@ describe("Tessl publication adapter", () => {
     const clean = await fixture();
     const withDirectory = adapter(async (command) =>
       command.argv[1] === "--version"
-        ? commandResult("0.99.0")
+        ? commandResult("0.101.0")
         : commandResult(
             await archive(clean, (files) =>
               files.unshift({ path: "skills", bytes: Buffer.alloc(0), mode: 0o755, type: 0x35 }),

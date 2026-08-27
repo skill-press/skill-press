@@ -25,7 +25,7 @@ const execFileAsync = promisify(execFile);
 const temporaryRoot = realpathSync(tmpdir());
 const temporaryDirectories: string[] = [];
 const briefPath = fileURLToPath(new URL("fixtures/create/complete-brief.yaml", import.meta.url));
-const trustedDigest = "60db8f2be553fd2221d097dca6f748f9372f54af42ad1329149ae4c180d7dd39";
+const trustedDigest = "9494050a66ec8a6f3f82405f7d7c5afccbdc03c1a195a823e07b6bfc5dea2f6c";
 const now = new Date("2026-08-24T12:00:00.000Z");
 
 afterEach(async () => {
@@ -52,7 +52,7 @@ function result(stdout: string, stderr = ""): CapturedCommandResult {
 function executor(): TesslCommandExecutor {
   return async (command) => {
     const args = command.argv.slice(1);
-    if (args[0] === "--version") return result("0.99.0\n");
+    if (args[0] === "--version") return result("0.101.0\n");
     if (args[0] === "skill") return result("lint passed\n");
     if (args[0] === "review") {
       return result(
@@ -175,6 +175,7 @@ async function fixture(): Promise<Fixture> {
     "run",
     "quality",
     "--json",
+    "--force",
     "--threshold",
     "0",
     "skills/incident-summary",
@@ -276,6 +277,26 @@ describe("Tessl release gate", () => {
 
       expect((await gate(value)).passed).toBe(true);
     }
+  });
+
+  it("rejects Quality commands that can reuse cached review results", async () => {
+    const value = await fixture();
+    const reviewFile = join(value.root, value.reviewPath);
+    const review = JSON.parse(await readFile(reviewFile, "utf8"));
+    review.review.commandSha256 = tesslCommandDigest(trustedDigest, [
+      "review",
+      "run",
+      "quality",
+      "--json",
+      "--threshold",
+      "0",
+      "skills/incident-summary",
+    ]);
+    await writePrivateJson(reviewFile, review);
+
+    expect((await gate(value)).issues.map((entry) => entry.code)).toContain(
+      "release.evidence.command",
+    );
   });
 
   it("rejects eval start commands that can reuse cached solutions", async () => {
@@ -565,6 +586,7 @@ describe("Tessl release gate", () => {
       "run",
       "quality",
       "--json",
+      "--force",
       "--workspace",
       "workspace",
       "--threshold",

@@ -1,7 +1,17 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
-import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import {
+  access,
+  chmod,
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -100,9 +110,11 @@ function reviewExecutor(
     review: { reviewScore: 94 },
   },
   observed: string[][] = [],
+  environments: Array<Readonly<Record<string, string>>> = [],
 ): TesslCommandExecutor {
-  return executorFor((args) => {
-    if (args[0] === "--version") return result("Tessl terms\n0.99.0\n");
+  return executorFor((args, command) => {
+    environments.push(command.env);
+    if (args[0] === "--version") return result("Tessl terms\n0.101.0\n");
     if (args[0] === "skill") return result("lint passed\n");
     if (args[0] === "review") return result(`${JSON.stringify(review)}\n`);
     return result("", "failed", "unexpected command");
@@ -153,27 +165,41 @@ function completedEval(overrides: Record<string, unknown> = {}): Record<string, 
 
 describe("Tessl official evidence bridge", () => {
   it("trusts only a signed-release version and executable digest pair", () => {
+    const releaseDigests = [
+      "9494050a66ec8a6f3f82405f7d7c5afccbdc03c1a195a823e07b6bfc5dea2f6c",
+      "a8a71b43399998cbafa787503c6a51b0e212e0c2883f5bcc2cf094d141d7993a",
+      "405aac95750048ec31c4026cf38b389442a6dbe5eecce9908a399c615e2ea386",
+      "316819d34dbf200f07c605abdceda2ae920581c26da51a5f21b93b56e2b1a6b2",
+      "67b974938e244edf0e24523be84dcb55b56ef41c4813bf86be8715d7055a4e0e",
+      "fd2cf07b81f408c648013b76e92b5e8eea1565f54dca46adeda0ec8cc6a59098",
+      "283d1df9bc8c6a12a5511979d6de5b1524703e7bd8cc99c77963ff29f4cd31ce",
+      "4816ce6bea0188a3a61480e43807a0ffe588c114d224d027dcc2798d7bbd63b7",
+      "ed1c04bd0e2242f2950e14acec99bb20d33b946af792c8133049bd72a7734601",
+      "a922e16f58e223ddc5ef7d38f33138250548bc78b30668a27af9974159b12129",
+    ];
+    expect(releaseDigests.every((value) => isTrustedTesslCli("0.101.0", value))).toBe(true);
+    expect(isTrustedTesslCli("0.101.0", "0".repeat(64))).toBe(false);
     expect(
       isTrustedTesslCli(
         "0.99.0",
         "60db8f2be553fd2221d097dca6f748f9372f54af42ad1329149ae4c180d7dd39",
       ),
-    ).toBe(true);
-    expect(isTrustedTesslCli("0.99.0", "0".repeat(64))).toBe(false);
+    ).toBe(false);
     expect(
       isTrustedTesslCli(
         "1.0.0",
-        "60db8f2be553fd2221d097dca6f748f9372f54af42ad1329149ae4c180d7dd39",
+        "9494050a66ec8a6f3f82405f7d7c5afccbdc03c1a195a823e07b6bfc5dea2f6c",
       ),
     ).toBe(false);
   });
   it("captures lint and Quality from exact official commands without exposing raw output", async () => {
     const fixture = await project();
     const observed: string[][] = [];
+    const environments: Array<Readonly<Record<string, string>>> = [];
     const evidence = await captureTesslReviewEvidence(fixture.root, {
       executable: fixture.executable,
       workspace: "fixed-workspace",
-      executor: reviewExecutor(undefined, observed),
+      executor: reviewExecutor(undefined, observed, environments),
       now: () => new Date("2026-08-24T12:34:56.789Z"),
     });
 
@@ -190,12 +216,48 @@ describe("Tessl official evidence bridge", () => {
       "run",
       "quality",
       "--json",
+      "--force",
       "--workspace",
       "fixed-workspace",
       "--threshold",
       "0",
       "skills/incident-summary",
     ]);
+    expect(environments).toHaveLength(3);
+    for (const [index, environment] of environments.entries()) {
+      expect(environment).toMatchObject({
+        NO_COLOR: "1",
+        TESSL_AUTO_UPDATE_INTERVAL_MINUTES: "0",
+      });
+      const home = environment.HOME as string;
+      expect(environment.USERPROFILE).toBe(home);
+      expect(environment.XDG_CONFIG_HOME).toBe(join(home, "config"));
+      expect(environment.XDG_DATA_HOME).toBe(join(home, "data"));
+      expect(environment.XDG_STATE_HOME).toBe(join(home, "state"));
+      expect(environment.XDG_CACHE_HOME).toBe(join(home, "cache"));
+      expect(environment.APPDATA).toBe(join(home, "appdata", "roaming"));
+      expect(environment.LOCALAPPDATA).toBe(join(home, "appdata", "local"));
+      expect(
+        Object.keys(environment)
+          .filter((key) => key !== "TESSL_TOKEN")
+          .sort(),
+      ).toEqual(
+        [
+          "APPDATA",
+          "HOME",
+          "LOCALAPPDATA",
+          "NO_COLOR",
+          "TESSL_AUTO_UPDATE_INTERVAL_MINUTES",
+          "USERPROFILE",
+          "XDG_CACHE_HOME",
+          "XDG_CONFIG_HOME",
+          "XDG_DATA_HOME",
+          "XDG_STATE_HOME",
+        ].sort(),
+      );
+      expect(environment.TESSL_TOKEN).toBe(index < 2 ? undefined : process.env.TESSL_TOKEN);
+      await expect(access(home)).rejects.toMatchObject({ code: "ENOENT" });
+    }
     expect(evidence).toMatchObject({
       evidenceType: "skillpress.tessl-review",
       provider: "tessl",
@@ -295,7 +357,7 @@ describe("Tessl official evidence bridge", () => {
     const executor = executorFor((args) => {
       const injected = fault(args);
       if (injected !== undefined) return injected;
-      if (args[0] === "--version") return result("0.99.0\n");
+      if (args[0] === "--version") return result("0.101.0\n");
       return result("ok\n");
     });
     await expect(
@@ -326,7 +388,7 @@ describe("Tessl official evidence bridge", () => {
     ).rejects.toBeInstanceOf(TesslEvidenceError);
 
     const corruptExecutor = executorFor((args) => {
-      const valid = args[0] === "--version" ? result("0.99.0\n") : result("ok\n");
+      const valid = args[0] === "--version" ? result("0.101.0\n") : result("ok\n");
       return { ...valid, stdoutSha256: "0".repeat(64) };
     });
     await expect(
@@ -386,7 +448,7 @@ describe("Tessl official evidence bridge", () => {
         agent: "codex",
         model: "gpt-fixed",
         executable: sourceFixture.executable,
-        executor: executorFor(() => result("0.99.0\n")),
+        executor: executorFor(() => result("0.101.0\n")),
       }),
     ).rejects.toBeInstanceOf(TesslEvidenceError);
   });
@@ -394,7 +456,7 @@ describe("Tessl official evidence bridge", () => {
   it("detects canonical source mutation during the provider run", async () => {
     const fixture = await project();
     const executor = executorFor((args) => {
-      if (args[0] === "--version") return result("0.99.0\n");
+      if (args[0] === "--version") return result("0.101.0\n");
       if (args[0] === "skill") return result("ok\n");
       void writeFile(join(fixture.root, "skills/incident-summary/LICENSE"), "changed\n");
       return result(
@@ -427,7 +489,7 @@ describe("Tessl official evidence bridge", () => {
     const observed: string[][] = [];
     let views = 0;
     const executor = executorFor((args) => {
-      if (args[0] === "--version") return result("0.99.0\n");
+      if (args[0] === "--version") return result("0.101.0\n");
       if (args[0] === "eval" && args[1] === "run") {
         return result(
           JSON.stringify([
@@ -502,7 +564,7 @@ describe("Tessl official evidence bridge", () => {
       const fixture = await project();
       const observed: string[][] = [];
       const executor = executorFor((args) => {
-        if (args[0] === "--version") return result("0.99.0\n");
+        if (args[0] === "--version") return result("0.101.0\n");
         if (args[1] === "run") {
           return result(JSON.stringify({ evalRunId: "eval-run-1", scenariosCount: 2 }));
         }
@@ -542,7 +604,7 @@ describe("Tessl official evidence bridge", () => {
     const secondWith = data.attributes.scenarios[1]?.solutions[1];
     if (secondWith !== undefined) secondWith.assessmentResults = [{ score: 1, max_score: 10 }];
     const executor = executorFor((args) => {
-      if (args[0] === "--version") return result("0.99.0\n");
+      if (args[0] === "--version") return result("0.101.0\n");
       if (args[1] === "run")
         return result(
           '{"evalRunId":"eval-run-1","agent":"codex","model":"gpt-fixed","scenariosCount":2}',
@@ -613,7 +675,7 @@ describe("Tessl official evidence bridge", () => {
   ] as const)("rejects invalid eval evidence: %s", async (_name, fault) => {
     const fixture = await project();
     const executor = executorFor((args) => {
-      if (args[0] === "--version") return result("0.99.0\n");
+      if (args[0] === "--version") return result("0.101.0\n");
       const injected = fault(args);
       if (injected !== undefined) return injected;
       if (args[1] === "run")
@@ -682,7 +744,7 @@ describe("Tessl official evidence bridge", () => {
   ] as const)("rejects invalid completed eval: %s", async (_name, completed) => {
     const fixture = await project();
     const executor = executorFor((args) => {
-      if (args[0] === "--version") return result("0.99.0\n");
+      if (args[0] === "--version") return result("0.101.0\n");
       if (args[1] === "run") {
         return result(
           '{"evalRunId":"eval-run-1","agent":"codex","model":"gpt-fixed","scenariosCount":2}',
@@ -706,7 +768,7 @@ describe("Tessl official evidence bridge", () => {
   it("rejects count drift and invalid eval limits, then fails closed on timeout", async () => {
     const fixture = await project();
     const driftExecutor = executorFor((args) => {
-      if (args[0] === "--version") return result("0.99.0\n");
+      if (args[0] === "--version") return result("0.101.0\n");
       if (args[1] === "run") {
         return result(
           '{"evalRunId":"eval-run-1","agent":"codex","model":"gpt-fixed","scenariosCount":1}',
@@ -738,7 +800,7 @@ describe("Tessl official evidence bridge", () => {
 
     let now = 0;
     const pendingExecutor = executorFor((args) => {
-      if (args[0] === "--version") return result("0.99.0\n");
+      if (args[0] === "--version") return result("0.101.0\n");
       if (args[1] === "run") {
         return result(
           '{"evalRunId":"eval-run-1","agent":"codex","model":"gpt-fixed","scenariosCount":2}',

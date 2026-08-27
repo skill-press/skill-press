@@ -12,7 +12,7 @@ tessl login
 tessl auth whoami --json
 ```
 
-For a non-interactive SkillPress run, the pinned 0.99.0 CLI creates a bounded-lifetime publisher
+For a non-interactive SkillPress run, the pinned 0.101.0 CLI creates a bounded-lifetime publisher
 key with `tessl api-key create --workspace <workspace> --name <name> --role publisher
 --expiry-date <ISO-8601>`; export the value shown once as `TESSL_TOKEN` in the shell that starts
 SkillPress. Do not use the newer documentation's `tessl auth token` spelling with the pinned CLI.
@@ -21,22 +21,26 @@ login store and home directory are intentionally not forwarded. Interactive logi
 for direct Tessl CLI administration. Never paste the value into chat or commit it; rotate it after
 release. Automatic CLI updates are disabled for captured runs with the official
 `TESSL_AUTO_UPDATE_INTERVAL_MINUTES=0` setting so the executable digest stays stable.
+Pass `--executable <absolute-versioned-binary>` to evidence capture and
+`--tessl-executable <absolute-versioned-binary>` to publication. Point these options at the
+extracted 0.101.0 executable whose digest is in the signed trust set, not at an installer or
+auto-updating launcher.
 
-SkillPress 0.1.0 pins Tessl CLI 0.99.0 and invokes these no-shell argv sequences:
+SkillPress 0.1.0 pins Tessl CLI 0.101.0 and invokes these no-shell argv sequences:
 
 ```text
 tessl --version
 tessl skill lint <private-plugin-projection/.tessl-plugin/plugin.json>
-tessl review run quality --json [--workspace <workspace>] --threshold 0 <canonical-skill>
+tessl review run quality --json --force [--workspace <workspace>] --threshold 0 <canonical-skill>
 tessl eval run --json --force [--agent <agent>] [--model <model>] --runs <count> <eval-source>
 tessl eval view --json <run-id>
 ```
 
 Agent and model selection are optional. When omitted, Tessl selects the workspace defaults and
 SkillPress binds the resolved agent/model returned by the provider plus the exact command digest
-without selection flags. Every official Impact capture uses `--force` so the provider recomputes
-all paired cases for the bound skill instead of reusing solutions from an older context. This
-supports plans that do not permit explicit model selection without weakening evidence.
+without selection flags. Every official Quality and Impact capture uses `--force` so the provider
+recomputes current review and paired-eval results instead of reusing an older context. This supports
+plans that do not permit explicit model selection without weakening evidence.
 Keep generated or holdout scenario sources under the ignored `.skillpress/tessl-evals/<set>` path;
 the complete private tree is still digested before and after capture and again at the release gate.
 
@@ -45,15 +49,16 @@ manifest and copies the canonical skill into it, verifies that the copied skill 
 tree digest, runs lint, then verifies the digest again. The generated provider manifest never
 enters the canonical skill or a commit.
 
-The review bridge reads `review.reviewScore` and `validation.overallPassed` from the official JSON
-result. The eval bridge binds the returned run ID, agent, model, and scenario count to its request,
-then computes each baseline and with-context percentage from the returned assessment criteria.
-Impact is the mean with-context percentage; its baseline, delta, and uplift ratio remain separate.
+The review bridge uses `--force`, then reads `review.reviewScore` and `validation.overallPassed`
+from the official JSON result. The eval bridge binds the returned run ID, agent, model, and scenario
+count to its request, then computes each baseline and with-context percentage from the returned
+assessment criteria. Impact is the mean with-context percentage; its baseline, delta, and uplift
+ratio remain separate.
 
 ## Trust and freshness
 
 The executable itself is SHA-256 checked against every platform binary extracted from Tessl's
-ECDSA-signed 0.99.0 release manifest. A version string alone is not trusted. To update the pin:
+ECDSA-signed 0.101.0 release manifest. A version string alone is not trusted. To update the pin:
 
 1. download the new release manifest and detached signature from `install.tessl.io`;
 2. verify that signature using the public key shipped by the official installer;
@@ -70,10 +75,13 @@ bindings and reject stale evidence.
 
 ## Storage and privacy
 
-Raw version, lint, review, submission, and completed-result streams are bounded and written under
-`.skillpress/tessl/<random-id>/` with directory mode `0700` and file mode `0600`. That directory is
-ignored by Git and must not enter a package. The schema-validated `evidence.json` exposes only
-provider facts, hashes, aggregate scores, scenario fingerprint hashes, and eligibility reasons.
+Every Tessl subprocess receives a fresh private temporary HOME, USERPROFILE, XDG, and AppData
+boundary, plus only the explicit provider variables required for that command. The temporary home
+is removed after the command, so an ambient interactive Tessl login cannot authenticate evidence
+or publication. Raw version, lint, review, submission, and completed-result streams are bounded and
+written under `.skillpress/tessl/<random-id>/` with directory mode `0700` and file mode `0600`.
+That directory is ignored by Git and must not enter a package. The schema-validated `evidence.json`
+exposes only provider facts, hashes, aggregate scores, scenario fingerprint hashes, and eligibility reasons.
 It does not expose provider prose, scenario text, or credentials. Only `TESSL_TOKEN` is forwarded
 to Tessl from the ambient environment.
 
