@@ -33,7 +33,7 @@ Repository creation is deliberately outside the adapter: create it with explicit
 before dry run. Before the all-target dry run, push the clean candidate commit to public `main` and
 wait for required CI; do not create the version tag or Release. The GitHub adapter runs last, so
 its source step should then be a no-op and its final step creates the exact tag/Release only after
-the first six targets verify. Existing tags/releases are reused only if every immutable fact
+the first five targets verify. Existing tags/releases are reused only if every immutable fact
 matches. See the
 [GitHub CLI manual](https://cli.github.com/manual/) and
 [GitHub release documentation](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases).
@@ -153,7 +153,7 @@ is persisted before advancing, so resume can skip exact verified work and retry 
 steps.
 
 The production sequence has two explicit checkpoints: first publish the clean candidate commit to
-public GitHub `main` and wait for CI; then run the seven-target saga. This lets every source-derived
+public GitHub `main` and wait for CI; then run the six-target saga. This lets every source-derived
 preflight bind public `main` while keeping the formal GitHub Release last.
 
 Never reorder adapters, edit a receipt, rebuild the artifact, or change the source commit during

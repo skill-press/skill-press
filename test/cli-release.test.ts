@@ -363,9 +363,7 @@ describe("release CLI orchestration", () => {
       askillAuthor: "askill-author",
       askillExecutable: "/opt/askill",
       catalogContributor: "catalog-owner",
-      clawHubOwner: "claw-owner",
-      clawHubExecutable: "/opt/clawhub",
-      acceptClawHubMit0: true,
+      acceptClawHubMit0: false,
       json: false,
     });
     expect(configured.map((entry) => entry.id)).toEqual([
@@ -374,7 +372,6 @@ describe("release CLI orchestration", () => {
       "askill-sh",
       "agentskillhub-dev",
       "agent-skills-hub-catalog",
-      "clawhub",
       "github",
     ]);
     await expect(
@@ -385,13 +382,15 @@ describe("release CLI orchestration", () => {
         evalSource: "tessl-evals",
         artifactsPath,
         execute: false,
-        acceptClawHubMit0: true,
+        acceptClawHubMit0: false,
         json: false,
       }),
     ).rejects.toThrow("--tessl-workspace");
+
+    const genericProject = "test/fixtures/config/valid.yaml";
     await expect(
       createConfiguredPublicationAdapters({
-        project: ".",
+        project: genericProject,
         reviewEvidencePath: reviewPath,
         evalEvidencePath: evalPath,
         evalSource: "tessl-evals",
@@ -402,6 +401,28 @@ describe("release CLI orchestration", () => {
         json: false,
       }),
     ).rejects.toThrow("--accept-clawhub-mit0");
+
+    const generic = await createConfiguredPublicationAdapters({
+      project: genericProject,
+      reviewEvidencePath: reviewPath,
+      evalEvidencePath: evalPath,
+      evalSource: "tessl-evals",
+      artifactsPath,
+      execute: false,
+      tesslWorkspace: "workspace",
+      acceptClawHubMit0: true,
+      json: false,
+    });
+    expect(generic.map((entry) => entry.id)).toEqual([
+      "github",
+      "npm",
+      "tessl",
+      "skills-sh",
+      "askill-sh",
+      "agentskillhub-dev",
+      "agent-skills-hub-catalog",
+      "clawhub",
+    ]);
   });
 
   it("blocks source changes between gate and staging", async () => {

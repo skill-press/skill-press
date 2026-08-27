@@ -178,18 +178,18 @@ Start with a dry run only after that public-source/CI checkpoint:
 ```bash
 node dist/bin.js publish --project . --artifacts <artifacts-directory> \
   --review-evidence <review-evidence.json> --eval-evidence <eval-evidence.json> \
-  --eval-source <tessl-eval-source> --tessl-workspace <workspace> \
-  --accept-clawhub-mit0 --json
+  --eval-source <tessl-eval-source> --tessl-workspace <workspace> --json
 ```
 
-Omit provider flags for targets that are not configured. The equivalent low-level API is:
+Omit provider flags for targets that are not configured. This self-host configuration intentionally
+omits ClawHub; the generic ClawHub adapter remains available to other projects. The equivalent
+low-level API is:
 
 ```js
 import {
   createAgentSkillHubPublicationAdapter,
   createAgentSkillsHubCatalogAdapter,
   createAskillPublicationAdapter,
-  createClawHubPublicationAdapter,
   createGitHubPublicationAdapter,
   createSkillsShDerivedAdapter,
   createTesslPublicationAdapter,
@@ -202,7 +202,6 @@ const adapters = [
   createAskillPublicationAdapter({ author: "<github-login>" }),
   createAgentSkillHubPublicationAdapter(),
   createAgentSkillsHubCatalogAdapter({ contributor: "<github-login>" }),
-  createClawHubPublicationAdapter({ owner: "<clawhub-owner>", licenseConsent: "MIT-0" }),
   createGitHubPublicationAdapter(),
 ];
 
@@ -211,9 +210,9 @@ const plan = await runPublicationSaga(projectRoot, artifacts, adapters);
 
 This order matches the self-host configuration: GitHub is last, and its `publish-source` step is
 expected to be a verified no-op after the public-source checkpoint. Its final step creates the tag
-and formal Release only after the other six targets and the derived skills.sh state have been
-verified, so npm cannot start early. npm remains an exported adapter for integrations, but it is
-not a member of this production saga because trusted publishing requires the protected GitHub
+and formal Release only after the other five targets, including the derived skills.sh state, have
+been verified, so npm cannot start early. npm remains an exported adapter for integrations, but it
+is not a member of this production saga because trusted publishing requires the protected GitHub
 workflow context.
 
 Dry run is the default. Inspect every target's `preflight`, `capability`, `auth`, steps, and
@@ -228,8 +227,7 @@ Only after reviewing a fresh dry run and obtaining publication authority, start 
 ```bash
 node dist/bin.js publish --project . --artifacts <artifacts-directory> \
   --review-evidence <review-evidence.json> --eval-evidence <eval-evidence.json> \
-  --eval-source <tessl-eval-source> --tessl-workspace <workspace> \
-  --accept-clawhub-mit0 --execute --json
+  --eval-source <tessl-eval-source> --tessl-workspace <workspace> --execute --json
 ```
 
 The equivalent API call is:
@@ -249,7 +247,7 @@ If `receipt.status === "failed"`, keep the artifacts and resume the exact receip
 node dist/bin.js publish --project . --artifacts <artifacts-directory> \
   --review-evidence <review-evidence.json> --eval-evidence <eval-evidence.json> \
   --eval-source <tessl-eval-source> --tessl-workspace <workspace> \
-  --accept-clawhub-mit0 --execute --resume <receipt.json> --json
+  --execute --resume <receipt.json> --json
 ```
 
 The equivalent API call is:
@@ -315,7 +313,7 @@ Configure the release identity and approval boundary next:
 5. After the first OIDC release succeeds, set npm **Publishing access** to **Require two-factor
    authentication and disallow tokens**, then revoke any obsolete write tokens.
 
-The environment reviewer must wait for the unprivileged `verify` job and the local seven-target
+The environment reviewer must wait for the unprivileged `verify` job and the local six-target
 publication receipt to finish, then compare the release tag/source commit, Tessl 90/90 evidence,
 four GitHub Release assets, and npm tarball manifest before approving `publish`. The workflow uses
 Node.js 26 (above npm's Node 22.14/npm 11.5.1 minimum), grants `id-token: write` only to the approved

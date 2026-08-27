@@ -24,7 +24,6 @@ const expectedTargets = [
   "askill-sh",
   "agentskillhub-dev",
   "agent-skills-hub-catalog",
-  "clawhub",
   "github",
 ] as const;
 
@@ -172,7 +171,6 @@ describe("SkillPress self-hosting and publication recovery", () => {
       { id: "askill-sh", capability: "publish", status: "planned" },
       { id: "agentskillhub-dev", capability: "publish", status: "planned" },
       { id: "agent-skills-hub-catalog", capability: "submit", status: "planned" },
-      { id: "clawhub", capability: "publish", status: "planned" },
       { id: "github", capability: "publish", status: "planned" },
     ]);
     expect(state.executions).toEqual([]);
@@ -193,8 +191,6 @@ describe("SkillPress self-hosting and publication recovery", () => {
       "agentskillhub-dev:publish",
       "agent-skills-hub-catalog:prepare",
       "agent-skills-hub-catalog:publish",
-      "clawhub:prepare",
-      "clawhub:publish",
       "github:prepare",
       "github:publish",
     ]);
@@ -204,7 +200,6 @@ describe("SkillPress self-hosting and publication recovery", () => {
       "askill-sh",
       "agentskillhub-dev",
       "agent-skills-hub-catalog",
-      "clawhub",
     ]);
     expect(failed.targets.map(({ id, status }) => ({ id, status }))).toMatchObject([
       { id: "tessl", status: "verified" },
@@ -212,7 +207,6 @@ describe("SkillPress self-hosting and publication recovery", () => {
       { id: "askill-sh", status: "verified" },
       { id: "agentskillhub-dev", status: "verified" },
       { id: "agent-skills-hub-catalog", status: "verified" },
-      { id: "clawhub", status: "verified" },
       { id: "github", status: "failed" },
     ]);
     if (process.platform !== "win32") {
@@ -234,7 +228,6 @@ describe("SkillPress self-hosting and publication recovery", () => {
       { id: "askill-sh", status: "verified" },
       { id: "agentskillhub-dev", status: "verified" },
       { id: "agent-skills-hub-catalog", status: "verified" },
-      { id: "clawhub", status: "verified" },
       { id: "github", status: "verified" },
     ]);
     expect(state.preflights).toEqual(["github"]);
@@ -247,8 +240,6 @@ describe("SkillPress self-hosting and publication recovery", () => {
       "agentskillhub-dev:publish",
       "agent-skills-hub-catalog:prepare",
       "agent-skills-hub-catalog:publish",
-      "clawhub:prepare",
-      "clawhub:publish",
       "github:prepare",
       "github:publish",
       "github:publish",
@@ -259,7 +250,6 @@ describe("SkillPress self-hosting and publication recovery", () => {
       "askill-sh",
       "agentskillhub-dev",
       "agent-skills-hub-catalog",
-      "clawhub",
       "github",
     ]);
     expect(JSON.stringify(resumed)).not.toContain("fixture credential must not leak");

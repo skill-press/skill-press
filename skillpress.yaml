@@ -41,5 +41,4 @@ publish:
     - askill-sh
     - agentskillhub-dev
     - agent-skills-hub-catalog
-    - clawhub
     - github

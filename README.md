@@ -68,8 +68,9 @@ explicit selection; omitting them uses the provider defaults.
 
 `publish` is a non-mutating dry run unless `--execute` is supplied. Resume an executed partial run
 with `--execute --resume <private-receipt.json>`. Run each command with `--help` for provider
-identity and executable options; ClawHub additionally requires explicit `--accept-clawhub-mit0`.
-The configured local saga publishes seven skill-registry targets; npm is deliberately released by
+identity and executable options. A project that configures ClawHub additionally requires explicit
+`--accept-clawhub-mit0`.
+The configured local saga publishes six skill-registry targets; npm is deliberately released by
 the separate protected GitHub Actions trusted-publishing workflow after the GitHub target succeeds.
 
 `check` reports a local readiness score and fails closed on invalid canonical skills, missing or

@@ -339,8 +339,8 @@ it never falls back to the occupied unscoped package name.
 - Tessl scoring/publication needs a short-lived publisher API key inherited by the SkillPress
   process, a publisher workspace, current official evidence, and public approval.
 - npm trusted publishing requires owner-side GitHub environment and npm publisher configuration.
-- askill, Agent Skill Hub, the catalog, and ClawHub execution require provider-specific authority,
-  identity, token, pull-request, or license confirmation discovered during preflight.
+- askill, Agent Skill Hub, and catalog execution require provider-specific authority, identity,
+  token, or pull-request confirmation discovered during preflight.
 - A 90+ target is an acceptance gate and iteration objective, not a score that can be guaranteed in
   advance or fabricated when a provider is unavailable.
 
