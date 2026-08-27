@@ -16,6 +16,7 @@ import {
 import { withPrivateProviderHome } from "../process/provider-home.js";
 import { validateAgentSkill } from "../validate/agent-skill.js";
 import { tesslCommandDigest } from "./command-digest.js";
+import { inspectTesslEvalSource } from "./eval-source.js";
 import type { SkillPressTesslEvalEvidence } from "./generated-eval-evidence.js";
 import type { SkillPressTesslReviewEvidence } from "./generated-review-evidence.js";
 import { isTrustedTesslCli } from "./trusted-cli.js";
@@ -492,6 +493,39 @@ async function stageTesslLintPlugin(
   };
 }
 
+async function stageTesslEvalPlugin(
+  context: CommonContext,
+  source: string,
+  expectedSourceSha256: string,
+): Promise<{ readonly path: string; readonly reportPath: string }> {
+  const directoryName = `eval-plugin-${expectedSourceSha256}`;
+  const path = join(context.storage, directoryName);
+  await cp(source, path, {
+    recursive: true,
+    errorOnExist: true,
+    force: false,
+    preserveTimestamps: false,
+  });
+  await chmod(path, 0o700);
+  const inspection = await inspectTesslEvalSource(path, context.skillName);
+  if (
+    (await digestBoundedTree(path)) !== expectedSourceSha256 ||
+    !inspection.structureValid ||
+    !inspection.contextExclusive ||
+    !inspection.skillValid ||
+    inspection.embeddedSkillSha256 !== context.skillSha256
+  ) {
+    throw new TesslEvidenceError("Tessl eval staging changed the source plugin.", [
+      issue(
+        "tessl.eval.staging",
+        "/source",
+        "staged eval plugin must exactly match the source and contain only the canonical skill",
+      ),
+    ]);
+  }
+  return { path, reportPath: `${context.storagePath}/${directoryName}` };
+}
+
 async function postRunReasons(
   context: CommonContext,
   extraGitPaths: readonly string[] = [],
@@ -687,6 +721,8 @@ function solutionScore(value: unknown): number | undefined {
 function parseCompletedEval(
   value: JsonRecord,
   expectedRunId: string,
+  expectedContextPath: string,
+  expectedCliInvocation: string,
 ): {
   readonly scenarios: SkillPressTesslEvalEvidence["scenarios"];
   readonly missingBaseline: boolean;
@@ -697,6 +733,24 @@ function parseCompletedEval(
   if (!isRecord(data) || data.id !== expectedRunId || !isRecord(data.attributes)) {
     throw new TesslEvidenceError("Tessl eval result binding is invalid.", [
       issue("tessl.eval.binding", "/result", "eval result must match the submitted run id"),
+    ]);
+  }
+  const fixtures = data.attributes.evalRunFixtures;
+  const finalContext = isRecord(fixtures) ? fixtures.context : undefined;
+  const metadata = data.attributes.metadata;
+  if (
+    !isRecord(finalContext) ||
+    finalContext.type !== "plugin-directory" ||
+    finalContext.path !== expectedContextPath ||
+    !isRecord(metadata) ||
+    metadata.cliInvocation !== expectedCliInvocation
+  ) {
+    throw new TesslEvidenceError("Tessl eval provider context binding is invalid.", [
+      issue(
+        "tessl.eval.provider_context",
+        "/result",
+        "completed eval must echo the exact plugin context and CLI invocation",
+      ),
     ]);
   }
   if (data.attributes.status !== "completed" || !Array.isArray(data.attributes.scenarios)) {
@@ -808,12 +862,32 @@ export async function captureTesslEvalEvidence(
   const sourcePath = ensureInside(root, source, "/source");
   const scenarioSourceSha256 = await digestBoundedTree(source);
   const context = await commonContext(projectDirectory, options, [sourcePath]);
+  const sourceBinding = await inspectTesslEvalSource(source, context.skillName);
+  if (
+    !sourceBinding.structureValid ||
+    !sourceBinding.contextExclusive ||
+    !sourceBinding.skillValid ||
+    sourceBinding.embeddedSkillSha256 !== context.skillSha256
+  ) {
+    throw new TesslEvidenceError("Tessl eval source does not contain the canonical skill.", [
+      issue(
+        "tessl.eval.source_skill",
+        "/source/skills",
+        "eval plugin must contain only a valid embedded skill matching the canonical skill digest",
+      ),
+    ]);
+  }
+  const stagedSource = await stageTesslEvalPlugin(context, source, scenarioSourceSha256);
   const startArgv = [
     context.executable,
     "eval",
     "run",
     "--json",
     "--force",
+    "--context",
+    stagedSource.reportPath,
+    "--skill",
+    context.skillName,
     ...(options.agent === undefined ? [] : ["--agent", options.agent]),
     ...(options.model === undefined ? [] : ["--model", options.model]),
     "--runs",
@@ -830,6 +904,8 @@ export async function captureTesslEvalEvidence(
   const start = parseObjectOutput(startResult, "/start");
   const startAgent = start.agent;
   const startModel = start.model;
+  const startContext = start.context;
+  const startContextDefinition = isRecord(startContext) ? startContext.definition : undefined;
   if (
     typeof start.evalRunId !== "string" ||
     !boundedIdentifier(start.evalRunId, 200) ||
@@ -843,13 +919,16 @@ export async function captureTesslEvalEvidence(
         (options.model !== undefined && startModel !== options.model))) ||
     !Number.isSafeInteger(start.scenariosCount) ||
     Number(start.scenariosCount) < 1 ||
-    Number(start.scenariosCount) > 256
+    Number(start.scenariosCount) > 256 ||
+    !isRecord(startContextDefinition) ||
+    startContextDefinition.type !== "plugin-directory" ||
+    startContextDefinition.path !== stagedSource.reportPath
   ) {
     throw new TesslEvidenceError("Tessl eval submission binding is invalid.", [
       issue(
         "tessl.eval.start_shape",
         "/start",
-        "run id, selected agent/model, and count must match provider output",
+        "run id, selected agent/model, count, and context must match provider output",
       ),
     ]);
   }
@@ -895,7 +974,12 @@ export async function captureTesslEvalEvidence(
     ]);
   }
   await writeRaw(context.storage, "eval-result", finalResult);
-  const parsed = parseCompletedEval(finalValue, runId);
+  const parsed = parseCompletedEval(
+    finalValue,
+    runId,
+    stagedSource.reportPath,
+    startArgv.slice(1).join(" "),
+  );
   if (
     (options.agent !== undefined && parsed.agent !== options.agent) ||
     (options.model !== undefined && parsed.model !== options.model) ||
@@ -932,6 +1016,27 @@ export async function captureTesslEvalEvidence(
     path: source,
     sha256: scenarioSourceSha256,
   });
+  const finalSourceBinding = await inspectTesslEvalSource(source, context.skillName);
+  const finalStagedBinding = await inspectTesslEvalSource(stagedSource.path, context.skillName);
+  if (
+    !finalSourceBinding.structureValid ||
+    !finalSourceBinding.contextExclusive ||
+    !finalSourceBinding.skillValid ||
+    finalSourceBinding.embeddedSkillSha256 !== context.skillSha256 ||
+    (await digestBoundedTree(stagedSource.path)) !== scenarioSourceSha256 ||
+    !finalStagedBinding.structureValid ||
+    !finalStagedBinding.contextExclusive ||
+    !finalStagedBinding.skillValid ||
+    finalStagedBinding.embeddedSkillSha256 !== context.skillSha256
+  ) {
+    throw new TesslEvidenceError("Tessl eval source skill changed during evidence capture.", [
+      issue(
+        "tessl.eval.source_skill_changed",
+        "/source/skills",
+        "embedded eval skill must remain equal to the canonical skill throughout capture",
+      ),
+    ]);
+  }
   await assertCliUnchanged(context);
   const reasons: SkillPressTesslEvalEvidence["ineligibilityReasons"] = [...baseReasons];
   if (parsed.missingBaseline) reasons.push("missing_baseline");

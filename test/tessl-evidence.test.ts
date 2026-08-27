@@ -4,6 +4,7 @@ import { realpathSync } from "node:fs";
 import {
   access,
   chmod,
+  cp,
   mkdtemp,
   mkdir,
   readFile,
@@ -46,8 +47,21 @@ async function project(): Promise<{ root: string; executable: string; evalSource
   const root = join(parent, "project");
   await writeRenderedProject(renderCapabilityProject(await loadCapabilityBrief(briefPath)), root);
   const evalSource = join(root, "tessl-evals");
-  await mkdir(evalSource);
-  await writeFile(join(evalSource, "scenario.json"), "{}\n");
+  await mkdir(join(evalSource, ".tessl-plugin"), { recursive: true });
+  await mkdir(join(evalSource, "evals"));
+  await mkdir(join(evalSource, "skills"));
+  await writeFile(
+    join(evalSource, ".tessl-plugin", "plugin.json"),
+    '{"name":"test/incident-summary","version":"0.1.0","private":true}\n',
+  );
+  await writeFile(join(evalSource, "evals", "scenario.json"), "{}\n");
+  await cp(
+    join(root, "skills", "incident-summary"),
+    join(evalSource, "skills", "incident-summary"),
+    {
+      recursive: true,
+    },
+  );
   const executable = join(parent, "tessl-fake");
   await writeFile(executable, "#!/bin/sh\nexit 99\n");
   await chmod(executable, 0o755);
@@ -96,10 +110,52 @@ function executorFor(
   handler: (args: readonly string[], command: CapturedCommand) => CapturedCommandResult,
   observed: string[][] = [],
 ): TesslCommandExecutor {
+  let evalInvocation: readonly string[] = [];
   return async (command) => {
     const args = command.argv.slice(1);
     observed.push([...args]);
-    return handler(args, command);
+    if (args[0] === "eval" && args[1] === "run") evalInvocation = args;
+    const captured = handler(args, command);
+    if (captured.status !== "passed" || evalInvocation.length === 0) return captured;
+    let value: unknown;
+    try {
+      value = JSON.parse(captured.stdout.toString("utf8"));
+    } catch {
+      return captured;
+    }
+    const candidate = Array.isArray(value) ? value[0] : value;
+    if (candidate !== null && typeof candidate === "object" && !Array.isArray(candidate)) {
+      const record = candidate as Record<string, unknown>;
+      const contextPath = evalInvocation[evalInvocation.indexOf("--context") + 1] as string;
+      if (typeof record.evalRunId === "string" && record.context === undefined) {
+        record.context = {
+          definition: { type: "plugin-directory", path: contextPath },
+        };
+      }
+      const data = record.data;
+      if (data !== null && typeof data === "object" && !Array.isArray(data)) {
+        const attributes = (data as Record<string, unknown>).attributes;
+        if (
+          attributes !== null &&
+          typeof attributes === "object" &&
+          !Array.isArray(attributes) &&
+          (attributes as Record<string, unknown>).status === "completed"
+        ) {
+          const output = attributes as Record<string, unknown>;
+          output.evalRunFixtures ??= {
+            context: { type: "plugin-directory", path: contextPath },
+          };
+          output.metadata ??= { cliInvocation: evalInvocation.join(" ") };
+        }
+      }
+    }
+    const stdout = Buffer.from(JSON.stringify(value));
+    return Object.freeze({
+      ...captured,
+      stdout,
+      stdoutBytes: stdout.byteLength,
+      stdoutSha256: createHash("sha256").update(stdout).digest("hex"),
+    });
   };
 }
 
@@ -121,7 +177,12 @@ function reviewExecutor(
   }, observed);
 }
 
-function completedEval(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function completedEval(
+  overrides: Record<string, unknown> = {},
+  invocation?: readonly string[],
+): Record<string, unknown> {
+  const contextPath =
+    invocation === undefined ? undefined : invocation[invocation.indexOf("--context") + 1];
   return {
     data: {
       id: "eval-run-1",
@@ -129,6 +190,14 @@ function completedEval(overrides: Record<string, unknown> = {}): Record<string, 
         status: "completed",
         agent: "codex",
         model: "gpt-fixed",
+        ...(contextPath === undefined
+          ? {}
+          : {
+              evalRunFixtures: {
+                context: { type: "plugin-directory", path: contextPath },
+              },
+              metadata: { cliInvocation: invocation?.join(" ") },
+            }),
         scenarios: [
           {
             fingerprint: "scenario-one",
@@ -519,6 +588,10 @@ describe("Tessl official evidence bridge", () => {
       "run",
       "--json",
       "--force",
+      "--context",
+      expect.stringMatching(/^\.skillpress\/tessl\/[a-f0-9]{64}\/eval-plugin-[a-f0-9]{64}$/u),
+      "--skill",
+      "incident-summary",
       "--agent",
       "codex",
       "--model",
@@ -540,6 +613,221 @@ describe("Tessl official evidence bridge", () => {
     });
     expect(evidence.scenarios.map((scenario) => scenario.delta)).toEqual([50, 40]);
     expect(JSON.stringify(evidence)).not.toContain("scenario-one");
+  });
+
+  it.each(["start context", "final context", "final invocation"] as const)(
+    "rejects a provider echo that drifts in %s",
+    async (fault) => {
+      const fixture = await project();
+      let invocation: readonly string[] = [];
+      const executor: TesslCommandExecutor = async (command) => {
+        const args = command.argv.slice(1);
+        if (args[0] === "--version") return result("0.101.0\n");
+        if (args[1] === "run") {
+          invocation = args;
+          const contextPath = args[args.indexOf("--context") + 1] as string;
+          return result(
+            JSON.stringify({
+              evalRunId: "eval-run-1",
+              agent: "codex",
+              model: "gpt-fixed",
+              scenariosCount: 2,
+              context: {
+                definition: {
+                  type: "plugin-directory",
+                  path: fault === "start context" ? "stale-context" : contextPath,
+                },
+              },
+            }),
+          );
+        }
+        const completed = completedEval({}, invocation);
+        const attributes = (completed.data as { attributes: Record<string, unknown> }).attributes;
+        if (fault === "final context") {
+          attributes.evalRunFixtures = {
+            context: { type: "plugin-directory", path: "stale-context" },
+          };
+        }
+        if (fault === "final invocation") {
+          attributes.metadata = { cliInvocation: "eval run --json" };
+        }
+        return result(JSON.stringify(completed));
+      };
+
+      await expect(
+        captureTesslEvalEvidence(fixture.root, {
+          source: "tessl-evals",
+          agent: "codex",
+          model: "gpt-fixed",
+          executable: fixture.executable,
+          executor,
+          pollIntervalMs: 1,
+          wait: async () => undefined,
+        }),
+      ).rejects.toMatchObject({
+        issues: [
+          expect.objectContaining({
+            code:
+              fault === "start context" ? "tessl.eval.start_shape" : "tessl.eval.provider_context",
+          }),
+        ],
+      });
+    },
+  );
+
+  it("rejects an eval plugin whose embedded skill differs from the canonical skill", async () => {
+    const fixture = await project();
+    await writeFile(join(fixture.evalSource, "skills", "incident-summary", "LICENSE"), "changed\n");
+    let submitted = false;
+    const executor = executorFor((args) => {
+      if (args[0] === "--version") return result("0.101.0\n");
+      submitted = true;
+      return result("", "failed");
+    });
+
+    await expect(
+      captureTesslEvalEvidence(fixture.root, {
+        source: "tessl-evals",
+        executable: fixture.executable,
+        executor,
+      }),
+    ).rejects.toMatchObject({
+      issues: [expect.objectContaining({ code: "tessl.eval.source_skill" })],
+    });
+    expect(submitted).toBe(false);
+  });
+
+  it("rejects additional skill context even when the canonical skill is present", async () => {
+    const fixture = await project();
+    await cp(
+      join(fixture.evalSource, "skills", "incident-summary"),
+      join(fixture.evalSource, "skills", "answer-key"),
+      { recursive: true },
+    );
+    let submitted = false;
+    const executor = executorFor((args) => {
+      if (args[0] === "--version") return result("0.101.0\n");
+      submitted = true;
+      return result("", "failed");
+    });
+
+    await expect(
+      captureTesslEvalEvidence(fixture.root, {
+        source: "tessl-evals",
+        executable: fixture.executable,
+        executor,
+      }),
+    ).rejects.toMatchObject({
+      issues: [expect.objectContaining({ code: "tessl.eval.source_skill" })],
+    });
+    expect(submitted).toBe(false);
+  });
+
+  it("rejects eval projects that can inject dependency context", async () => {
+    const fixture = await project();
+    await writeFile(
+      join(fixture.evalSource, "tessl.json"),
+      '{"name":"test/eval","mode":"vendored","dependencies":{"answer-key":"1.0.0"}}\n',
+    );
+    let submitted = false;
+    const executor = executorFor((args) => {
+      if (args[0] === "--version") return result("0.101.0\n");
+      submitted = true;
+      return result("", "failed");
+    });
+
+    await expect(
+      captureTesslEvalEvidence(fixture.root, {
+        source: "tessl-evals",
+        executable: fixture.executable,
+        executor,
+      }),
+    ).rejects.toMatchObject({
+      issues: [expect.objectContaining({ code: "tessl.eval.source_skill" })],
+    });
+    expect(submitted).toBe(false);
+  });
+
+  it("rejects mutation of the private eval snapshot before result capture", async () => {
+    const fixture = await project();
+    let stagedSource = "";
+    let invocation: readonly string[] = [];
+    const executor: TesslCommandExecutor = async (command) => {
+      const args = command.argv.slice(1);
+      if (args[0] === "--version") return result("0.101.0\n");
+      if (args[1] === "run") {
+        invocation = args;
+        stagedSource = args[args.indexOf("--context") + 1] as string;
+        return result(
+          JSON.stringify({
+            evalRunId: "eval-run-1",
+            agent: "codex",
+            model: "gpt-fixed",
+            scenariosCount: 2,
+            context: {
+              definition: { type: "plugin-directory", path: stagedSource },
+            },
+          }),
+        );
+      }
+      await writeFile(
+        join(fixture.root, stagedSource, "skills", "incident-summary", "LICENSE"),
+        "changed\n",
+      );
+      return result(JSON.stringify(completedEval({}, invocation)));
+    };
+
+    await expect(
+      captureTesslEvalEvidence(fixture.root, {
+        source: "tessl-evals",
+        agent: "codex",
+        model: "gpt-fixed",
+        executable: fixture.executable,
+        executor,
+        pollIntervalMs: 1,
+        wait: async () => undefined,
+      }),
+    ).rejects.toMatchObject({
+      issues: [expect.objectContaining({ code: "tessl.eval.source_skill_changed" })],
+    });
+  });
+
+  it("makes evidence ineligible when original eval scenarios change during capture", async () => {
+    const fixture = await project();
+    let invocation: readonly string[] = [];
+    const executor: TesslCommandExecutor = async (command) => {
+      const args = command.argv.slice(1);
+      if (args[0] === "--version") return result("0.101.0\n");
+      if (args[1] === "run") {
+        invocation = args;
+        const contextPath = args[args.indexOf("--context") + 1] as string;
+        return result(
+          JSON.stringify({
+            evalRunId: "eval-run-1",
+            agent: "codex",
+            model: "gpt-fixed",
+            scenariosCount: 2,
+            context: {
+              definition: { type: "plugin-directory", path: contextPath },
+            },
+          }),
+        );
+      }
+      await writeFile(join(fixture.evalSource, "evals", "scenario.json"), "changed\n");
+      return result(JSON.stringify(completedEval({}, invocation)));
+    };
+
+    const evidence = await captureTesslEvalEvidence(fixture.root, {
+      source: "tessl-evals",
+      agent: "codex",
+      model: "gpt-fixed",
+      executable: fixture.executable,
+      executor,
+      pollIntervalMs: 1,
+      wait: async () => undefined,
+    });
+
+    expect(evidence.ineligibilityReasons).toContain("source_changed");
   });
 
   it("binds provider defaults when either or both selection flags are omitted", async () => {
@@ -585,6 +873,10 @@ describe("Tessl official evidence bridge", () => {
         "run",
         "--json",
         "--force",
+        "--context",
+        expect.stringMatching(/^\.skillpress\/tessl\/[a-f0-9]{64}\/eval-plugin-[a-f0-9]{64}$/u),
+        "--skill",
+        "incident-summary",
         ...value.flags,
         "--runs",
         "2",

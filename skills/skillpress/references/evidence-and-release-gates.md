@@ -17,23 +17,35 @@ One class never substitutes for another.
 Use the pinned official CLI binary. Quality review:
 
 ```sh
-skillpress tessl review --project . --workspace <workspace> --json
+skillpress tessl review --project . --workspace <workspace> \
+  --executable <absolute-versioned-tessl-binary> --json
 ```
 
 Impact evaluation:
 
 ```sh
-skillpress tessl eval --project . --source .skillpress/tessl-evals/<set> --runs <count> --json
+skillpress tessl eval --project . --source .skillpress/tessl-evals/<set> --runs <count> \
+  --executable <absolute-versioned-tessl-binary> --json
 ```
 
 Add `--agent` and/or `--model` only when the workspace plan permits explicit selection. The
 provider-resolved identities, pinned executable digest, configured thresholds, run ID, and raw
 paired results remain part of the evidence binding.
 
+The eval source must be a Tessl plugin whose only injectable content is a valid
+`skills/<configured-skill-name>` tree that exactly matches the canonical skill. Tessl evaluates
+plugin content, so capture rejects extra skills/docs/rules, snapshots the complete source into
+content-addressed private evidence storage, and also rejects any non-empty project dependency map
+that could inject hidden context. It verifies both tree digests, passes the snapshot as explicit
+context, and explicitly selects the configured skill. The linked source remains the positional
+project source so its Tessl identity is preserved. Provider start and result output must echo the
+exact snapshot path and full invocation. After the provider run and at the release gate, capture
+repeats the original/snapshot/canonical checks.
+
 The commands retain bounded raw provider output in private `.skillpress/tessl/` storage. A trusted
 version string alone is insufficient: the executable SHA-256 must match the signed-release trust
-set. Impact capture always forces fresh provider solves; evidence from cached cases created for an
-older skill context is rejected at the release gate.
+set. Quality and Impact capture always force fresh provider results; evidence from cached output
+created for an older skill context is rejected at the release gate.
 
 ## Apply the release gate
 
@@ -42,7 +54,8 @@ source. A passing report requires all of the following:
 
 - Quality and Impact meet the configured minima, normally 90;
 - evidence is current and release-eligible;
-- source commit, configuration, canonical skill, and eval scenarios are unchanged and clean;
+- source commit, configuration, canonical skill, embedded eval skill, and eval scenarios are
+  unchanged, mutually bound, and clean;
 - raw command receipts and provider outputs remain bound and valid;
 - every Impact scenario is non-regressing;
 - both captures used the pinned trusted Tessl CLI.

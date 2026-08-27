@@ -1,6 +1,16 @@
 import { execFile } from "node:child_process";
 import { realpathSync } from "node:fs";
-import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  cp,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -320,8 +330,20 @@ describe("SkillPress CLI scaffold", () => {
     await expect(
       runCli(["create", "--brief", briefPath, "--output", project], captureIo().io),
     ).resolves.toBe(0);
-    await mkdir(join(project, "tessl-evals"));
-    await writeFile(join(project, "tessl-evals/scenario.json"), "{}\n");
+    const evalSource = join(project, "tessl-evals");
+    await mkdir(join(evalSource, ".tessl-plugin"), { recursive: true });
+    await mkdir(join(evalSource, "evals"));
+    await mkdir(join(evalSource, "skills"));
+    await writeFile(
+      join(evalSource, ".tessl-plugin", "plugin.json"),
+      '{"name":"test/incident-summary","version":"0.1.0","private":true}\n',
+    );
+    await writeFile(join(evalSource, "evals", "scenario.json"), "{}\n");
+    await cp(
+      join(project, "skills", "incident-summary"),
+      join(evalSource, "skills", "incident-summary"),
+      { recursive: true },
+    );
     await execFileAsync("git", ["init", "-q"], { cwd: project });
     await execFileAsync("git", ["add", "."], { cwd: project });
     await execFileAsync(
@@ -343,12 +365,22 @@ describe("SkillPress CLI scaffold", () => {
     await writeFile(
       executable,
       `#!/usr/bin/env node
+const fs = require("node:fs");
 const args = process.argv.slice(2);
+const statePath = ${JSON.stringify(`${executable}.eval-state`)};
 if (args[0] === "--version") console.log("0.101.0");
 else if (args[0] === "skill") console.log("lint passed");
 else if (args[0] === "review") console.log(JSON.stringify({reviewRunId:"review-1",validation:{overallPassed:true},review:{reviewScore:93}}));
-else if (args[0] === "eval" && args[1] === "run") console.log(JSON.stringify({evalRunId:"eval-1",agent:"codex",model:"model",scenariosCount:1}));
-else if (args[0] === "eval" && args[1] === "view") console.log(JSON.stringify({data:{id:"eval-1",attributes:{status:"completed",agent:"codex",model:"model",scenarios:[{fingerprint:"case",solutions:[{variant:"baseline",assessmentResults:[{score:2,max_score:10}]},{variant:"with-context",assessmentResults:[{score:9,max_score:10}]}]}]}}}));
+else if (args[0] === "eval" && args[1] === "run") {
+  fs.writeFileSync(statePath, JSON.stringify(args));
+  const contextPath = args[args.indexOf("--context") + 1];
+  console.log(JSON.stringify({evalRunId:"eval-1",agent:"codex",model:"model",scenariosCount:1,context:{definition:{type:"plugin-directory",path:contextPath}}}));
+}
+else if (args[0] === "eval" && args[1] === "view") {
+  const invocation = JSON.parse(fs.readFileSync(statePath, "utf8"));
+  const contextPath = invocation[invocation.indexOf("--context") + 1];
+  console.log(JSON.stringify({data:{id:"eval-1",attributes:{status:"completed",agent:"codex",model:"model",evalRunFixtures:{context:{type:"plugin-directory",path:contextPath}},metadata:{cliInvocation:invocation.join(" ")},scenarios:[{fingerprint:"case",solutions:[{variant:"baseline",assessmentResults:[{score:2,max_score:10}]},{variant:"with-context",assessmentResults:[{score:9,max_score:10}]}]}]}}}));
+}
 else process.exit(2);
 `,
     );

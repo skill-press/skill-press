@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
-import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdtemp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { loadCapabilityBrief } from "../src/create/load.js";
 import { renderCapabilityProject } from "../src/create/render.js";
 import { writeRenderedProject } from "../src/create/write.js";
+import { digestBoundedTree } from "../src/evidence/tree-digest.js";
 import type { CapturedCommandResult } from "../src/process/capture.js";
 import { checkTesslReleaseGate, TesslReleaseGateError } from "../src/release/tessl-gate.js";
 import { tesslCommandDigest } from "../src/tessl/command-digest.js";
@@ -50,6 +51,8 @@ function result(stdout: string, stderr = ""): CapturedCommandResult {
 }
 
 function executor(): TesslCommandExecutor {
+  let evalContext = "";
+  let evalCliInvocation = "";
   return async (command) => {
     const args = command.argv.slice(1);
     if (args[0] === "--version") return result("0.101.0\n");
@@ -60,7 +63,19 @@ function executor(): TesslCommandExecutor {
       );
     }
     if (args[0] === "eval" && args[1] === "run") {
-      return result('{"evalRunId":"eval-1","agent":"codex","model":"model","scenariosCount":2}\n');
+      evalContext = args[args.indexOf("--context") + 1] as string;
+      evalCliInvocation = args.join(" ");
+      return result(
+        `${JSON.stringify({
+          evalRunId: "eval-1",
+          agent: "codex",
+          model: "model",
+          scenariosCount: 2,
+          context: {
+            definition: { type: "plugin-directory", path: evalContext },
+          },
+        })}\n`,
+      );
     }
     return result(
       JSON.stringify({
@@ -70,6 +85,10 @@ function executor(): TesslCommandExecutor {
             status: "completed",
             agent: "codex",
             model: "model",
+            evalRunFixtures: {
+              context: { type: "plugin-directory", path: evalContext },
+            },
+            metadata: { cliInvocation: evalCliInvocation },
             scenarios: [
               {
                 fingerprint: "one",
@@ -111,6 +130,13 @@ interface Fixture {
   readonly evalPath: string;
 }
 
+function capturedEvalSource(evaluation: {
+  readonly storagePath: string;
+  readonly scenarioSourceSha256: string;
+}): string {
+  return `${evaluation.storagePath}/eval-plugin-${evaluation.scenarioSourceSha256}`;
+}
+
 async function writePrivateJson(path: string, value: unknown): Promise<void> {
   await writeFile(path, `${JSON.stringify(value)}\n`, { mode: 0o600 });
   await chmod(path, 0o600);
@@ -121,8 +147,22 @@ async function fixture(): Promise<Fixture> {
   temporaryDirectories.push(parent);
   const root = join(parent, "project");
   await writeRenderedProject(renderCapabilityProject(await loadCapabilityBrief(briefPath)), root);
-  await mkdir(join(root, "tessl-evals"));
-  await writeFile(join(root, "tessl-evals/scenario.json"), "{}\n");
+  const evalSource = join(root, "tessl-evals");
+  await mkdir(join(evalSource, ".tessl-plugin"), { recursive: true });
+  await mkdir(join(evalSource, "evals"));
+  await mkdir(join(evalSource, "skills"));
+  await writeFile(
+    join(evalSource, ".tessl-plugin", "plugin.json"),
+    '{"name":"test/incident-summary","version":"0.1.0","private":true}\n',
+  );
+  await writeFile(join(evalSource, "evals", "scenario.json"), "{}\n");
+  await cp(
+    join(root, "skills", "incident-summary"),
+    join(evalSource, "skills", "incident-summary"),
+    {
+      recursive: true,
+    },
+  );
   const executable = join(parent, "tessl-fake");
   await writeFile(executable, "#!/bin/sh\nexit 99\n");
   await chmod(executable, 0o755);
@@ -190,6 +230,10 @@ async function fixture(): Promise<Fixture> {
     "run",
     "--json",
     "--force",
+    "--context",
+    capturedEvalSource(evaluation),
+    "--skill",
+    "incident-summary",
     "--agent",
     "codex",
     "--model",
@@ -256,23 +300,48 @@ describe("Tessl release gate", () => {
       const value = await fixture();
       const evalFile = join(value.root, value.evalPath);
       const evaluation = JSON.parse(await readFile(evalFile, "utf8"));
-      evaluation.start.commandSha256 = tesslCommandDigest(trustedDigest, [
+      const invocation = [
         "eval",
         "run",
         "--json",
         "--force",
+        "--context",
+        capturedEvalSource(evaluation),
+        "--skill",
+        "incident-summary",
         ...selection,
         "--runs",
         "1",
         "tessl-evals",
-      ]);
+      ];
+      evaluation.start.commandSha256 = tesslCommandDigest(trustedDigest, invocation);
       await writePrivateJson(evalFile, evaluation);
       await replaceRawStdout(
         value,
         value.evalPath,
         "start",
         "eval-start",
-        '{"evalRunId":"eval-1","scenariosCount":2}\n',
+        `${JSON.stringify({
+          evalRunId: "eval-1",
+          scenariosCount: 2,
+          context: {
+            definition: {
+              type: "plugin-directory",
+              path: capturedEvalSource(evaluation),
+            },
+          },
+        })}\n`,
+      );
+      const rawResult = JSON.parse(
+        await readFile(join(value.root, evaluation.storagePath, "eval-result.stdout"), "utf8"),
+      );
+      rawResult.data.attributes.metadata.cliInvocation = invocation.join(" ");
+      await replaceRawStdout(
+        value,
+        value.evalPath,
+        "result",
+        "eval-result",
+        `${JSON.stringify(rawResult)}\n`,
       );
 
       expect((await gate(value)).passed).toBe(true);
@@ -307,6 +376,36 @@ describe("Tessl release gate", () => {
       "eval",
       "run",
       "--json",
+      "--context",
+      capturedEvalSource(evaluation),
+      "--skill",
+      "incident-summary",
+      "--agent",
+      "codex",
+      "--model",
+      "model",
+      "--runs",
+      "1",
+      "tessl-evals",
+    ]);
+    await writePrivateJson(evalFile, evaluation);
+
+    expect((await gate(value)).issues.map((entry) => entry.code)).toContain(
+      "release.evidence.command",
+    );
+  });
+
+  it("rejects eval commands that do not narrow context to the canonical skill", async () => {
+    const value = await fixture();
+    const evalFile = join(value.root, value.evalPath);
+    const evaluation = JSON.parse(await readFile(evalFile, "utf8"));
+    evaluation.start.commandSha256 = tesslCommandDigest(trustedDigest, [
+      "eval",
+      "run",
+      "--json",
+      "--force",
+      "--context",
+      capturedEvalSource(evaluation),
       "--agent",
       "codex",
       "--model",
@@ -379,7 +478,7 @@ describe("Tessl release gate", () => {
   it("rejects current source, commit, configuration, and scenario drift", async () => {
     const value = await fixture();
     await writeFile(join(value.root, "skills/incident-summary/LICENSE"), "changed\n");
-    await writeFile(join(value.root, "tessl-evals/scenario.json"), "changed\n");
+    await writeFile(join(value.root, "tessl-evals/evals/scenario.json"), "changed\n");
     const report = await gate(value);
     expect(report.issues.map((entry) => entry.code)).toEqual(
       expect.arrayContaining([
@@ -422,6 +521,212 @@ describe("Tessl release gate", () => {
       commitReport.issues.filter((entry) => entry.code === "release.evidence.commit"),
     ).toHaveLength(2);
   });
+
+  it("rejects a release-bound eval source whose embedded skill differs from canonical", async () => {
+    const value = await fixture();
+    const evalFile = join(value.root, value.evalPath);
+    const evaluation = JSON.parse(await readFile(evalFile, "utf8"));
+    const oldCapturedSource = capturedEvalSource(evaluation);
+    await writeFile(
+      join(value.root, "tessl-evals", "skills", "incident-summary", "LICENSE"),
+      "changed\n",
+    );
+    await writeFile(
+      join(value.root, oldCapturedSource, "skills", "incident-summary", "LICENSE"),
+      "changed\n",
+    );
+    await execFileAsync("git", ["add", "tessl-evals"], { cwd: value.root });
+    await execFileAsync(
+      "git",
+      [
+        "-c",
+        "user.name=SkillPress Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "-qm",
+        "change embedded eval skill",
+      ],
+      { cwd: value.root },
+    );
+    const sourceCommit = (
+      await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: value.root })
+    ).stdout.trim();
+    const reviewFile = join(value.root, value.reviewPath);
+    const review = JSON.parse(await readFile(reviewFile, "utf8"));
+    review.sourceCommit = sourceCommit;
+    evaluation.sourceCommit = sourceCommit;
+    evaluation.scenarioSourceSha256 = await digestBoundedTree(join(value.root, "tessl-evals"));
+    await rename(
+      join(value.root, oldCapturedSource),
+      join(value.root, capturedEvalSource(evaluation)),
+    );
+    await writePrivateJson(reviewFile, review);
+    await writePrivateJson(evalFile, evaluation);
+
+    const report = await gate(value);
+    expect(report.issues.map((entry) => entry.code)).toContain("release.eval_source.skill_binding");
+  });
+
+  it("rejects additional plugin skill context even when evidence digests are rebound", async () => {
+    const value = await fixture();
+    const reviewFile = join(value.root, value.reviewPath);
+    const evalFile = join(value.root, value.evalPath);
+    const review = JSON.parse(await readFile(reviewFile, "utf8"));
+    const evaluation = JSON.parse(await readFile(evalFile, "utf8"));
+    const oldCapturedSource = capturedEvalSource(evaluation);
+    const originalSkill = join(value.root, "tessl-evals", "skills", "incident-summary");
+    const capturedSkill = join(value.root, oldCapturedSource, "skills", "incident-summary");
+    await cp(originalSkill, join(value.root, "tessl-evals", "skills", "answer-key"), {
+      recursive: true,
+    });
+    await cp(capturedSkill, join(value.root, oldCapturedSource, "skills", "answer-key"), {
+      recursive: true,
+    });
+    await execFileAsync("git", ["add", "tessl-evals"], { cwd: value.root });
+    await execFileAsync(
+      "git",
+      [
+        "-c",
+        "user.name=SkillPress Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "-qm",
+        "add extra eval context",
+      ],
+      { cwd: value.root },
+    );
+    const sourceCommit = (
+      await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: value.root })
+    ).stdout.trim();
+    review.sourceCommit = sourceCommit;
+    evaluation.sourceCommit = sourceCommit;
+    evaluation.scenarioSourceSha256 = await digestBoundedTree(join(value.root, "tessl-evals"));
+    await rename(
+      join(value.root, oldCapturedSource),
+      join(value.root, capturedEvalSource(evaluation)),
+    );
+    await writePrivateJson(reviewFile, review);
+    await writePrivateJson(evalFile, evaluation);
+
+    const report = await gate(value);
+    expect(report.issues.map((entry) => entry.code)).toContain("release.eval_source.skill_binding");
+  });
+
+  it("rejects a captured eval snapshot that drifts from its original source", async () => {
+    const value = await fixture();
+    const evaluation = JSON.parse(await readFile(join(value.root, value.evalPath), "utf8"));
+    await writeFile(
+      join(value.root, capturedEvalSource(evaluation), "evals", "scenario.json"),
+      "changed\n",
+    );
+
+    const report = await gate(value);
+    expect(report.issues.map((entry) => entry.code)).toContain("release.evidence.scenarios");
+  });
+
+  it("rejects laundering old provider scores onto rebound eval content", async () => {
+    const value = await fixture();
+    const reviewFile = join(value.root, value.reviewPath);
+    const evalFile = join(value.root, value.evalPath);
+    const review = JSON.parse(await readFile(reviewFile, "utf8"));
+    const evaluation = JSON.parse(await readFile(evalFile, "utf8"));
+    const oldCapturedSource = capturedEvalSource(evaluation);
+    await writeFile(join(value.root, "tessl-evals", "evals", "scenario.json"), "changed\n");
+    await writeFile(join(value.root, oldCapturedSource, "evals", "scenario.json"), "changed\n");
+    await execFileAsync("git", ["add", "tessl-evals"], { cwd: value.root });
+    await execFileAsync(
+      "git",
+      [
+        "-c",
+        "user.name=SkillPress Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "-qm",
+        "replace eval content",
+      ],
+      { cwd: value.root },
+    );
+    const sourceCommit = (
+      await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: value.root })
+    ).stdout.trim();
+    review.sourceCommit = sourceCommit;
+    evaluation.sourceCommit = sourceCommit;
+    evaluation.scenarioSourceSha256 = await digestBoundedTree(join(value.root, "tessl-evals"));
+    const reboundCapturedSource = capturedEvalSource(evaluation);
+    await rename(join(value.root, oldCapturedSource), join(value.root, reboundCapturedSource));
+    evaluation.start.commandSha256 = tesslCommandDigest(trustedDigest, [
+      "eval",
+      "run",
+      "--json",
+      "--force",
+      "--context",
+      reboundCapturedSource,
+      "--skill",
+      "incident-summary",
+      "--agent",
+      "codex",
+      "--model",
+      "model",
+      "--runs",
+      "1",
+      "tessl-evals",
+    ]);
+    await writePrivateJson(reviewFile, review);
+    await writePrivateJson(evalFile, evaluation);
+
+    const report = await gate(value);
+    expect(report.issues.map((entry) => entry.code)).toContain("release.evidence.output");
+  });
+
+  it.each(["start context", "final context", "final invocation"] as const)(
+    "rejects release evidence whose provider echo drifts in %s",
+    async (fault) => {
+      const value = await fixture();
+      const evaluation = JSON.parse(await readFile(join(value.root, value.evalPath), "utf8"));
+      if (fault === "start context") {
+        const rawStart = JSON.parse(
+          await readFile(join(value.root, evaluation.storagePath, "eval-start.stdout"), "utf8"),
+        );
+        rawStart.context.definition.path = "stale-context";
+        await replaceRawStdout(
+          value,
+          value.evalPath,
+          "start",
+          "eval-start",
+          `${JSON.stringify(rawStart)}\n`,
+        );
+      } else {
+        const rawResult = JSON.parse(
+          await readFile(join(value.root, evaluation.storagePath, "eval-result.stdout"), "utf8"),
+        );
+        if (fault === "final context") {
+          rawResult.data.attributes.evalRunFixtures.context.path = "stale-context";
+        } else {
+          rawResult.data.attributes.metadata.cliInvocation = "eval run --json";
+        }
+        await replaceRawStdout(
+          value,
+          value.evalPath,
+          "result",
+          "eval-result",
+          `${JSON.stringify(rawResult)}\n`,
+        );
+      }
+
+      expect((await gate(value)).issues.map((entry) => entry.code)).toContain(
+        "release.evidence.output",
+      );
+    },
+  );
 
   it("rejects raw output and normalized command digest tampering", async () => {
     const value = await fixture();

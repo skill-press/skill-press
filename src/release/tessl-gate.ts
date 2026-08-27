@@ -8,6 +8,7 @@ import { loadProjectConfig } from "../config/load.js";
 import { digestBoundedTree } from "../evidence/tree-digest.js";
 import { runCapturedCommand } from "../process/capture.js";
 import { tesslCommandDigest } from "../tessl/command-digest.js";
+import { inspectTesslEvalSource } from "../tessl/eval-source.js";
 import type { SkillPressTesslEvalEvidence } from "../tessl/generated-eval-evidence.js";
 import type { SkillPressTesslReviewEvidence } from "../tessl/generated-review-evidence.js";
 import { isTrustedTesslCli } from "../tessl/trusted-cli.js";
@@ -99,6 +100,16 @@ function issue(code: string, path: string, message: string): TesslReleaseGateIss
 
 function sha256(value: string | Buffer): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+async function digestExistingTree(path: string): Promise<string | null> {
+  try {
+    return await digestBoundedTree(path);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return null;
+    throw error;
+  }
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -327,13 +338,20 @@ function verifyEvalOutputs(
   startBytes: Buffer,
   resultBytes: Buffer,
   evidence: SkillPressTesslEvalEvidence,
+  expectedContextPath: string,
+  expectedCliInvocation: string,
 ): void {
   const start = extractJsonObject(startBytes);
+  const startContext = start.context;
+  const startContextDefinition = isRecord(startContext) ? startContext.definition : undefined;
   if (
     start.evalRunId !== evidence.runId ||
     (start.agent !== undefined && start.agent !== evidence.agent) ||
     (start.model !== undefined && start.model !== evidence.model) ||
-    start.scenariosCount !== evidence.scenarios.length
+    start.scenariosCount !== evidence.scenarios.length ||
+    !isRecord(startContextDefinition) ||
+    startContextDefinition.type !== "plugin-directory" ||
+    startContextDefinition.path !== expectedContextPath
   ) {
     throw new TypeError("eval start");
   }
@@ -341,6 +359,18 @@ function verifyEvalOutputs(
   const data = result.data;
   if (!isRecord(data) || data.id !== evidence.runId || !isRecord(data.attributes)) {
     throw new TypeError("eval result");
+  }
+  const fixtures = data.attributes.evalRunFixtures;
+  const finalContext = isRecord(fixtures) ? fixtures.context : undefined;
+  const metadata = data.attributes.metadata;
+  if (
+    !isRecord(finalContext) ||
+    finalContext.type !== "plugin-directory" ||
+    finalContext.path !== expectedContextPath ||
+    !isRecord(metadata) ||
+    metadata.cliInvocation !== expectedCliInvocation
+  ) {
+    throw new TypeError("eval provider context");
   }
   if (data.attributes.agent !== evidence.agent || data.attributes.model !== evidence.model) {
     throw new TypeError("eval identity");
@@ -406,6 +436,8 @@ async function verifyRawEvidence(
   root: string,
   skillPath: string,
   evalSource: string,
+  evalContext: string,
+  evalSkillName: string,
   review: SkillPressTesslReviewEvidence,
   evaluation: SkillPressTesslEvalEvidence,
 ): Promise<void> {
@@ -460,12 +492,28 @@ async function verifyRawEvidence(
     ]),
   );
   const evalStartCandidates = [
-    ["eval", "run", "--json", "--force", "--runs", String(evaluation.runs), evalSource],
     [
       "eval",
       "run",
       "--json",
       "--force",
+      "--context",
+      evalContext,
+      "--skill",
+      evalSkillName,
+      "--runs",
+      String(evaluation.runs),
+      evalSource,
+    ],
+    [
+      "eval",
+      "run",
+      "--json",
+      "--force",
+      "--context",
+      evalContext,
+      "--skill",
+      evalSkillName,
       "--agent",
       evaluation.agent,
       "--runs",
@@ -477,6 +525,10 @@ async function verifyRawEvidence(
       "run",
       "--json",
       "--force",
+      "--context",
+      evalContext,
+      "--skill",
+      evalSkillName,
       "--model",
       evaluation.model,
       "--runs",
@@ -488,6 +540,10 @@ async function verifyRawEvidence(
       "run",
       "--json",
       "--force",
+      "--context",
+      evalContext,
+      "--skill",
+      evalSkillName,
       "--agent",
       evaluation.agent,
       "--model",
@@ -524,7 +580,13 @@ async function verifyRawEvidence(
   );
   try {
     verifyReviewOutput(reviewResult.stdout, review);
-    verifyEvalOutputs(startResult.stdout, evalResult.stdout, evaluation);
+    verifyEvalOutputs(
+      startResult.stdout,
+      evalResult.stdout,
+      evaluation,
+      evalContext,
+      evalStartArgv.join(" "),
+    );
   } catch {
     throw new TesslReleaseGateError("Tessl provider output does not match evidence scores.", [
       issue("release.evidence.output", "/evidence", "scores must derive from raw provider JSON"),
@@ -608,6 +670,12 @@ export async function checkTesslReleaseGate(
   const configSha256 = sha256(await readFile(join(root, "skillpress.yaml")));
   const skillSha256 = await digestBoundedTree(join(root, skillPath));
   const scenarioSourceSha256 = await digestBoundedTree(join(root, evalSource));
+  const capturedEvalSource = safeRelativeDirectory(
+    root,
+    `${evaluation.storagePath}/eval-plugin-${scenarioSourceSha256}`,
+    "/eval/storagePath",
+  );
+  const capturedScenarioSourceSha256 = await digestExistingTree(join(root, capturedEvalSource));
   const now = (options.now ?? (() => new Date()))();
   const nowMs = now.getTime();
   if (!Number.isFinite(nowMs)) {
@@ -616,6 +684,25 @@ export async function checkTesslReleaseGate(
     ]);
   }
   const issues: TesslReleaseGateIssue[] = [];
+  const evalSourceBinding = await inspectTesslEvalSource(join(root, evalSource), config.skill.name);
+  const capturedEvalSourceBinding = await inspectTesslEvalSource(
+    join(root, capturedEvalSource),
+    config.skill.name,
+  );
+  addCheck(
+    issues,
+    evalSourceBinding.structureValid &&
+      evalSourceBinding.contextExclusive &&
+      evalSourceBinding.skillValid &&
+      evalSourceBinding.embeddedSkillSha256 === skillSha256 &&
+      capturedEvalSourceBinding.structureValid &&
+      capturedEvalSourceBinding.contextExclusive &&
+      capturedEvalSourceBinding.skillValid &&
+      capturedEvalSourceBinding.embeddedSkillSha256 === skillSha256,
+    "release.eval_source.skill_binding",
+    "/evalSource/skills",
+    "eval plugin must embed the complete current canonical skill",
+  );
   addCheck(
     issues,
     !(await gitInputsDirty(root, ["skillpress.yaml", skillPath, evalSource])),
@@ -674,7 +761,8 @@ export async function checkTesslReleaseGate(
   }
   addCheck(
     issues,
-    evaluation.scenarioSourceSha256 === scenarioSourceSha256,
+    evaluation.scenarioSourceSha256 === scenarioSourceSha256 &&
+      evaluation.scenarioSourceSha256 === capturedScenarioSourceSha256,
     "release.evidence.scenarios",
     "/eval/scenarioSourceSha256",
     "Impact evidence must match the complete current eval source",
@@ -696,7 +784,15 @@ export async function checkTesslReleaseGate(
     "official Tessl Impact must meet the configured minimum without scenario regression",
   );
   try {
-    await verifyRawEvidence(root, skillPath, evalSource, review, evaluation);
+    await verifyRawEvidence(
+      root,
+      skillPath,
+      evalSource,
+      capturedEvalSource,
+      config.skill.name,
+      review,
+      evaluation,
+    );
   } catch (error) {
     if (error instanceof TesslReleaseGateError) issues.push(...error.issues);
     else throw error;
@@ -705,6 +801,15 @@ export async function checkTesslReleaseGate(
   const finalConfigSha256 = sha256(await readFile(join(root, "skillpress.yaml")));
   const finalSkillSha256 = await digestBoundedTree(join(root, skillPath));
   const finalScenarioSha256 = await digestBoundedTree(join(root, evalSource));
+  const finalCapturedScenarioSha256 = await digestExistingTree(join(root, capturedEvalSource));
+  const finalEvalSourceBinding = await inspectTesslEvalSource(
+    join(root, evalSource),
+    config.skill.name,
+  );
+  const finalCapturedEvalSourceBinding = await inspectTesslEvalSource(
+    join(root, capturedEvalSource),
+    config.skill.name,
+  );
   const finalDirty = await gitInputsDirty(root, ["skillpress.yaml", skillPath, evalSource]);
   addCheck(
     issues,
@@ -712,6 +817,15 @@ export async function checkTesslReleaseGate(
       finalConfigSha256 === configSha256 &&
       finalSkillSha256 === skillSha256 &&
       finalScenarioSha256 === scenarioSourceSha256 &&
+      finalCapturedScenarioSha256 === scenarioSourceSha256 &&
+      finalEvalSourceBinding.structureValid &&
+      finalEvalSourceBinding.contextExclusive &&
+      finalEvalSourceBinding.skillValid &&
+      finalEvalSourceBinding.embeddedSkillSha256 === finalSkillSha256 &&
+      finalCapturedEvalSourceBinding.structureValid &&
+      finalCapturedEvalSourceBinding.contextExclusive &&
+      finalCapturedEvalSourceBinding.skillValid &&
+      finalCapturedEvalSourceBinding.embeddedSkillSha256 === finalSkillSha256 &&
       !finalDirty,
     "release.source.changed",
     "/project",

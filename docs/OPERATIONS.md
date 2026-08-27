@@ -103,10 +103,17 @@ If the Tessl workspace plan does not allow explicit model selection, omit both s
 Otherwise add `--agent <agent>` and/or `--model <model>`. The evidence still records the
 provider-resolved identities and binds the exact invocation. Keep generated or holdout sources in
 the ignored private path shown above; SkillPress digests their complete contents across capture and
-release-gate verification. Quality and Impact capture always pass the native Tessl `--force` flag
-so cached provider results from an older skill context cannot become release evidence. Use the same
-explicit versioned binary for `publish --tessl-executable`; an installer or auto-updating launcher
-is not a trusted release executable.
+release-gate verification. The eval source must be a Tessl plugin whose only injectable content is
+`skills/<configured-skill-name>`, an exact copy of the canonical skill. SkillPress validates that
+exclusive embedded skill, rejects non-empty Tessl project dependencies, creates a private
+digest-verified, content-addressed snapshot, and evaluates it with an explicit context and skill
+selector while retaining the linked source as Tessl's positional project source. Provider start
+and result output must echo the exact snapshot path and invocation. SkillPress compares both source
+trees before and after capture; the release gate repeats the original/snapshot/canonical comparison.
+Quality and Impact capture always pass the native Tessl
+`--force` flag so cached provider results from an older skill context cannot become release
+evidence. Use the same explicit versioned binary for `publish --tessl-executable`; an installer or
+auto-updating launcher is not a trusted release executable.
 
 Retain the two returned private evidence paths. Immediately before staging a release, re-open and
 revalidate them against current Git inputs:

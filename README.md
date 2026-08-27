@@ -40,8 +40,10 @@ Run the deterministic local gates from a project root:
 skillpress check --project .
 skillpress test --project .
 skillpress eval --project . --image <image@sha256:digest> --model <model> -- <adapter-argv...>
-skillpress tessl review --project . --workspace <workspace>
-skillpress tessl eval --project . --source .skillpress/tessl-evals/<set>
+skillpress tessl review --project . --workspace <workspace> \
+  --executable <absolute-versioned-tessl-binary>
+skillpress tessl eval --project . --source .skillpress/tessl-evals/<set> \
+  --executable <absolute-versioned-tessl-binary>
 ```
 
 The CLI also exposes the complete gated workflow:
@@ -64,7 +66,10 @@ skillpress publish --artifacts <private-artifacts-directory> \
 
 Keep generated or holdout Tessl scenarios under the ignored private
 `.skillpress/tessl-evals/` tree. Add `--agent` and/or `--model` only when the workspace plan permits
-explicit selection; omitting them uses the provider defaults.
+explicit selection; omitting them uses the provider defaults. Each eval source must be a Tessl
+plugin whose only injectable content is `skills/<configured-name>`, exactly matching the canonical
+skill. Capture evaluates a private digest-verified snapshot with an explicit skill selector; the
+release gate independently enforces the original/snapshot/canonical binding.
 
 `publish` is a non-mutating dry run unless `--execute` is supplied. Resume an executed partial run
 with `--execute --resume <private-receipt.json>`. Run each command with `--help` for provider
@@ -97,6 +102,9 @@ assessments. Omit `--agent` and `--model` to use Tessl's provider defaults when 
 does not permit explicit model selection. The resolved provider identities remain bound in the
 evidence. Quality and Impact capture always force fresh provider results, so cached output from an
 older skill cannot satisfy the release gate. There is no flag or API for entering scores by hand.
+For Impact, the linked eval source preserves Tessl project identity while a digest-verified private
+content-addressed snapshot is supplied as explicit `--context` and narrowed to the configured skill
+with `--skill`; provider JSON must echo that exact context and invocation.
 Raw bounded provider output is stored with private permissions under ignored
 `.skillpress/tessl/` directories;
 public evidence retains command/output digests, source bindings, scores, and eligibility reasons.

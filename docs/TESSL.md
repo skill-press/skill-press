@@ -32,7 +32,7 @@ SkillPress 0.1.0 pins Tessl CLI 0.101.0 and invokes these no-shell argv sequence
 tessl --version
 tessl skill lint <private-plugin-projection/.tessl-plugin/plugin.json>
 tessl review run quality --json --force [--workspace <workspace>] --threshold 0 <canonical-skill>
-tessl eval run --json --force [--agent <agent>] [--model <model>] --runs <count> <eval-source>
+tessl eval run --json --force --context <private-eval-snapshot> --skill <configured-name> [--agent <agent>] [--model <model>] --runs <count> <linked-eval-source>
 tessl eval view --json <run-id>
 ```
 
@@ -43,6 +43,18 @@ recomputes current review and paired-eval results instead of reusing an older co
 plans that do not permit explicit model selection without weakening evidence.
 Keep generated or holdout scenario sources under the ignored `.skillpress/tessl-evals/<set>` path;
 the complete private tree is still digested before and after capture and again at the release gate.
+The source must be a Tessl plugin with a real `.tessl-plugin/plugin.json`, `evals/`, and exactly one
+injectable `skills/<configured-skill-name>` tree; docs, rules, extra skills, and other plugin context
+are rejected. If the linked source has `tessl.json`, it must be a vendored project with an empty
+dependency map; provider dependencies cannot supply hidden context. Because Tessl injects plugin
+content into the paired run, SkillPress validates the
+embedded skill, requires its complete tree digest to equal the canonical skill, copies the complete
+source into a content-addressed private evidence directory, rechecks the snapshot digest, and passes
+that snapshot as explicit `--context` with an explicit `--skill` selector. The original linked
+source remains the final positional argument so Tessl retains its registered project identity.
+Capture and the release gate require the provider's start and completed-result JSON to echo that
+exact context path and require final `metadata.cliInvocation` to equal the complete submitted argv.
+The original and snapshot are checked again after capture and at release time.
 
 The lint command requires Tessl plugin context, so SkillPress creates a private temporary plugin
 manifest and copies the canonical skill into it, verifies that the copied skill has the same full
@@ -68,10 +80,11 @@ ECDSA-signed 0.101.0 release manifest. A version string alone is not trusted. To
 6. review and commit the pin as an explicit supply-chain change.
 
 Before and after a provider run, SkillPress binds evidence to Git HEAD, `skillpress.yaml`, the
-complete canonical skill tree, and (for Impact) the complete eval-source tree. Symlinks, special
-files, unsafe paths, oversized trees, relevant dirty state, or concurrent source changes fail
-closed or make evidence ineligible. A later release gate must independently recompute the same
-bindings and reject stale evidence.
+complete canonical skill tree, and (for Impact) the complete eval-source tree, its private capture
+snapshot, and their exclusive embedded canonical-skill copy. Symlinks, special files, unsafe paths,
+oversized trees, relevant dirty state, or concurrent source changes fail closed or make evidence
+ineligible. A later release gate must independently recompute the same bindings and reject stale
+evidence.
 
 ## Storage and privacy
 
