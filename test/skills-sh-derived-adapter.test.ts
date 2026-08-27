@@ -62,7 +62,7 @@ function sourceTree(): CapturedCommandResult {
     `${sourceFiles
       .map(
         (file) =>
-          `${file.mode} blob ${blob(file.bytes)} ${file.bytes.byteLength}\tskills/skillpress/${file.path}`,
+          `${file.mode} blob ${blob(file.bytes)} ${String(file.bytes.byteLength).padStart(7, " ")}\tskills/skillpress/${file.path}`,
       )
       .join("\0")}\0`,
   );

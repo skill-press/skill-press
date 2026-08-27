@@ -104,7 +104,7 @@ function sourceTree(): CapturedCommandResult {
     `${source
       .map(
         (file) =>
-          `100644 blob ${file.sha} ${file.bytes.byteLength}\tskills/skillpress/${file.path}`,
+          `100644 blob ${file.sha} ${String(file.bytes.byteLength).padStart(7, " ")}\tskills/skillpress/${file.path}`,
       )
       .join("\0")}\0`,
   );

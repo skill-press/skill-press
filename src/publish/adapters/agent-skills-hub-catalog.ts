@@ -110,7 +110,7 @@ async function sourceFiles(
   const prefix = `${context.skill.path}/`;
   const files: SourceFile[] = [];
   for (const line of result.stdout.subarray(0, -1).toString("utf8").split("\0")) {
-    const match = /^(100644|100755) blob ([a-f0-9]{40}) (\d+)\t(.+)$/u.exec(line);
+    const match = /^(100644|100755) blob ([a-f0-9]{40}) +(\d+)\t(.+)$/u.exec(line);
     if (match === null || !(match[4] as string).startsWith(prefix)) return null;
     const path = (match[4] as string).slice(prefix.length);
     if (
