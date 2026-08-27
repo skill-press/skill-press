@@ -1,6 +1,16 @@
 import { createHash } from "node:crypto";
 import { constants, createReadStream, type Dirent } from "node:fs";
-import { access, lstat, readFile, readdir, realpath } from "node:fs/promises";
+import {
+  access,
+  lstat,
+  mkdir,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  rmdir,
+  writeFile,
+} from "node:fs/promises";
 import { delimiter, join, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 
@@ -44,6 +54,8 @@ const MAX_UNPACKED_BYTES = 64 * 1024 * 1024;
 const MAX_FILES = 512;
 const MAX_EXECUTABLE_BYTES = 256 * 1024 * 1024;
 const SHA256 = /^[a-f0-9]{64}$/u;
+const BOUNDARY_OWNER = "skillpress.tessl-publication-git-boundary";
+const activeBoundaries = new Set<string>();
 
 function record(value: unknown): Readonly<Record<string, unknown>> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -222,6 +234,172 @@ function runTessl(
   );
 }
 
+function tesslProjectionRoot(context: PublicationContext): string {
+  return join(context.root, ".skillpress", "projections", context.idempotencyKey, "tessl");
+}
+
+function boundaryPaths(projectedRoot: string): {
+  readonly boundary: string;
+  readonly marker: string;
+} {
+  return Object.freeze({
+    boundary: join(projectedRoot, ".git"),
+    marker: resolve(projectedRoot, "..", ".tessl-git-boundary-owner.json"),
+  });
+}
+
+async function readBoundaryOwner(
+  context: PublicationContext,
+  projectedRoot: string,
+  marker: string,
+): Promise<number | null> {
+  let metadata: Awaited<ReturnType<typeof lstat>>;
+  try {
+    metadata = await lstat(marker);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+  if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.size > 4_096) {
+    throw new Error("Tessl projection Git boundary owner is unsafe");
+  }
+  let value: Readonly<Record<string, unknown>> | null;
+  try {
+    value = record(JSON.parse(await readFile(marker, "utf8")));
+  } catch {
+    value = null;
+  }
+  const expectedKeys = [
+    "idempotencyKey",
+    "owner",
+    "pid",
+    "projectedRoot",
+    "schemaVersion",
+    "sourceCommit",
+  ];
+  if (
+    value === null ||
+    JSON.stringify(Object.keys(value).sort()) !== JSON.stringify(expectedKeys.sort()) ||
+    value.schemaVersion !== 1 ||
+    value.owner !== BOUNDARY_OWNER ||
+    value.idempotencyKey !== context.idempotencyKey ||
+    value.sourceCommit !== context.sourceCommit ||
+    value.projectedRoot !== projectedRoot ||
+    !Number.isSafeInteger(value.pid) ||
+    Number(value.pid) < 1
+  ) {
+    throw new Error("Tessl projection Git boundary owner is invalid");
+  }
+  return Number(value.pid);
+}
+
+async function boundaryState(boundary: string): Promise<"absent" | "empty"> {
+  let metadata: Awaited<ReturnType<typeof lstat>>;
+  try {
+    metadata = await lstat(boundary);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "absent";
+    throw error;
+  }
+  if (
+    !metadata.isDirectory() ||
+    metadata.isSymbolicLink() ||
+    (await readdir(boundary)).length > 0
+  ) {
+    throw new Error("Tessl projection Git boundary is unsafe");
+  }
+  return "empty";
+}
+
+function processIsRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+}
+
+async function recoverProjectedBoundary(
+  context: PublicationContext,
+  projectedRoot: string,
+): Promise<void> {
+  const { boundary, marker } = boundaryPaths(projectedRoot);
+  const ownerPid = await readBoundaryOwner(context, projectedRoot, marker);
+  const state = await boundaryState(boundary);
+  if (ownerPid === null) {
+    if (state !== "absent") throw new Error("Tessl projection Git boundary is unowned");
+    return;
+  }
+  const active =
+    ownerPid === process.pid ? activeBoundaries.has(marker) : processIsRunning(ownerPid);
+  if (active) throw new Error("Tessl projection Git boundary is active");
+  if (state === "empty") await rmdir(boundary);
+  await rm(marker);
+}
+
+async function acquireProjectedBoundary(
+  context: PublicationContext,
+  projectedRoot: string,
+): Promise<{ readonly boundary: string; readonly marker: string }> {
+  await recoverProjectedBoundary(context, projectedRoot);
+  const paths = boundaryPaths(projectedRoot);
+  const owner = `${JSON.stringify({
+    schemaVersion: 1,
+    owner: BOUNDARY_OWNER,
+    idempotencyKey: context.idempotencyKey,
+    sourceCommit: context.sourceCommit,
+    projectedRoot,
+    pid: process.pid,
+  })}\n`;
+  await writeFile(paths.marker, owner, { encoding: "utf8", flag: "wx", mode: 0o600 });
+  activeBoundaries.add(paths.marker);
+  try {
+    await mkdir(paths.boundary, { mode: 0o700 });
+    return paths;
+  } catch (error) {
+    activeBoundaries.delete(paths.marker);
+    await rm(paths.marker, { force: true });
+    throw error;
+  }
+}
+
+async function releaseProjectedBoundary(
+  context: PublicationContext,
+  projectedRoot: string,
+  paths: { readonly boundary: string; readonly marker: string },
+): Promise<void> {
+  try {
+    const ownerPid = await readBoundaryOwner(context, projectedRoot, paths.marker);
+    if (ownerPid !== process.pid || !activeBoundaries.has(paths.marker)) {
+      throw new Error("Tessl projection Git boundary ownership changed");
+    }
+    if ((await boundaryState(paths.boundary)) !== "empty") {
+      throw new Error("Tessl projection Git boundary disappeared");
+    }
+    await rmdir(paths.boundary);
+    await rm(paths.marker);
+  } finally {
+    activeBoundaries.delete(paths.marker);
+  }
+}
+
+async function runProjectedTessl(
+  context: PublicationContext,
+  executable: string,
+  argv: readonly string[],
+  projectedRoot: string,
+  token: string | undefined,
+  runtime: PublicationAdapterRuntime,
+): Promise<CapturedCommandResult> {
+  const paths = await acquireProjectedBoundary(context, projectedRoot);
+  try {
+    return await runTessl(context, executable, argv, token, true, runtime);
+  } finally {
+    await releaseProjectedBoundary(context, projectedRoot, paths);
+  }
+}
+
 function remote(context: PublicationContext, workspace: string) {
   const remoteId = `${workspace}/${context.skill.name}@${context.project.version}`;
   return Object.freeze({
@@ -244,6 +422,7 @@ async function inspect(
 ): Promise<Inspection> {
   let projected: Awaited<ReturnType<typeof projectTesslPlugin>>;
   try {
+    await recoverProjectedBoundary(context, tesslProjectionRoot(context));
     projected = await projectTesslPlugin(context, workspace);
   } catch {
     return Object.freeze({ status: "unavailable" });
@@ -400,14 +579,23 @@ async function preflight(
       message: "Tessl projection is not bound to the packaged canonical skill",
     });
   }
-  const dryRun = await runTessl(
-    context,
-    executable,
-    ["plugin", "publish", "--dry-run", "--skip-evals", "--verbose", projected.root],
-    token,
-    true,
-    runtime,
-  );
+  let dryRun: CapturedCommandResult;
+  try {
+    dryRun = await runProjectedTessl(
+      context,
+      executable,
+      ["plugin", "publish", "--dry-run", "--skip-evals", "--verbose", projected.root],
+      projected.root,
+      token,
+      runtime,
+    );
+  } catch {
+    return Object.freeze({
+      ok: false,
+      code: "projection_invalid",
+      message: "Tessl projection could not isolate provider ignore rules",
+    });
+  }
   return dryRunPassed(dryRun)
     ? Object.freeze({ ok: true, code: "ready", message: "Tessl publication is ready" })
     : Object.freeze({
@@ -467,12 +655,12 @@ export function createTesslPublicationAdapter(
         throw new Error("Tessl publication state changed after preflight");
       }
       const projected = await projectTesslPlugin(context, workspace);
-      const published = await runTessl(
+      const published = await runProjectedTessl(
         context,
         executable,
         ["plugin", "publish", "--skip-evals", projected.root],
+        projected.root,
         token,
-        true,
         runtime,
       );
       const expected = remote(context, workspace);

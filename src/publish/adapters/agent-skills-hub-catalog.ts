@@ -91,6 +91,23 @@ function sha1Blob(bytes: Buffer): string {
   return createHash("sha1").update(`blob ${bytes.byteLength}\0`).update(bytes).digest("hex");
 }
 
+function explicitRestNotFound(result: CapturedCommandResult): boolean {
+  if (
+    result.status !== "failed" ||
+    result.exitCode !== 1 ||
+    result.signal !== null ||
+    result.stderr.toString("utf8").trim() !== "gh: Not Found (HTTP 404)"
+  ) {
+    return false;
+  }
+  try {
+    const value = record(JSON.parse(result.stdout.toString("utf8")));
+    return value?.message === "Not Found" && value.status === "404";
+  } catch {
+    return false;
+  }
+}
+
 async function sourceFiles(
   context: PublicationContext,
   runtime: PublicationAdapterRuntime,
@@ -271,27 +288,16 @@ async function forkState(
   contributor: string,
   runtime: PublicationAdapterRuntime,
 ): Promise<ForkState> {
-  const result = await runGh(
-    context,
-    [
-      "repo",
-      "view",
-      `${contributor}/agent-skills-hub`,
-      "--json",
-      "isFork,parent,nameWithOwner,url",
-    ],
-    runtime,
-  );
+  const result = await runGh(context, ["api", `repos/${contributor}/agent-skills-hub`], runtime);
   if (!passed(result)) {
-    const output = `${result.stdout.toString("utf8")}\n${result.stderr.toString("utf8")}`;
-    return /HTTP 404/iu.test(output) ? "absent" : "unavailable";
+    return explicitRestNotFound(result) ? "absent" : "unavailable";
   }
   const value = jsonRecord(result);
   const parent = record(value?.parent);
-  return value?.isFork === true &&
-    value.nameWithOwner === `${contributor}/agent-skills-hub` &&
-    value.url === `https://github.com/${contributor}/agent-skills-hub` &&
-    parent?.nameWithOwner === UPSTREAM
+  return value?.fork === true &&
+    value.full_name === `${contributor}/agent-skills-hub` &&
+    value.html_url === `https://github.com/${contributor}/agent-skills-hub` &&
+    parent?.full_name === UPSTREAM
     ? "ready"
     : "conflict";
 }

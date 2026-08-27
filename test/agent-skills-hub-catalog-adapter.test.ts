@@ -83,20 +83,33 @@ async function fixture(): Promise<PublicationContext> {
   });
 }
 
-function result(stdout: string, ok = true): CapturedCommandResult {
+function result(stdout: string, ok = true, stderr = ""): CapturedCommandResult {
   const bytes = Buffer.from(stdout);
+  const errors = Buffer.from(stderr);
   return {
     status: ok ? "passed" : "failed",
     exitCode: ok ? 0 : 1,
     signal: null,
     durationMs: 1,
     stdout: bytes,
-    stderr: Buffer.alloc(0),
+    stderr: errors,
     stdoutBytes: bytes.byteLength,
-    stderrBytes: 0,
+    stderrBytes: errors.byteLength,
     stdoutSha256: "unused",
     stderrSha256: "unused",
   };
+}
+
+function missingFork(): CapturedCommandResult {
+  return result(
+    JSON.stringify({
+      message: "Not Found",
+      documentation_url: "https://docs.github.com/rest/repos/repos#get-a-repository",
+      status: "404",
+    }),
+    false,
+    "gh: Not Found (HTTP 404)\n",
+  );
 }
 
 function sourceTree(): CapturedCommandResult {
@@ -137,12 +150,16 @@ function tree(exact: boolean): CapturedCommandResult {
 function fork(): CapturedCommandResult {
   return result(
     JSON.stringify({
-      isFork: true,
-      nameWithOwner: "mushanyoung/agent-skills-hub",
-      url: "https://github.com/mushanyoung/agent-skills-hub",
-      parent: { nameWithOwner: "agent-skills-hub/agent-skills-hub" },
+      fork: true,
+      full_name: "mushanyoung/agent-skills-hub",
+      html_url: "https://github.com/mushanyoung/agent-skills-hub",
+      parent: { full_name: "agent-skills-hub/agent-skills-hub" },
     }),
   );
+}
+
+function isForkLookup(command: CapturedCommand): boolean {
+  return command.argv[1] === "api" && command.argv[2] === "repos/mushanyoung/agent-skills-hub";
 }
 
 function pr(): CapturedCommandResult {
@@ -190,7 +207,7 @@ function contributionExecutor(options?: {
   return async (command) => {
     const shared = common(command);
     if (shared !== undefined) return shared;
-    if (command.argv[1] === "repo" && command.argv[2] === "view") return fork();
+    if (isForkLookup(command)) return fork();
     if (command.argv.some((value) => value.includes("/git/ref/heads/"))) {
       return options?.branchResult ?? result(JSON.stringify({ object: { sha: branchCommit } }));
     }
@@ -215,7 +232,7 @@ function branchCreationExecutor(failure: "blob" | "tree" | "commit" | "reference
   return async (command: CapturedCommand): Promise<CapturedCommandResult> => {
     const shared = common(command);
     if (shared !== undefined) return shared;
-    if (command.argv[1] === "repo" && command.argv[2] === "view") return fork();
+    if (isForkLookup(command)) return fork();
     if (command.argv.some((value) => value.includes("/git/ref/heads/"))) {
       return result("", false);
     }
@@ -273,12 +290,7 @@ describe("Agent Skills Hub catalog adapter", () => {
       contributor: "mushanyoung",
       executor: async (command) => {
         calls.push(command);
-        return (
-          common(command) ??
-          (command.argv[2] === "view"
-            ? result("gh: Not Found (HTTP 404)", false)
-            : result("", false))
-        );
+        return common(command) ?? (isForkLookup(command) ? missingFork() : result("", false));
       },
     });
     await expect(adapter.preflight(context)).resolves.toEqual({
@@ -288,6 +300,8 @@ describe("Agent Skills Hub catalog adapter", () => {
     });
     expect(adapter.capability).toBe("submit");
     expect(calls.some((call) => call.argv.includes("fork"))).toBe(false);
+    expect(calls.some(isForkLookup)).toBe(true);
+    expect(calls.some((call) => call.argv[1] === "repo" && call.argv[2] === "view")).toBe(false);
     expect(calls.every((call) => call.env?.NPM_TOKEN === undefined)).toBe(true);
   });
 
@@ -321,8 +335,8 @@ describe("Agent Skills Hub catalog adapter", () => {
         calls.push(command);
         const shared = common(command);
         if (shared !== undefined) return shared;
-        if (command.argv[1] === "repo" && command.argv[2] === "view") {
-          return forkReady ? fork() : result("gh: Not Found (HTTP 404)", false);
+        if (isForkLookup(command)) {
+          return forkReady ? fork() : missingFork();
         }
         if (command.argv[1] === "repo" && command.argv[2] === "fork") {
           forkReady = true;
@@ -434,9 +448,7 @@ describe("Agent Skills Hub catalog adapter", () => {
       executor: async (command) => {
         const shared = common(command);
         if (shared !== undefined) return shared;
-        return command.argv[2] === "view"
-          ? result(JSON.stringify({ isFork: false }))
-          : result("", false);
+        return isForkLookup(command) ? result(JSON.stringify({ fork: false })) : result("", false);
       },
     });
     await expect(badFork.preflight(context)).resolves.toMatchObject({ code: "fork_conflict" });
@@ -731,15 +743,27 @@ describe("Agent Skills Hub catalog adapter", () => {
     const context = await fixture();
     for (const forkResult of [
       result("network unavailable", false),
+      { ...missingFork(), status: "timed_out" as const, exitCode: null },
+      result('{"message":"Not Found","status":"4040"}', false, "gh: Not Found (HTTP 4040)"),
+      result(
+        '{"message":"proxy body mentioned HTTP 404","status":"502"}',
+        false,
+        "gh: Bad Gateway (HTTP 502)",
+      ),
+      result('{"message":"Not Found","status":"404"}', false, "gh: Forbidden (HTTP 403)"),
+      result("not-json", false, "gh: Not Found (HTTP 404)"),
       result("null"),
       result(
         JSON.stringify({
           ...JSON.parse(fork().stdout.toString()),
-          nameWithOwner: "attacker/agent-skills-hub",
+          full_name: "attacker/agent-skills-hub",
         }),
       ),
       result(
-        JSON.stringify({ ...JSON.parse(fork().stdout.toString()), url: "https://example.test" }),
+        JSON.stringify({
+          ...JSON.parse(fork().stdout.toString()),
+          html_url: "https://example.test",
+        }),
       ),
       result(JSON.stringify({ ...JSON.parse(fork().stdout.toString()), parent: null })),
     ]) {
@@ -774,7 +798,7 @@ describe("Agent Skills Hub catalog adapter", () => {
       executor: async (command) => {
         const shared = common(command);
         if (shared !== undefined) return shared;
-        if (command.argv[2] === "view") return result("gh: Not Found (HTTP 404)", false);
+        if (isForkLookup(command)) return missingFork();
         return result("", false);
       },
     });
@@ -786,10 +810,8 @@ describe("Agent Skills Hub catalog adapter", () => {
       executor: async (command) => {
         const shared = common(command);
         if (shared !== undefined) return shared;
-        if (command.argv[2] === "view") {
-          return forkCreated
-            ? result(JSON.stringify({ isFork: false }))
-            : result("gh: Not Found (HTTP 404)", false);
+        if (isForkLookup(command)) {
+          return forkCreated ? result(JSON.stringify({ fork: false })) : missingFork();
         }
         if (command.argv[2] === "fork") {
           forkCreated = true;

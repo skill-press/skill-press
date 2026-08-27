@@ -208,6 +208,30 @@ function operation(command: CapturedCommand): string {
   return command.argv.slice(1, 3).join(" ");
 }
 
+function boundaryMarker(projectedRoot: string): string {
+  return join(projectedRoot, "..", ".tessl-git-boundary-owner.json");
+}
+
+async function leaveOwnedEmptyBoundary(
+  context: PublicationContext,
+  projectedRoot: string,
+  pid = process.pid,
+): Promise<void> {
+  await writeFile(
+    boundaryMarker(projectedRoot),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      owner: "skillpress.tessl-publication-git-boundary",
+      idempotencyKey: context.idempotencyKey,
+      sourceCommit: context.sourceCommit,
+      projectedRoot,
+      pid,
+    })}\n`,
+    { mode: 0o600 },
+  );
+  await mkdir(join(projectedRoot, ".git"), { mode: 0o700 });
+}
+
 describe("Tessl publication adapter", () => {
   it("creates a private complete public-plugin projection and passes the official dry run", async () => {
     const context = await fixture();
@@ -217,6 +241,10 @@ describe("Tessl publication adapter", () => {
       if (command.argv[1] === "--version") return commandResult("0.101.0\n");
       if (operation(command) === "api --raw") return absent();
       if (operation(command) === "auth whoami") return commandResult(identity());
+      if (operation(command) === "plugin publish") {
+        const root = command.argv.at(-1) as string;
+        expect((await lstat(join(root, ".git"))).isDirectory()).toBe(true);
+      }
       return commandResult("Dry run complete — all pre-publish checks passed\n");
     });
 
@@ -288,6 +316,9 @@ describe("Tessl publication adapter", () => {
       await expect(access(home)).rejects.toMatchObject({ code: "ENOENT" });
     }
     expect(JSON.stringify(calls[1])).not.toContain("tessl-secret");
+    const dryRunRoot = calls.at(-1)?.argv.at(-1) as string;
+    await expect(access(join(dryRunRoot, ".git"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(boundaryMarker(dryRunRoot))).rejects.toMatchObject({ code: "ENOENT" });
 
     const projected = await projectTesslPlugin(context, "mushanyoung");
     expect(JSON.parse(projected.manifest)).toEqual({
@@ -306,6 +337,41 @@ describe("Tessl publication adapter", () => {
     expect((await stat(join(projected.root, ".tessl-plugin/plugin.json"))).mode & 0o777).toBe(
       0o600,
     );
+  });
+
+  it("removes the temporary Git boundary after a failed official dry run", async () => {
+    const context = await fixture();
+    let projectedRoot = "";
+    const publication = adapter(async (command) => {
+      if (command.argv[1] === "--version") return commandResult("0.101.0\n");
+      if (operation(command) === "api --raw") return absent();
+      if (operation(command) === "auth whoami") return commandResult(identity());
+      projectedRoot = command.argv.at(-1) as string;
+      expect((await lstat(join(projectedRoot, ".git"))).isDirectory()).toBe(true);
+      return commandResult("validation failed", false);
+    });
+
+    await expect(publication.preflight(context)).resolves.toMatchObject({
+      code: "approval_or_validation_required",
+    });
+    await expect(access(join(projectedRoot, ".git"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(boundaryMarker(projectedRoot))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("recovers only a strictly owned inactive empty Git boundary", async () => {
+    const context = await fixture();
+    const projected = await projectTesslPlugin(context, "mushanyoung");
+    await leaveOwnedEmptyBoundary(context, projected.root, 2_147_483_647);
+    const publication = adapter(async (command) => {
+      if (command.argv[1] === "--version") return commandResult("0.101.0\n");
+      if (operation(command) === "api --raw") return absent();
+      if (operation(command) === "auth whoami") return commandResult(identity());
+      return commandResult("Dry run complete — all pre-publish checks passed\n");
+    });
+
+    await expect(publication.preflight(context)).resolves.toMatchObject({ ok: true });
+    await expect(access(join(projected.root, ".git"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(boundaryMarker(projected.root))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("reuses and verifies only an exact immutable downloaded package", async () => {
@@ -363,6 +429,41 @@ describe("Tessl publication adapter", () => {
         (call) => operation(call) === "plugin publish" && !call.argv.includes("--dry-run"),
       ),
     ).toHaveLength(1);
+  });
+
+  it("recovers an exact remote publication after boundary cleanup fails", async () => {
+    const context = await fixture();
+    let published = false;
+    let publishCalls = 0;
+    let intruder = "";
+    const publication = adapter(async (command) => {
+      if (command.argv[1] === "--version") return commandResult("0.101.0\n");
+      if (operation(command) === "api --raw") {
+        return published ? commandResult(await archive(context)) : absent();
+      }
+      if (operation(command) === "auth whoami") return commandResult(identity());
+      if (operation(command) === "plugin publish" && command.argv.includes("--dry-run")) {
+        return commandResult("Dry run complete — all pre-publish checks passed\n");
+      }
+      publishCalls += 1;
+      published = true;
+      const root = command.argv.at(-1) as string;
+      intruder = join(root, ".git", "unexpected");
+      await writeFile(intruder, "unsafe\n");
+      return commandResult(`Published ${remoteId} to ${remoteUrl}\n`);
+    });
+
+    await expect(publication.execute?.(context, "publish-plugin")).rejects.toThrow(/unsafe/u);
+    expect(published).toBe(true);
+    await rm(intruder);
+    await expect(publication.execute?.(context, "publish-plugin")).resolves.toEqual({
+      remoteId,
+      url: remoteUrl,
+    });
+    expect(publishCalls).toBe(1);
+    const projected = await projectTesslPlugin(context, "mushanyoung");
+    await expect(access(join(projected.root, ".git"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(boundaryMarker(projected.root))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it.each([
@@ -609,6 +710,30 @@ describe("Tessl publication adapter", () => {
           ),
     );
     await expect(withDirectory.verify(clean)).resolves.toMatchObject({ ok: true });
+
+    const nested = await fixture();
+    const nestedProjection = await projectTesslPlugin(nested, "mushanyoung");
+    const marker = join(nestedProjection.root, ".git", "owner-marker");
+    await mkdir(join(nestedProjection.root, ".git"));
+    await writeFile(marker, "retain\n");
+    const preexisting = adapter(async (command) =>
+      command.argv[1] === "--version" ? commandResult("0.101.0") : absent(),
+    );
+    await expect(preexisting.preflight(nested)).resolves.toMatchObject({
+      code: "provider_unavailable",
+    });
+    await expect(readFile(marker, "utf8")).resolves.toBe("retain\n");
+
+    const empty = await fixture();
+    const emptyProjection = await projectTesslPlugin(empty, "mushanyoung");
+    await mkdir(join(emptyProjection.root, ".git"));
+    const unowned = adapter(async (command) =>
+      command.argv[1] === "--version" ? commandResult("0.101.0") : absent(),
+    );
+    await expect(unowned.preflight(empty)).resolves.toMatchObject({
+      code: "provider_unavailable",
+    });
+    expect((await lstat(join(emptyProjection.root, ".git"))).isDirectory()).toBe(true);
   });
 
   it("rejects unsafe options and projection storage reuse", async () => {

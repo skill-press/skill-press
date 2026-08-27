@@ -72,9 +72,11 @@ uses npm's documented
 
 SkillPress pins official Tessl CLI 0.101.0 by executable digest. The adapter projects
 `.tessl-plugin/plugin.json` and the complete canonical tree, requires a public workspace identity,
-and runs `tessl plugin publish --dry-run --skip-evals --verbose` before mutation. First-public
-workspace approval is an external web workflow. Verification downloads the exact immutable public
-version through the CLI API and compares the complete archive.
+and runs `tessl plugin publish --dry-run --skip-evals --verbose` before mutation. A temporary empty
+nested Git boundary prevents Tessl 0.101.0 from inheriting the outer ignore rule that protects the
+private projection; SkillPress removes the boundary after every dry run and publication attempt.
+First-public workspace approval is an external web workflow. Verification downloads the exact
+immutable public version through the CLI API and compares the complete archive.
 
 Tessl publication does not replace the separate pre-release Quality and Impact gate; both official
 scores must be current and at least the configured thresholds. See the
@@ -125,6 +127,8 @@ This adapter contributes to
 binds the canonical tracked files to the packaged commit, verifies contributor identity, checks
 upstream and fork state, creates/reuses a fork, writes a deterministic contribution branch, and
 opens/reuses a pull request. A conflicting upstream path, branch, fork, or PR fails closed.
+Fork absence is established only by an explicit REST HTTP 404; authentication, transport, and
+provider errors remain unavailable rather than being treated as permission to create a fork.
 
 An open PR is `pr_review_required`, not publication. Adapter verification can prove either an exact
 open submission or the exact files merged to upstream `main`; the receipt's `submit` capability and
