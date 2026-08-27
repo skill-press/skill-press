@@ -108,6 +108,9 @@ describe("capability brief rendering", () => {
     expect(fileContent(project, "LICENSE")).toBe(
       fileContent(project, "skills/incident-summary/LICENSE"),
     );
+    expect(fileContent(project, ".gitignore")).toBe(
+      ".skillpress/runs/\n.skillpress/tessl/\n.skillpress/tessl-evals/\n.skillpress/publications/\n.skillpress/projections/\n.skillpress/staging/\n.skillpress/tmp/\n",
+    );
   });
 
   it("renders deterministic bytes and truthful scenario inputs", async () => {

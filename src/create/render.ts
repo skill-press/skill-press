@@ -235,7 +235,10 @@ export function renderCapabilityProject(brief: ResolvedCapabilityBrief): Rendere
   const skillPath = `skills/${brief.name}`;
   const license = withFinalNewline(brief.license.text);
   const files = [
-    projectFile(".gitignore", ".skillpress/runs/\n.skillpress/staging/\n.skillpress/tmp/\n"),
+    projectFile(
+      ".gitignore",
+      ".skillpress/runs/\n.skillpress/tessl/\n.skillpress/tessl-evals/\n.skillpress/publications/\n.skillpress/projections/\n.skillpress/staging/\n.skillpress/tmp/\n",
+    ),
     projectFile("LICENSE", license),
     projectFile("evals/holdout.yaml", renderScenarios(brief, "holdout")),
     projectFile("evals/rubric.yaml", renderRubric()),

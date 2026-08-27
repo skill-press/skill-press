@@ -259,8 +259,9 @@ const receipt = await runPublicationSaga(projectRoot, artifacts, adapters, { exe
 
 The saga writes a schema-validated receipt after every completed step under
 `.skillpress/publications/<run-id>/receipt.json`. Directories are private and receipt files use
-mode `0600` on POSIX systems. The receipt contains credential names, never values or provider error
-details.
+mode `0600` on POSIX systems. Registry-specific projections remain under ignored private
+`.skillpress/projections/` storage. The receipt contains credential names, never values or provider
+error details.
 
 If `receipt.status === "failed"`, keep the artifacts and resume the exact receipt:
 
