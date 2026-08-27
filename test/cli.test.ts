@@ -336,7 +336,7 @@ describe("SkillPress CLI scaffold", () => {
     await mkdir(join(evalSource, "skills"));
     await writeFile(
       join(evalSource, ".tessl-plugin", "plugin.json"),
-      '{"name":"test/incident-summary","version":"0.1.0","private":true}\n',
+      '{"name":"test/incident-summary","version":"0.1.0","private":true,"skills":["skills/incident-summary"]}\n',
     );
     await writeFile(join(evalSource, "evals", "scenario.json"), "{}\n");
     await cp(

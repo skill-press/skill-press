@@ -44,17 +44,23 @@ plans that do not permit explicit model selection without weakening evidence.
 Keep generated or holdout scenario sources under the ignored `.skillpress/tessl-evals/<set>` path;
 the complete private tree is still digested before and after capture and again at the release gate.
 The source must be a Tessl plugin with a real `.tessl-plugin/plugin.json`, `evals/`, and exactly one
-injectable `skills/<configured-skill-name>` tree; docs, rules, extra skills, and other plugin context
-are rejected. If the linked source has `tessl.json`, it must be a vendored project with an empty
+injectable `skills/<configured-skill-name>` tree. Its private manifest must declare exactly
+`skills: ["skills/<configured-skill-name>"]`, ensuring Tessl 0.101.0 packages the canonical skill and
+makes the explicit selector resolvable; docs, rules, extra skills, and other plugin context are
+rejected. If the linked source has `tessl.json`, it must be a vendored project with an empty
 dependency map; provider dependencies cannot supply hidden context. Because Tessl injects plugin
 content into the paired run, SkillPress validates the
 embedded skill, requires its complete tree digest to equal the canonical skill, copies the complete
 source into a content-addressed private evidence directory, rechecks the snapshot digest, and passes
 that snapshot as explicit `--context` with an explicit `--skill` selector. The original linked
-source remains the final positional argument so Tessl retains its registered project identity.
+source remains the final positional argument so Tessl retains its registered project identity. The
+snapshot stays under ignored private storage. For the duration of the CLI call, SkillPress creates a
+nested Git boundary in the evidence-run directory so Tessl 0.101.0 stops inheriting the outer
+`.gitignore`; the exact boundary is removed after success or failure.
 Capture and the release gate require the provider's start and completed-result JSON to echo that
-exact context path and require final `metadata.cliInvocation` to equal the complete submitted argv.
-The original and snapshot are checked again after capture and at release time.
+same context path, accepting only the exact argv path or Tessl's content-addressed basename
+normalization, and require final `metadata.cliInvocation` to equal the complete submitted argv. The
+original and snapshot are checked again after capture and at release time.
 
 The lint command requires Tessl plugin context, so SkillPress creates a private temporary plugin
 manifest and copies the canonical skill into it, verifies that the copied skill has the same full

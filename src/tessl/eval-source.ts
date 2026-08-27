@@ -48,17 +48,20 @@ async function readJsonRecord(path: string): Promise<Record<string, unknown> | u
   }
 }
 
-async function hasMetadataOnlyPluginManifest(path: string): Promise<boolean> {
+async function hasExclusivePluginManifest(path: string, skillName: string): Promise<boolean> {
   const manifest = await readJsonRecord(path);
   return (
     manifest !== undefined &&
     Object.keys(manifest).every((name) =>
-      ["description", "name", "private", "version"].includes(name),
+      ["description", "name", "private", "skills", "version"].includes(name),
     ) &&
     typeof manifest.name === "string" &&
     typeof manifest.version === "string" &&
     (manifest.description === undefined || typeof manifest.description === "string") &&
-    manifest.private === true
+    manifest.private === true &&
+    Array.isArray(manifest.skills) &&
+    manifest.skills.length === 1 &&
+    manifest.skills[0] === `skills/${skillName}`
   );
 }
 
@@ -107,7 +110,7 @@ export async function inspectTesslEvalSource(
     [".tessl-plugin", "evals", "skills"].every((name) => rootEntries.includes(name)) &&
     pluginEntries.length === 1 &&
     pluginEntries[0] === "plugin.json" &&
-    (await hasMetadataOnlyPluginManifest(join(source, ".tessl-plugin", "plugin.json"))) &&
+    (await hasExclusivePluginManifest(join(source, ".tessl-plugin", "plugin.json"), skillName)) &&
     skillEntries.length === 1 &&
     skillEntries[0] === skillName &&
     (!rootEntries.includes("tessl.json") ||

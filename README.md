@@ -67,8 +67,10 @@ skillpress publish --artifacts <private-artifacts-directory> \
 Keep generated or holdout Tessl scenarios under the ignored private
 `.skillpress/tessl-evals/` tree. Add `--agent` and/or `--model` only when the workspace plan permits
 explicit selection; omitting them uses the provider defaults. Each eval source must be a Tessl
-plugin whose only injectable content is `skills/<configured-name>`, exactly matching the canonical
-skill. Capture evaluates a private digest-verified snapshot with an explicit skill selector; the
+plugin whose manifest explicitly declares only `skills/<configured-name>`, exactly matching the
+canonical skill. Capture evaluates a private digest-verified snapshot with an explicit skill
+selector. A temporary nested Git boundary prevents Tessl 0.101.0 from applying the outer private
+storage ignore rule while packing that snapshot; the boundary is removed after every attempt. The
 release gate independently enforces the original/snapshot/canonical binding.
 
 `publish` is a non-mutating dry run unless `--execute` is supplied. Resume an executed partial run

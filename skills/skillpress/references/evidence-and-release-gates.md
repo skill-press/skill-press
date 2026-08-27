@@ -36,11 +36,15 @@ The eval source must be a Tessl plugin whose only injectable content is a valid
 `skills/<configured-skill-name>` tree that exactly matches the canonical skill. Tessl evaluates
 plugin content, so capture rejects extra skills/docs/rules, snapshots the complete source into
 content-addressed private evidence storage, and also rejects any non-empty project dependency map
-that could inject hidden context. It verifies both tree digests, passes the snapshot as explicit
-context, and explicitly selects the configured skill. The linked source remains the positional
-project source so its Tessl identity is preserved. Provider start and result output must echo the
-exact snapshot path and full invocation. After the provider run and at the release gate, capture
-repeats the original/snapshot/canonical checks.
+that could inject hidden context. The private manifest must explicitly declare that sole skill so
+Tessl packages it into the plugin context. SkillPress verifies both tree digests, passes the snapshot
+as explicit context, and explicitly selects the configured skill. The linked source remains the
+positional project source so its Tessl identity is preserved. A temporary nested Git boundary keeps
+the complete source inside ignored private storage while preventing Tessl 0.101.0 from excluding the
+declared skill; it is removed after every attempt. Provider start and result output must agree on the
+exact submitted context or its content-addressed basename normalization and echo the full invocation.
+After the provider run and at the release gate, capture repeats the
+original/snapshot/canonical checks.
 
 The commands retain bounded raw provider output in private `.skillpress/tessl/` storage. A trusted
 version string alone is insufficient: the executable SHA-256 must match the signed-release trust

@@ -1,6 +1,16 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { access, chmod, cp, lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import {
+  access,
+  chmod,
+  cp,
+  lstat,
+  mkdir,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { constants } from "node:fs";
 import { delimiter, isAbsolute, join, relative, resolve } from "node:path";
 
@@ -526,6 +536,50 @@ async function stageTesslEvalPlugin(
   return { path, reportPath: `${context.storagePath}/${directoryName}` };
 }
 
+async function createTesslEvalGitBoundary(context: CommonContext): Promise<string> {
+  const path = join(context.storage, ".git");
+  try {
+    await lstat(path);
+    throw new TesslEvidenceError("Tessl eval Git boundary already exists.", [
+      issue("tessl.eval.git_boundary", "/source", "temporary Git metadata must start absent"),
+    ]);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  const result = await runCapturedCommand({
+    argv: ["git", "init", "-q", context.storage],
+    cwd: context.root,
+    timeoutSeconds: 30,
+  });
+  if (result.status !== "passed") {
+    await rm(path, { recursive: true, force: true });
+    throw new TesslEvidenceError("Tessl eval staging could not isolate provider ignore rules.", [
+      issue(
+        "tessl.eval.git_boundary",
+        "/source",
+        "private eval staging requires a temporary nested Git boundary",
+      ),
+    ]);
+  }
+  try {
+    const metadata = await lstat(path);
+    if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+      throw new TesslEvidenceError("Tessl eval Git boundary is unsafe.", [
+        issue(
+          "tessl.eval.git_boundary",
+          "/source",
+          "temporary Git metadata must be a real directory",
+        ),
+      ]);
+    }
+    await chmod(path, 0o700);
+    return path;
+  } catch (error) {
+    await rm(path, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 async function postRunReasons(
   context: CommonContext,
   extraGitPaths: readonly string[] = [],
@@ -878,203 +932,211 @@ export async function captureTesslEvalEvidence(
     ]);
   }
   const stagedSource = await stageTesslEvalPlugin(context, source, scenarioSourceSha256);
-  const startArgv = [
-    context.executable,
-    "eval",
-    "run",
-    "--json",
-    "--force",
-    "--context",
-    stagedSource.reportPath,
-    "--skill",
-    context.skillName,
-    ...(options.agent === undefined ? [] : ["--agent", options.agent]),
-    ...(options.model === undefined ? [] : ["--model", options.model]),
-    "--runs",
-    String(runs),
-    sourcePath,
-  ] as const;
-  const startResult = await execute(context, startArgv, Math.min(timeout, 300), true);
-  await writeRaw(context.storage, "eval-start", startResult);
-  if (startResult.status !== "passed") {
-    throw new TesslEvidenceError("Tessl eval submission failed.", [
-      issue("tessl.eval.start", "/start", "official Tessl eval run did not start"),
-    ]);
-  }
-  const start = parseObjectOutput(startResult, "/start");
-  const startAgent = start.agent;
-  const startModel = start.model;
-  const startContext = start.context;
-  const startContextDefinition = isRecord(startContext) ? startContext.definition : undefined;
-  if (
-    typeof start.evalRunId !== "string" ||
-    !boundedIdentifier(start.evalRunId, 200) ||
-    (startAgent !== undefined &&
-      (typeof startAgent !== "string" ||
-        !boundedIdentifier(startAgent, 100) ||
-        (options.agent !== undefined && startAgent !== options.agent))) ||
-    (startModel !== undefined &&
-      (typeof startModel !== "string" ||
-        !boundedIdentifier(startModel, 200) ||
-        (options.model !== undefined && startModel !== options.model))) ||
-    !Number.isSafeInteger(start.scenariosCount) ||
-    Number(start.scenariosCount) < 1 ||
-    Number(start.scenariosCount) > 256 ||
-    !isRecord(startContextDefinition) ||
-    startContextDefinition.type !== "plugin-directory" ||
-    startContextDefinition.path !== stagedSource.reportPath
-  ) {
-    throw new TesslEvidenceError("Tessl eval submission binding is invalid.", [
-      issue(
-        "tessl.eval.start_shape",
-        "/start",
-        "run id, selected agent/model, count, and context must match provider output",
-      ),
-    ]);
-  }
-  const runId = start.evalRunId;
-  const clock = options.clock ?? Date.now;
-  const wait =
-    options.wait ??
-    ((milliseconds) => new Promise((resolveWait) => setTimeout(resolveWait, milliseconds)));
-  const deadline = clock() + timeout * 1000;
-  let finalResult: CapturedCommandResult | undefined;
-  let finalValue: JsonRecord | undefined;
-  while (clock() < deadline) {
-    await wait(Math.min(pollIntervalMs, Math.max(1, deadline - clock())));
+  const gitBoundary = await createTesslEvalGitBoundary(context);
+  try {
+    const startArgv = [
+      context.executable,
+      "eval",
+      "run",
+      "--json",
+      "--force",
+      "--context",
+      stagedSource.reportPath,
+      "--skill",
+      context.skillName,
+      ...(options.agent === undefined ? [] : ["--agent", options.agent]),
+      ...(options.model === undefined ? [] : ["--model", options.model]),
+      "--runs",
+      String(runs),
+      sourcePath,
+    ] as const;
+    const startResult = await execute(context, startArgv, Math.min(timeout, 300), true);
+    await writeRaw(context.storage, "eval-start", startResult);
+    if (startResult.status !== "passed") {
+      throw new TesslEvidenceError("Tessl eval submission failed.", [
+        issue("tessl.eval.start", "/start", "official Tessl eval run did not start"),
+      ]);
+    }
+    const start = parseObjectOutput(startResult, "/start");
+    const startAgent = start.agent;
+    const startModel = start.model;
+    const startContext = start.context;
+    const startContextDefinition = isRecord(startContext) ? startContext.definition : undefined;
+    if (
+      typeof start.evalRunId !== "string" ||
+      !boundedIdentifier(start.evalRunId, 200) ||
+      (startAgent !== undefined &&
+        (typeof startAgent !== "string" ||
+          !boundedIdentifier(startAgent, 100) ||
+          (options.agent !== undefined && startAgent !== options.agent))) ||
+      (startModel !== undefined &&
+        (typeof startModel !== "string" ||
+          !boundedIdentifier(startModel, 200) ||
+          (options.model !== undefined && startModel !== options.model))) ||
+      !Number.isSafeInteger(start.scenariosCount) ||
+      Number(start.scenariosCount) < 1 ||
+      Number(start.scenariosCount) > 256 ||
+      !isRecord(startContextDefinition) ||
+      startContextDefinition.type !== "plugin-directory" ||
+      (startContextDefinition.path !== stagedSource.reportPath &&
+        startContextDefinition.path !== `eval-plugin-${scenarioSourceSha256}`)
+    ) {
+      throw new TesslEvidenceError("Tessl eval submission binding is invalid.", [
+        issue(
+          "tessl.eval.start_shape",
+          "/start",
+          "run id, selected agent/model, count, and context must match provider output",
+        ),
+      ]);
+    }
+    const runId = start.evalRunId;
+    const clock = options.clock ?? Date.now;
+    const wait =
+      options.wait ??
+      ((milliseconds) => new Promise((resolveWait) => setTimeout(resolveWait, milliseconds)));
+    const deadline = clock() + timeout * 1000;
+    let finalResult: CapturedCommandResult | undefined;
+    let finalValue: JsonRecord | undefined;
+    while (clock() < deadline) {
+      await wait(Math.min(pollIntervalMs, Math.max(1, deadline - clock())));
+      const viewArgv = [context.executable, "eval", "view", "--json", runId] as const;
+      const viewResult = await execute(context, viewArgv, Math.min(60, timeout), true);
+      if (viewResult.status !== "passed") {
+        throw new TesslEvidenceError("Tessl eval result query failed.", [
+          issue("tessl.eval.view", "/result", "official Tessl eval view did not complete"),
+        ]);
+      }
+      const view = parseObjectOutput(viewResult, "/result");
+      const data = view.data;
+      const status =
+        isRecord(data) && isRecord(data.attributes) ? data.attributes.status : undefined;
+      if (status === "completed") {
+        finalResult = viewResult;
+        finalValue = view;
+        break;
+      }
+      if (status === "failed") {
+        throw new TesslEvidenceError("Tessl eval run failed.", [
+          issue("tessl.eval.status", "/result", "provider marked the eval run failed"),
+        ]);
+      }
+      if (status !== "pending" && status !== "in_progress") {
+        throw new TesslEvidenceError("Tessl eval status is invalid.", [
+          issue("tessl.eval.status", "/result", "provider returned an unknown eval status"),
+        ]);
+      }
+    }
+    if (finalResult === undefined || finalValue === undefined) {
+      throw new TesslEvidenceError("Tessl eval timed out.", [
+        issue("tessl.eval.timeout", "/result", "provider eval did not finish before the deadline"),
+      ]);
+    }
+    await writeRaw(context.storage, "eval-result", finalResult);
+    const parsed = parseCompletedEval(
+      finalValue,
+      runId,
+      startContextDefinition.path,
+      startArgv.slice(1).join(" "),
+    );
+    if (
+      (options.agent !== undefined && parsed.agent !== options.agent) ||
+      (options.model !== undefined && parsed.model !== options.model) ||
+      (startAgent !== undefined && parsed.agent !== startAgent) ||
+      (startModel !== undefined && parsed.model !== startModel)
+    ) {
+      throw new TesslEvidenceError("Tessl eval resolved identity changed.", [
+        issue(
+          "tessl.eval.identity",
+          "/result",
+          "completed agent/model must match the request and any start identity",
+        ),
+      ]);
+    }
+    if (parsed.scenarios.length !== Number(start.scenariosCount)) {
+      throw new TesslEvidenceError("Tessl eval scenario count changed.", [
+        issue(
+          "tessl.eval.count",
+          "/result/scenarios",
+          "completed scenario count differs from submission",
+        ),
+      ]);
+    }
+    const baselineScore = Math.round(
+      parsed.scenarios.reduce((sum, scenario) => sum + scenario.baselineScore, 0) /
+        parsed.scenarios.length,
+    );
+    const impactScore = Math.round(
+      parsed.scenarios.reduce((sum, scenario) => sum + scenario.withContextScore, 0) /
+        parsed.scenarios.length,
+    );
+    const impactDelta = impactScore - baselineScore;
+    const baseReasons = await postRunReasons(context, [sourcePath], {
+      path: source,
+      sha256: scenarioSourceSha256,
+    });
+    const finalSourceBinding = await inspectTesslEvalSource(source, context.skillName);
+    const finalStagedBinding = await inspectTesslEvalSource(stagedSource.path, context.skillName);
+    if (
+      !finalSourceBinding.structureValid ||
+      !finalSourceBinding.contextExclusive ||
+      !finalSourceBinding.skillValid ||
+      finalSourceBinding.embeddedSkillSha256 !== context.skillSha256 ||
+      (await digestBoundedTree(stagedSource.path)) !== scenarioSourceSha256 ||
+      !finalStagedBinding.structureValid ||
+      !finalStagedBinding.contextExclusive ||
+      !finalStagedBinding.skillValid ||
+      finalStagedBinding.embeddedSkillSha256 !== context.skillSha256
+    ) {
+      throw new TesslEvidenceError("Tessl eval source skill changed during evidence capture.", [
+        issue(
+          "tessl.eval.source_skill_changed",
+          "/source/skills",
+          "embedded eval skill must remain equal to the canonical skill throughout capture",
+        ),
+      ]);
+    }
+    await assertCliUnchanged(context);
+    const reasons: SkillPressTesslEvalEvidence["ineligibilityReasons"] = [...baseReasons];
+    if (parsed.missingBaseline) reasons.push("missing_baseline");
+    if (parsed.scenarios.some((scenario) => scenario.delta < 0))
+      reasons.push("scenario_regression");
     const viewArgv = [context.executable, "eval", "view", "--json", runId] as const;
-    const viewResult = await execute(context, viewArgv, Math.min(60, timeout), true);
-    if (viewResult.status !== "passed") {
-      throw new TesslEvidenceError("Tessl eval result query failed.", [
-        issue("tessl.eval.view", "/result", "official Tessl eval view did not complete"),
+    const evidence: SkillPressTesslEvalEvidence = {
+      schemaVersion: 1,
+      evidenceType: "skillpress.tessl-eval",
+      provider: "tessl",
+      createdAt: (options.now ?? (() => new Date()))().toISOString(),
+      sourceCommit: context.sourceCommit,
+      projectConfigSha256: context.configSha256,
+      skillSha256: context.skillSha256,
+      scenarioSourceSha256,
+      cli: context.cli,
+      runId,
+      agent: parsed.agent,
+      model: parsed.model,
+      runs,
+      impactScore,
+      baselineScore,
+      impactDelta,
+      upliftRatio:
+        baselineScore === 0
+          ? null
+          : Math.round((impactScore / baselineScore) * 1_000_000) / 1_000_000,
+      scenarios: parsed.scenarios,
+      start: invocation(startArgv, startResult, context.executableSha256),
+      result: invocation(viewArgv, finalResult, context.executableSha256),
+      storagePath: context.storagePath,
+      evidenceEligible: reasons.length === 0,
+      ineligibilityReasons: reasons,
+    };
+    if (!validateEvalEvidence(evidence)) {
+      throw new TesslEvidenceError("Tessl eval evidence violated its schema.", [
+        issue("tessl.evidence.schema", "/evidence", "internal eval evidence is invalid"),
       ]);
     }
-    const view = parseObjectOutput(viewResult, "/result");
-    const data = view.data;
-    const status = isRecord(data) && isRecord(data.attributes) ? data.attributes.status : undefined;
-    if (status === "completed") {
-      finalResult = viewResult;
-      finalValue = view;
-      break;
-    }
-    if (status === "failed") {
-      throw new TesslEvidenceError("Tessl eval run failed.", [
-        issue("tessl.eval.status", "/result", "provider marked the eval run failed"),
-      ]);
-    }
-    if (status !== "pending" && status !== "in_progress") {
-      throw new TesslEvidenceError("Tessl eval status is invalid.", [
-        issue("tessl.eval.status", "/result", "provider returned an unknown eval status"),
-      ]);
-    }
+    await persistEvidence(context.storage, evidence);
+    return freeze(evidence);
+  } finally {
+    await rm(gitBoundary, { recursive: true, force: true });
   }
-  if (finalResult === undefined || finalValue === undefined) {
-    throw new TesslEvidenceError("Tessl eval timed out.", [
-      issue("tessl.eval.timeout", "/result", "provider eval did not finish before the deadline"),
-    ]);
-  }
-  await writeRaw(context.storage, "eval-result", finalResult);
-  const parsed = parseCompletedEval(
-    finalValue,
-    runId,
-    stagedSource.reportPath,
-    startArgv.slice(1).join(" "),
-  );
-  if (
-    (options.agent !== undefined && parsed.agent !== options.agent) ||
-    (options.model !== undefined && parsed.model !== options.model) ||
-    (startAgent !== undefined && parsed.agent !== startAgent) ||
-    (startModel !== undefined && parsed.model !== startModel)
-  ) {
-    throw new TesslEvidenceError("Tessl eval resolved identity changed.", [
-      issue(
-        "tessl.eval.identity",
-        "/result",
-        "completed agent/model must match the request and any start identity",
-      ),
-    ]);
-  }
-  if (parsed.scenarios.length !== Number(start.scenariosCount)) {
-    throw new TesslEvidenceError("Tessl eval scenario count changed.", [
-      issue(
-        "tessl.eval.count",
-        "/result/scenarios",
-        "completed scenario count differs from submission",
-      ),
-    ]);
-  }
-  const baselineScore = Math.round(
-    parsed.scenarios.reduce((sum, scenario) => sum + scenario.baselineScore, 0) /
-      parsed.scenarios.length,
-  );
-  const impactScore = Math.round(
-    parsed.scenarios.reduce((sum, scenario) => sum + scenario.withContextScore, 0) /
-      parsed.scenarios.length,
-  );
-  const impactDelta = impactScore - baselineScore;
-  const baseReasons = await postRunReasons(context, [sourcePath], {
-    path: source,
-    sha256: scenarioSourceSha256,
-  });
-  const finalSourceBinding = await inspectTesslEvalSource(source, context.skillName);
-  const finalStagedBinding = await inspectTesslEvalSource(stagedSource.path, context.skillName);
-  if (
-    !finalSourceBinding.structureValid ||
-    !finalSourceBinding.contextExclusive ||
-    !finalSourceBinding.skillValid ||
-    finalSourceBinding.embeddedSkillSha256 !== context.skillSha256 ||
-    (await digestBoundedTree(stagedSource.path)) !== scenarioSourceSha256 ||
-    !finalStagedBinding.structureValid ||
-    !finalStagedBinding.contextExclusive ||
-    !finalStagedBinding.skillValid ||
-    finalStagedBinding.embeddedSkillSha256 !== context.skillSha256
-  ) {
-    throw new TesslEvidenceError("Tessl eval source skill changed during evidence capture.", [
-      issue(
-        "tessl.eval.source_skill_changed",
-        "/source/skills",
-        "embedded eval skill must remain equal to the canonical skill throughout capture",
-      ),
-    ]);
-  }
-  await assertCliUnchanged(context);
-  const reasons: SkillPressTesslEvalEvidence["ineligibilityReasons"] = [...baseReasons];
-  if (parsed.missingBaseline) reasons.push("missing_baseline");
-  if (parsed.scenarios.some((scenario) => scenario.delta < 0)) reasons.push("scenario_regression");
-  const viewArgv = [context.executable, "eval", "view", "--json", runId] as const;
-  const evidence: SkillPressTesslEvalEvidence = {
-    schemaVersion: 1,
-    evidenceType: "skillpress.tessl-eval",
-    provider: "tessl",
-    createdAt: (options.now ?? (() => new Date()))().toISOString(),
-    sourceCommit: context.sourceCommit,
-    projectConfigSha256: context.configSha256,
-    skillSha256: context.skillSha256,
-    scenarioSourceSha256,
-    cli: context.cli,
-    runId,
-    agent: parsed.agent,
-    model: parsed.model,
-    runs,
-    impactScore,
-    baselineScore,
-    impactDelta,
-    upliftRatio:
-      baselineScore === 0
-        ? null
-        : Math.round((impactScore / baselineScore) * 1_000_000) / 1_000_000,
-    scenarios: parsed.scenarios,
-    start: invocation(startArgv, startResult, context.executableSha256),
-    result: invocation(viewArgv, finalResult, context.executableSha256),
-    storagePath: context.storagePath,
-    evidenceEligible: reasons.length === 0,
-    ineligibilityReasons: reasons,
-  };
-  if (!validateEvalEvidence(evidence)) {
-    throw new TesslEvidenceError("Tessl eval evidence violated its schema.", [
-      issue("tessl.evidence.schema", "/evidence", "internal eval evidence is invalid"),
-    ]);
-  }
-  await persistEvidence(context.storage, evidence);
-  return freeze(evidence);
 }

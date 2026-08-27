@@ -33,7 +33,7 @@ async function source(): Promise<string> {
   await mkdir(join(evalSource, "skills"));
   await writeFile(
     join(evalSource, ".tessl-plugin", "plugin.json"),
-    '{"name":"test/incident-summary","version":"0.1.0","private":true}\n',
+    '{"name":"test/incident-summary","version":"0.1.0","private":true,"skills":["skills/incident-summary"]}\n',
   );
   await cp(
     join(project, "skills", "incident-summary"),
@@ -44,11 +44,11 @@ async function source(): Promise<string> {
 }
 
 describe("Tessl eval source inspection", () => {
-  it("accepts a metadata-only plugin with an optional dependency-free vendored project", async () => {
+  it("accepts an exclusive single-skill plugin with an optional dependency-free vendored project", async () => {
     const value = await source();
     await writeFile(
       join(value, ".tessl-plugin", "plugin.json"),
-      '{"name":"test/incident-summary","version":"0.1.0","description":"test","private":true}\n',
+      '{"name":"test/incident-summary","version":"0.1.0","description":"test","private":true,"skills":["skills/incident-summary"]}\n',
     );
     await writeFile(
       join(value, "tessl.json"),
@@ -82,11 +82,40 @@ describe("Tessl eval source inspection", () => {
   it.each([
     ["malformed JSON", "{"],
     ["non-object JSON", "[]"],
-    ["unexpected field", '{"name":"test/x","version":"1.0.0","private":true,"rules":[]}'],
-    ["invalid name", '{"name":7,"version":"1.0.0","private":true}'],
-    ["invalid version", '{"name":"test/x","version":7,"private":true}'],
-    ["invalid description", '{"name":"test/x","version":"1.0.0","description":7,"private":true}'],
-    ["public plugin", '{"name":"test/x","version":"1.0.0","private":false}'],
+    [
+      "unexpected field",
+      '{"name":"test/x","version":"1.0.0","private":true,"skills":["skills/incident-summary"],"rules":[]}',
+    ],
+    [
+      "invalid name",
+      '{"name":7,"version":"1.0.0","private":true,"skills":["skills/incident-summary"]}',
+    ],
+    [
+      "invalid version",
+      '{"name":"test/x","version":7,"private":true,"skills":["skills/incident-summary"]}',
+    ],
+    [
+      "invalid description",
+      '{"name":"test/x","version":"1.0.0","description":7,"private":true,"skills":["skills/incident-summary"]}',
+    ],
+    [
+      "public plugin",
+      '{"name":"test/x","version":"1.0.0","private":false,"skills":["skills/incident-summary"]}',
+    ],
+    ["missing skills", '{"name":"test/x","version":"1.0.0","private":true}'],
+    [
+      "invalid skills",
+      '{"name":"test/x","version":"1.0.0","private":true,"skills":"skills/incident-summary"}',
+    ],
+    ["empty skills", '{"name":"test/x","version":"1.0.0","private":true,"skills":[]}'],
+    [
+      "extra skill declaration",
+      '{"name":"test/x","version":"1.0.0","private":true,"skills":["skills/incident-summary","skills/answer-key"]}',
+    ],
+    [
+      "wrong skill declaration",
+      '{"name":"test/x","version":"1.0.0","private":true,"skills":["skills/answer-key"]}',
+    ],
   ] as const)("rejects plugin manifest context: %s", async (_name, manifest) => {
     const value = await source();
     await writeFile(join(value, ".tessl-plugin", "plugin.json"), `${manifest}\n`);

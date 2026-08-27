@@ -344,6 +344,10 @@ function verifyEvalOutputs(
   const start = extractJsonObject(startBytes);
   const startContext = start.context;
   const startContextDefinition = isRecord(startContext) ? startContext.definition : undefined;
+  const providerContextPath = isRecord(startContextDefinition)
+    ? startContextDefinition.path
+    : undefined;
+  const contextBasename = expectedContextPath.split("/").at(-1);
   if (
     start.evalRunId !== evidence.runId ||
     (start.agent !== undefined && start.agent !== evidence.agent) ||
@@ -351,7 +355,7 @@ function verifyEvalOutputs(
     start.scenariosCount !== evidence.scenarios.length ||
     !isRecord(startContextDefinition) ||
     startContextDefinition.type !== "plugin-directory" ||
-    startContextDefinition.path !== expectedContextPath
+    (providerContextPath !== expectedContextPath && providerContextPath !== contextBasename)
   ) {
     throw new TypeError("eval start");
   }
@@ -366,7 +370,7 @@ function verifyEvalOutputs(
   if (
     !isRecord(finalContext) ||
     finalContext.type !== "plugin-directory" ||
-    finalContext.path !== expectedContextPath ||
+    finalContext.path !== providerContextPath ||
     !isRecord(metadata) ||
     metadata.cliInvocation !== expectedCliInvocation
   ) {

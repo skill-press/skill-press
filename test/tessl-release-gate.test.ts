@@ -153,7 +153,7 @@ async function fixture(): Promise<Fixture> {
   await mkdir(join(evalSource, "skills"));
   await writeFile(
     join(evalSource, ".tessl-plugin", "plugin.json"),
-    '{"name":"test/incident-summary","version":"0.1.0","private":true}\n',
+    '{"name":"test/incident-summary","version":"0.1.0","private":true,"skills":["skills/incident-summary"]}\n',
   );
   await writeFile(join(evalSource, "evals", "scenario.json"), "{}\n");
   await cp(
@@ -346,6 +346,58 @@ describe("Tessl release gate", () => {
 
       expect((await gate(value)).passed).toBe(true);
     }
+  });
+
+  it("accepts Tessl's nested-repository basename normalization when raw echoes agree", async () => {
+    const value = await fixture();
+    const evaluation = JSON.parse(await readFile(join(value.root, value.evalPath), "utf8"));
+    const providerPath = capturedEvalSource(evaluation).split("/").at(-1) as string;
+    const rawStart = JSON.parse(
+      await readFile(join(value.root, evaluation.storagePath, "eval-start.stdout"), "utf8"),
+    );
+    rawStart.context.definition.path = providerPath;
+    await replaceRawStdout(
+      value,
+      value.evalPath,
+      "start",
+      "eval-start",
+      `${JSON.stringify(rawStart)}\n`,
+    );
+    const rawResult = JSON.parse(
+      await readFile(join(value.root, evaluation.storagePath, "eval-result.stdout"), "utf8"),
+    );
+    rawResult.data.attributes.evalRunFixtures.context.path = providerPath;
+    await replaceRawStdout(
+      value,
+      value.evalPath,
+      "result",
+      "eval-result",
+      `${JSON.stringify(rawResult)}\n`,
+    );
+
+    expect((await gate(value)).passed).toBe(true);
+  });
+
+  it("rejects mixed full-path and basename provider context echoes", async () => {
+    const value = await fixture();
+    const evaluation = JSON.parse(await readFile(join(value.root, value.evalPath), "utf8"));
+    const rawResult = JSON.parse(
+      await readFile(join(value.root, evaluation.storagePath, "eval-result.stdout"), "utf8"),
+    );
+    rawResult.data.attributes.evalRunFixtures.context.path = capturedEvalSource(evaluation)
+      .split("/")
+      .at(-1);
+    await replaceRawStdout(
+      value,
+      value.evalPath,
+      "result",
+      "eval-result",
+      `${JSON.stringify(rawResult)}\n`,
+    );
+
+    expect((await gate(value)).issues.map((entry) => entry.code)).toContain(
+      "release.evidence.output",
+    );
   });
 
   it("rejects Quality commands that can reuse cached review results", async () => {

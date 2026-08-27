@@ -8,6 +8,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  readdir,
   rm,
   stat,
   symlink,
@@ -52,7 +53,7 @@ async function project(): Promise<{ root: string; executable: string; evalSource
   await mkdir(join(evalSource, "skills"));
   await writeFile(
     join(evalSource, ".tessl-plugin", "plugin.json"),
-    '{"name":"test/incident-summary","version":"0.1.0","private":true}\n',
+    '{"name":"test/incident-summary","version":"0.1.0","private":true,"skills":["skills/incident-summary"]}\n',
   );
   await writeFile(join(evalSource, "evals", "scenario.json"), "{}\n");
   await cp(
@@ -601,6 +602,9 @@ describe("Tessl official evidence bridge", () => {
       "tessl-evals",
     ]);
     expect(observed.at(-1)).toEqual(["eval", "view", "--json", "eval-run-1"]);
+    await expect(access(join(fixture.root, evidence.storagePath, ".git"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
     expect(evidence).toMatchObject({
       evidenceType: "skillpress.tessl-eval",
       runId: "eval-run-1",
@@ -675,6 +679,89 @@ describe("Tessl official evidence bridge", () => {
     },
   );
 
+  it("accepts Tessl's nested-repository basename normalization when both echoes agree", async () => {
+    const fixture = await project();
+    let invocation: readonly string[] = [];
+    let providerPath = "";
+    const executor = executorFor((args) => {
+      if (args[0] === "--version") return result("0.101.0\n");
+      if (args[1] === "run") {
+        invocation = args;
+        providerPath = (args[args.indexOf("--context") + 1] as string).split("/").at(-1) as string;
+        return result(
+          JSON.stringify({
+            evalRunId: "eval-run-1",
+            agent: "codex",
+            model: "gpt-fixed",
+            scenariosCount: 2,
+            context: {
+              definition: { type: "plugin-directory", path: providerPath },
+            },
+          }),
+        );
+      }
+      return result(
+        JSON.stringify(
+          completedEval(
+            {
+              evalRunFixtures: {
+                context: { type: "plugin-directory", path: providerPath },
+              },
+              metadata: { cliInvocation: invocation.join(" ") },
+            },
+            invocation,
+          ),
+        ),
+      );
+    });
+
+    await expect(
+      captureTesslEvalEvidence(fixture.root, {
+        source: "tessl-evals",
+        agent: "codex",
+        model: "gpt-fixed",
+        executable: fixture.executable,
+        executor,
+        pollIntervalMs: 1,
+        wait: async () => undefined,
+      }),
+    ).resolves.toMatchObject({ impactScore: 95 });
+  });
+
+  it("rejects a pre-existing nested Git boundary without deleting unowned metadata", async () => {
+    const fixture = await project();
+    let marker = "";
+    const executor: TesslCommandExecutor = async (command) => {
+      const args = command.argv.slice(1);
+      if (args[0] === "--version") {
+        const storageIds = await readdir(join(fixture.root, ".skillpress", "tessl"));
+        const boundary = join(
+          fixture.root,
+          ".skillpress",
+          "tessl",
+          storageIds[0] as string,
+          ".git",
+        );
+        await mkdir(boundary);
+        marker = join(boundary, "owner-marker");
+        await writeFile(marker, "retain\n");
+        return result("0.101.0\n");
+      }
+      return result("", "failed");
+    };
+
+    await expect(
+      captureTesslEvalEvidence(fixture.root, {
+        source: "tessl-evals",
+        executable: fixture.executable,
+        executor,
+      }),
+    ).rejects.toMatchObject({
+      issues: [expect.objectContaining({ code: "tessl.eval.git_boundary" })],
+    });
+    await expect(readFile(marker, "utf8")).resolves.toBe("retain\n");
+  });
+
   it("rejects an eval plugin whose embedded skill differs from the canonical skill", async () => {
     const fixture = await project();
     await writeFile(join(fixture.evalSource, "skills", "incident-summary", "LICENSE"), "changed\n");
@@ -748,7 +835,7 @@ describe("Tessl official evidence bridge", () => {
     expect(submitted).toBe(false);
   });
 
-  it("rejects mutation of the private eval snapshot before result capture", async () => {
+  it("rejects mutation of the retained snapshot submitted to Tessl", async () => {
     const fixture = await project();
     let stagedSource = "";
     let invocation: readonly string[] = [];
@@ -789,6 +876,10 @@ describe("Tessl official evidence bridge", () => {
       }),
     ).rejects.toMatchObject({
       issues: [expect.objectContaining({ code: "tessl.eval.source_skill_changed" })],
+    });
+    const storagePath = stagedSource.split("/").slice(0, -1).join("/");
+    await expect(access(join(fixture.root, storagePath, ".git"))).rejects.toMatchObject({
+      code: "ENOENT",
     });
   });
 
@@ -966,6 +1057,7 @@ describe("Tessl official evidence bridge", () => {
     ],
   ] as const)("rejects invalid eval evidence: %s", async (_name, fault) => {
     const fixture = await project();
+    const observed: string[][] = [];
     const executor = executorFor((args) => {
       if (args[0] === "--version") return result("0.101.0\n");
       const injected = fault(args);
@@ -975,7 +1067,7 @@ describe("Tessl official evidence bridge", () => {
           '{"evalRunId":"eval-run-1","agent":"codex","model":"gpt-fixed","scenariosCount":2}',
         );
       return result(JSON.stringify(completedEval()));
-    });
+    }, observed);
     await expect(
       captureTesslEvalEvidence(fixture.root, {
         source: "tessl-evals",
@@ -987,6 +1079,13 @@ describe("Tessl official evidence bridge", () => {
         wait: async () => undefined,
       }),
     ).rejects.toBeInstanceOf(TesslEvidenceError);
+    const start = observed.find((args) => args[0] === "eval" && args[1] === "run");
+    const contextPath = start?.[start.indexOf("--context") + 1];
+    expect(contextPath).toMatch(/^\.skillpress\/tessl\/[a-f0-9]{64}\/eval-plugin-[a-f0-9]{64}$/u);
+    const storagePath = (contextPath as string).split("/").slice(0, -1).join("/");
+    await expect(access(join(fixture.root, storagePath, ".git"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 
   it.each([

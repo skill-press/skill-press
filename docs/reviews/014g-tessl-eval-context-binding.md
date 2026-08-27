@@ -17,8 +17,13 @@ docs, rules, or dependencies. A later snapshot-only design would have moved the 
 away from its linked Tessl project identity.
 
 The corrected 0.101.0 invocation retains the linked source as the positional project source, passes
-a private snapshot as explicit `--context`, and narrows it with `--skill`. Tessl 0.101.0 uses the
-explicit context in preference to the positional plugin's implicit context.
+a private snapshot as explicit `--context`, and narrows it with `--skill`. The private manifest
+explicitly declares that sole skill so 0.101.0 includes it in the packaged plugin context. Tessl
+0.101.0 uses the explicit context in preference to the positional plugin's implicit context.
+Because the snapshot is deliberately ignored private data and 0.101.0 applies an enclosing Git
+repository's ignore rules while packing, capture creates a temporary nested Git boundary beside the
+snapshot. This stops ignore lookup without copying holdouts into an unignored path; capture removes
+only that boundary in a `finally` cleanup.
 
 A second review found that a fixed snapshot pathname and locally editable command receipts could
 allow old provider output to be rebound to changed original and snapshot contents. Provider JSON
@@ -29,15 +34,18 @@ source digest rather than from an evidence claim.
 ## Implemented contract
 
 - The eval source root contains only `.tessl-plugin`, `evals`, `skills`, and optional `tessl.json`.
-- Plugin metadata is private and metadata-only; there is exactly one configured skill.
+- Plugin metadata is private and declares exactly the one configured skill directory.
 - An optional `tessl.json` is vendored and has an empty dependency map.
 - The embedded skill validates and its complete tree digest equals the canonical skill digest.
 - Capture copies the full source to
   `.skillpress/tessl/<run>/eval-plugin-<source-sha256>` and verifies the copy.
+- A temporary `.skillpress/tessl/<run>/.git` boundary makes 0.101.0 package the explicitly declared
+  skill without exposing the source outside ignored storage, then is removed after the attempt.
 - `eval run` binds `--force`, the content-addressed `--context`, configured `--skill`, optional
   provider selections, run count, and the original linked positional source.
 - Capture and release replay require start `context.definition`, final
-  `evalRunFixtures.context`, and final `metadata.cliInvocation` to echo the exact request.
+  `evalRunFixtures.context`, and final `metadata.cliInvocation` to echo the exact request; the two
+  context echoes must match and may only use the argv path or its content-addressed basename.
 - Original source, snapshot, canonical skill, Git/config inputs, CLI executable, raw outputs, and
 command receipts are checked again after capture and at the release gate.
 
