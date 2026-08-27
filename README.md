@@ -70,8 +70,9 @@ explicit selection; omitting them uses the provider defaults. Each eval source m
 plugin whose manifest explicitly declares only `skills/<configured-name>`, exactly matching the
 canonical skill. Capture evaluates a private digest-verified snapshot with an explicit skill
 selector. A temporary nested Git boundary prevents Tessl 0.101.0 from applying the outer private
-storage ignore rule while packing that snapshot; the boundary is removed after every attempt. The
-release gate independently enforces the original/snapshot/canonical binding.
+storage ignore rule while packing that snapshot; it must be removed before evidence is persisted.
+The release gate rejects residual boundary metadata and independently enforces the
+original/snapshot/canonical binding.
 
 `publish` is a non-mutating dry run unless `--execute` is supplied. Resume an executed partial run
 with `--execute --resume <private-receipt.json>`. Run each command with `--help` for provider

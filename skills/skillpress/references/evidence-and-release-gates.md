@@ -41,9 +41,10 @@ Tessl packages it into the plugin context. SkillPress verifies both tree digests
 as explicit context, and explicitly selects the configured skill. The linked source remains the
 positional project source so its Tessl identity is preserved. A temporary nested Git boundary keeps
 the complete source inside ignored private storage while preventing Tessl 0.101.0 from excluding the
-declared skill; it is removed after every attempt. Provider start and result output must agree on the
-exact submitted context or its content-addressed basename normalization and echo the full invocation.
-After the provider run and at the release gate, capture repeats the
+declared skill. SkillPress persists evidence only after removing that boundary, and the release gate
+rejects any residual boundary. Provider start and result output must agree on the exact submitted
+context or its content-addressed basename normalization and echo the full invocation. After the
+provider run and at the release gate, capture repeats the
 original/snapshot/canonical checks.
 
 The commands retain bounded raw provider output in private `.skillpress/tessl/` storage. A trusted

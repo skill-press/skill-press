@@ -933,6 +933,7 @@ export async function captureTesslEvalEvidence(
   }
   const stagedSource = await stageTesslEvalPlugin(context, source, scenarioSourceSha256);
   const gitBoundary = await createTesslEvalGitBoundary(context);
+  let capturedEvidence: SkillPressTesslEvalEvidence | undefined;
   try {
     const startArgv = [
       context.executable,
@@ -1134,9 +1135,11 @@ export async function captureTesslEvalEvidence(
         issue("tessl.evidence.schema", "/evidence", "internal eval evidence is invalid"),
       ]);
     }
-    await persistEvidence(context.storage, evidence);
-    return freeze(evidence);
+    capturedEvidence = evidence;
   } finally {
     await rm(gitBoundary, { recursive: true, force: true });
   }
+  if (capturedEvidence === undefined) throw new TypeError("unreachable Tessl eval evidence state");
+  await persistEvidence(context.storage, capturedEvidence);
+  return freeze(capturedEvidence);
 }

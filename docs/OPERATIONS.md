@@ -110,9 +110,10 @@ non-empty Tessl project dependencies, creates a private digest-verified, content
 and evaluates it with an explicit context and skill selector while retaining the linked source as
 Tessl's positional project source. During submission, a temporary nested Git boundary stops Tessl
 0.101.0 from inheriting the outer `.gitignore` rule that protects the private snapshot; SkillPress
-removes that boundary after success or failure. Provider start and result output must agree on the
-exact submitted context (or its content-addressed basename normalization) and invocation. SkillPress
-compares both source trees before and after capture; the release gate repeats the
+must remove that boundary before it persists eligible evidence. Provider start and result output
+must agree on the exact submitted context (or its content-addressed basename normalization) and
+invocation. SkillPress compares both source trees before and after capture; the release gate rejects
+residual boundary metadata and repeats the
 original/snapshot/canonical comparison.
 Quality and Impact capture always pass the native Tessl
 `--force` flag so cached provider results from an older skill context cannot become release

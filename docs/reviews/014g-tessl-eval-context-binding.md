@@ -23,7 +23,7 @@ explicitly declares that sole skill so 0.101.0 includes it in the packaged plugi
 Because the snapshot is deliberately ignored private data and 0.101.0 applies an enclosing Git
 repository's ignore rules while packing, capture creates a temporary nested Git boundary beside the
 snapshot. This stops ignore lookup without copying holdouts into an unignored path; capture removes
-only that boundary in a `finally` cleanup.
+only that boundary before persisting evidence, and the release gate rejects any residual boundary.
 
 A second review found that a fixed snapshot pathname and locally editable command receipts could
 allow old provider output to be rebound to changed original and snapshot contents. Provider JSON
@@ -40,7 +40,8 @@ source digest rather than from an evidence claim.
 - Capture copies the full source to
   `.skillpress/tessl/<run>/eval-plugin-<source-sha256>` and verifies the copy.
 - A temporary `.skillpress/tessl/<run>/.git` boundary makes 0.101.0 package the explicitly declared
-  skill without exposing the source outside ignored storage, then is removed after the attempt.
+  skill without exposing the source outside ignored storage. Evidence is persisted only after the
+  boundary is removed, and the release gate requires it to remain absent.
 - `eval run` binds `--force`, the content-addressed `--context`, configured `--skill`, optional
   provider selections, run count, and the original linked positional source.
 - Capture and release replay require start `context.definition`, final

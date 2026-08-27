@@ -762,6 +762,49 @@ describe("Tessl official evidence bridge", () => {
     await expect(readFile(marker, "utf8")).resolves.toBe("retain\n");
   });
 
+  it("does not persist evidence when nested Git boundary cleanup fails", async () => {
+    const fixture = await project();
+    let invocation: readonly string[] = [];
+    let boundary = "";
+    const executor: TesslCommandExecutor = async (command) => {
+      const args = command.argv.slice(1);
+      if (args[0] === "--version") return result("0.101.0\n");
+      if (args[1] === "run") {
+        invocation = args;
+        const contextPath = args[args.indexOf("--context") + 1] as string;
+        boundary = join(fixture.root, contextPath.split("/").slice(0, -1).join("/"), ".git");
+        return result(
+          JSON.stringify({
+            evalRunId: "eval-run-1",
+            agent: "codex",
+            model: "gpt-fixed",
+            scenariosCount: 2,
+            context: {
+              definition: { type: "plugin-directory", path: contextPath },
+            },
+          }),
+        );
+      }
+      await chmod(boundary, 0o500);
+      return result(JSON.stringify(completedEval({}, invocation)));
+    };
+
+    await expect(
+      captureTesslEvalEvidence(fixture.root, {
+        source: "tessl-evals",
+        agent: "codex",
+        model: "gpt-fixed",
+        executable: fixture.executable,
+        executor,
+        pollIntervalMs: 1,
+        wait: async () => undefined,
+      }),
+    ).rejects.toBeDefined();
+    await chmod(boundary, 0o700);
+    const storage = boundary.slice(0, -"/.git".length);
+    await expect(access(join(storage, "evidence.json"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("rejects an eval plugin whose embedded skill differs from the canonical skill", async () => {
     const fixture = await project();
     await writeFile(join(fixture.evalSource, "skills", "incident-summary", "LICENSE"), "changed\n");

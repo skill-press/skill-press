@@ -56,7 +56,8 @@ that snapshot as explicit `--context` with an explicit `--skill` selector. The o
 source remains the final positional argument so Tessl retains its registered project identity. The
 snapshot stays under ignored private storage. For the duration of the CLI call, SkillPress creates a
 nested Git boundary in the evidence-run directory so Tessl 0.101.0 stops inheriting the outer
-`.gitignore`; the exact boundary is removed after success or failure.
+`.gitignore`; the exact boundary must be removed successfully before evidence is persisted, and the
+release gate rejects any residual boundary.
 Capture and the release gate require the provider's start and completed-result JSON to echo that
 same context path, accepting only the exact argv path or Tessl's content-addressed basename
 normalization, and require final `metadata.cliInvocation` to equal the complete submitted argv. The

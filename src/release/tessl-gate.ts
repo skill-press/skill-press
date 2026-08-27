@@ -112,6 +112,17 @@ async function digestExistingTree(path: string): Promise<string | null> {
   }
 }
 
+async function pathAbsent(path: string): Promise<boolean> {
+  try {
+    await lstat(path);
+    return false;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return true;
+    throw error;
+  }
+}
+
 function isRecord(value: unknown): value is JsonRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -688,6 +699,13 @@ export async function checkTesslReleaseGate(
     ]);
   }
   const issues: TesslReleaseGateIssue[] = [];
+  addCheck(
+    issues,
+    await pathAbsent(join(root, evaluation.storagePath, ".git")),
+    "release.evidence.git_boundary",
+    "/eval/storagePath",
+    "temporary Tessl Git boundary must be absent before release",
+  );
   const evalSourceBinding = await inspectTesslEvalSource(join(root, evalSource), config.skill.name);
   const capturedEvalSourceBinding = await inspectTesslEvalSource(
     join(root, capturedEvalSource),

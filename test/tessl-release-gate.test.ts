@@ -400,6 +400,16 @@ describe("Tessl release gate", () => {
     );
   });
 
+  it("rejects eval evidence storage with a residual nested Git boundary", async () => {
+    const value = await fixture();
+    const evaluation = JSON.parse(await readFile(join(value.root, value.evalPath), "utf8"));
+    await mkdir(join(value.root, evaluation.storagePath, ".git"));
+
+    expect((await gate(value)).issues.map((entry) => entry.code)).toContain(
+      "release.evidence.git_boundary",
+    );
+  });
+
   it("rejects Quality commands that can reuse cached review results", async () => {
     const value = await fixture();
     const reviewFile = join(value.root, value.reviewPath);
