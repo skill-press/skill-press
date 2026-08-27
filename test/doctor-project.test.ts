@@ -71,7 +71,10 @@ describe("project doctor", () => {
         commands.push(command);
         return commandResult(true);
       },
-      environment: { GH_TOKEN: "super-secret", TESSL_TOKEN: "another-secret" },
+      environment: {
+        SKILL_PRESS_TOKEN: "super-secret",
+        TESSL_TOKEN: "another-secret",
+      },
       homeDirectory: value.home,
       nodeVersion: "v22.14.0",
     });
@@ -79,7 +82,6 @@ describe("project doctor", () => {
     expect(commands.map((entry) => entry.argv)).toEqual([
       ["git", "--version"],
       ["docker", "--version"],
-      ["gh", "--version"],
       ["tessl", "--version"],
     ]);
     expect(report.ready).toBe(false);
@@ -87,9 +89,8 @@ describe("project doctor", () => {
       expect.arrayContaining([
         expect.objectContaining({ id: "runtime.node", status: "pass" }),
         expect.objectContaining({ id: "project.readiness", status: "pass" }),
-        expect.objectContaining({ id: "credential.github", status: "pass" }),
+        expect.objectContaining({ id: "credential.skill_press", status: "pass" }),
         expect.objectContaining({ id: "credential.tessl", status: "pass" }),
-        expect.objectContaining({ id: "collision.remote", status: "warning" }),
         expect.objectContaining({ id: "evidence.tessl", status: "error" }),
       ]),
     );
@@ -113,7 +114,7 @@ describe("project doctor", () => {
         expect.objectContaining({ id: "runtime.node", status: "error" }),
         expect.objectContaining({ id: "command.docker", status: "error" }),
         expect.objectContaining({ id: "collision.agents", status: "warning" }),
-        expect.objectContaining({ id: "credential.github", status: "warning" }),
+        expect.objectContaining({ id: "credential.skill_press", status: "warning" }),
       ]),
     );
   });
@@ -158,7 +159,7 @@ describe("project doctor", () => {
     await expect(stat(homes[0] as string)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("covers every configured provider probe and credential context with a passing gate", async () => {
+  it("covers canonical tool probes and credential context with a passing gate", async () => {
     const value = await fixture();
     const config = await loadProjectConfig(value.root);
     const commands: CapturedCommand[] = [];
@@ -171,53 +172,28 @@ describe("project doctor", () => {
           return commandResult(true);
         },
         environment: {
-          GH_TOKEN: "github",
-          ACTIONS_ID_TOKEN_REQUEST_URL: "url",
-          ACTIONS_ID_TOKEN_REQUEST_TOKEN: "token",
           TESSL_TOKEN: "tessl",
-          ASKILL_LOGIN: "askill",
-          CLAWHUB_CONFIG_PATH: "clawhub",
+          SKILL_PRESS_TOKEN: "skill-press",
         },
         homeDirectory: value.home,
         nodeVersion: "v23.1.0-beta.1",
         tesslExecutable: "/opt/tessl",
-        askillExecutable: "/opt/askill",
-        clawHubExecutable: "/opt/clawhub",
       },
       {
-        loadConfig: async () => ({
-          ...config,
-          publish: {
-            targets: [
-              "github",
-              "npm",
-              "tessl",
-              "skills-sh",
-              "askill-sh",
-              "agentskillhub-dev",
-              "agent-skills-hub-catalog",
-              "clawhub",
-            ],
-          },
-        }),
+        loadConfig: async () => config,
         checkGate: async () => gate(true),
       },
     );
     expect(commands.map((entry) => entry.argv)).toEqual([
       ["git", "--version"],
       ["docker", "--version"],
-      ["gh", "--version"],
-      ["npm", "--version"],
       ["/opt/tessl", "--version"],
-      ["/opt/askill", "--version"],
-      ["/opt/clawhub", "--no-input", "--cli-version"],
     ]);
     expect(report.ready).toBe(true);
     expect(report.checks.filter((entry) => entry.id.startsWith("credential."))).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: "credential.npm", status: "pass" }),
-        expect.objectContaining({ id: "credential.askill", status: "pass" }),
-        expect.objectContaining({ id: "credential.clawhub", status: "pass" }),
+        expect.objectContaining({ id: "credential.tessl", status: "pass" }),
+        expect.objectContaining({ id: "credential.skill_press", status: "pass" }),
       ]),
     );
     expect(report.checks).toContainEqual(
@@ -275,7 +251,7 @@ describe("project doctor", () => {
     );
   });
 
-  it("omits remote collision advice for a derived-only target and reports blocked local/gate state", async () => {
+  it("reports blocked local and gate state without legacy remote-provider checks", async () => {
     const value = await fixture();
     const config = await loadProjectConfig(value.root);
     const local = await checkProject(value.root);
@@ -289,7 +265,7 @@ describe("project doctor", () => {
         nodeVersion: "20.0.0",
       },
       {
-        loadConfig: async () => ({ ...config, publish: { targets: ["skills-sh"] } }),
+        loadConfig: async () => config,
         checkLocal: async () => ({ ...local, eligible: false }),
         checkGate: async () => gate(false),
       },

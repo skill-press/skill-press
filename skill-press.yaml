@@ -1,16 +1,18 @@
-schemaVersion: 1
+schemaVersion: 2
 project:
-  name: skillpress
+  name: skill-press
   version: 0.1.0
-  description: Build, evaluate, package, and publish production-grade Agent Skills with deterministic gates.
+  description: Build, verify, submit, and install trusted agent skills with deterministic gates.
   license: MIT
-  repository: https://github.com/mushanyoung/skillpress
+  repository: https://github.com/skill-press/skill-press
   author:
     name: Mushan Yang
     github: mushanyoung
+registry:
+  namespace: skill-press
 skill:
-  name: skillpress
-  path: skills/skillpress
+  name: skill-press
+  path: skills/skill-press
   risk: moderate
 quality:
   readinessMinimum: 90
@@ -34,11 +36,3 @@ improve:
   maxTokens: 200000
   maxCostUsd: 100
   maxWallMinutes: 240
-publish:
-  targets:
-    - tessl
-    - skills-sh
-    - askill-sh
-    - agentskillhub-dev
-    - agent-skills-hub-catalog
-    - github

@@ -116,7 +116,7 @@ describe("project readiness check", () => {
 
   it("requires project and canonical skill names to agree", async () => {
     const root = await generatedProject();
-    const configPath = join(root, "skillpress.yaml");
+    const configPath = join(root, "skill-press.yaml");
     const config = await readFile(configPath, "utf8");
     await writeFile(configPath, config.replace("name: incident-summary", "name: other-project"));
 

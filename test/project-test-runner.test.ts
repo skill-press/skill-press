@@ -26,7 +26,7 @@ async function testProject(commands: SkillPressProject["tests"]["commands"]): Pr
   const source = await readFile(new URL("fixtures/config/valid.yaml", import.meta.url), "utf8");
   const config = parse(source) as SkillPressProject;
   config.tests.commands = commands;
-  await writeFile(join(root, "skillpress.yaml"), stringify(config));
+  await writeFile(join(root, "skill-press.yaml"), stringify(config));
   return root;
 }
 
@@ -187,7 +187,7 @@ describe("project test report", () => {
     const root = await testProject([
       command(
         "environment",
-        "const safe=process.env.SKILLPRESS==='1'&&process.env.HOME===undefined&&process.env.AWS_SECRET_ACCESS_KEY===undefined&&process.env.NODE_OPTIONS===undefined;process.exit(safe?0:8)",
+        "const safe=process.env.SKILL_PRESS==='1'&&process.env.HOME===undefined&&process.env.AWS_SECRET_ACCESS_KEY===undefined&&process.env.NODE_OPTIONS===undefined;process.exit(safe?0:8)",
       ),
     ]);
 

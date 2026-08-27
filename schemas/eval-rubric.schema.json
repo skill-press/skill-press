@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/mushanyoung/skillpress/main/schemas/eval-rubric.schema.json",
+  "$id": "https://raw.githubusercontent.com/skill-press/skill-press/main/schemas/eval-rubric.schema.json",
   "title": "SkillPressEvaluationRubric",
   "description": "A versioned, weighted rubric for paired behavioral evaluation.",
   "type": "object",

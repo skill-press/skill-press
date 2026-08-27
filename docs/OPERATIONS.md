@@ -1,17 +1,24 @@
-# Operating SkillPress
+# Operating Skill Press
 
-This runbook covers local development, evidence capture, deterministic packaging, publication
-planning and recovery, and the npm release workflow for SkillPress 0.1.0.
+This runbook covers local development, project authoring, behavioral and Tessl evidence, gated
+packaging, canonical submission preparation, recovery journals, and the separate npm release of
+the Skill Press CLI.
 
 ## Current interface boundary
 
-The installed CLI implements `create`, `improve`, `check`, `test`, `eval`, `tessl`, `package`,
-`publish`, `status`, and `doctor`. The corresponding staging, packaging, release-gate, status,
-diagnostic, adapter-construction, publication, and receipt APIs are also exported for typed
-integrations. CLI `package` and `publish` always recheck official Tessl evidence; there is no
-manual-score path. Publication is a dry run unless `--execute` is explicit.
+The CLI implements `init`, `check`, `test`, `eval`, `tessl`, `improve`, `package`, `submit`,
+`status`, and `doctor`. It does not implement `add` or `install` yet.
 
-Use Node.js 22 or newer. The repository quality matrix covers Node.js 22, 24, and 26.
+`submit` has one production destination, `https://skill-press.com/api/v1`. The production registry
+backend and account/token issuance are not live yet, so `submit --dry-run` is the only current
+end-user submission path. A successful local dry run proves that the candidate can be prepared; it
+does not create a remote review, published release, or trusted release.
+
+The CLI requires Node.js 22 or newer. The maintained CI matrix covers Node.js 22, 24, and 26.
+
+## Repository gates
+
+From a clean checkout:
 
 ```bash
 npm ci --ignore-scripts
@@ -20,349 +27,352 @@ npm run security:audit
 npm run package:verify
 ```
 
-`npm run check` formats-checks, lints, verifies generated sources, type-checks, builds, runs every
-test, and enforces coverage. `package:verify` runs `npm pack --dry-run`, creates the actual tarball,
-checks its allowlisted contents and integrity, installs it with lifecycle scripts disabled in a
-clean temporary project, and probes both the CLI and library exports.
+`npm run check` checks formatting, lints, verifies generated sources, type-checks, builds, runs the
+test suite, and enforces coverage. `npm run package:verify` inspects `npm pack --dry-run`, creates
+the real tarball, checks its allowlisted inventory and integrity, installs it with lifecycle
+scripts disabled in a clean temporary project, and probes the CLI and public library exports.
+
+Build an executable for the commands below:
+
+```bash
+npm run build
+node dist/bin.js --help
+```
+
+Examples use `skpress`; while developing from source, substitute `node dist/bin.js`.
 
 ## Exit codes
 
-Every command uses the same bounded exit-code set:
-
-| Code | Meaning | Commands |
+| Code | Meaning | Scope |
 | --- | --- | --- |
-| `0` | Successful command, satisfied report/gate, or help/version output | all |
-| `1` | Unexpected internal, subprocess-I/O, or output-sink failure | all |
-| `2` | Invalid CLI usage or arguments | all |
-| `3` | Invalid input/project/evidence, failed deterministic or provider gate, bounded improvement stop, or blocked publication/readiness state | all operational commands |
-| `4` | Unsafe, concurrently changed, or already-existing create destination | `create` only |
+| `0` | Command completed and its requested gate/report passed | all commands |
+| `1` | Unexpected internal, subprocess-I/O, or output-sink failure | all commands |
+| `2` | Invalid CLI usage or arguments | all commands |
+| `3` | Project, evidence, evaluation, release gate, package, submission, status, or bounded-improvement result is blocked | operational commands |
+| `4` | `init` destination was unsafe, concurrently changed, or could not be rolled back without deleting unknown data | `init` only |
 
-`publish` therefore exits `0` only when every dry-run preflight is ready or every executed target
-is verified. `--resume` requires `--execute`; it never implies mutation silently.
+Exit `3` is an expected fail-closed result, not permission to bypass the gate. JSON mode retains
+the same exit semantics.
 
-## Authoring and local proof
+## Initialize and check a project
 
-Create a project only from a complete capability brief:
+Create a project from a complete capability brief:
 
 ```bash
-node dist/bin.js create --brief capability-brief.yaml --output ./my-skill
-node dist/bin.js check --project ./my-skill --json
-node dist/bin.js test --project ./my-skill --json
+skpress init --brief capability-brief.yaml --output ./my-skill
+skpress check --project ./my-skill --json
+skpress test --project ./my-skill --json
 ```
 
-For behavior evidence, provide a digest-pinned agent adapter image and explicit adapter argv:
+`init` requires an explicit lowercase registry namespace plus real capability, boundary, test, and
+scenario content. The namespace is a requested Skill Press identity, not proof of ownership and not
+an endpoint selector. The output directory must not exist. The writer claims it transactionally and
+preserves a `.skill-press-incomplete` marker if unknown concurrent data makes safe rollback
+impossible.
+
+`check` reads `skill-press.yaml`, validates the canonical Agent Skill and its complete reachable
+resource graph, checks scenario/rubric identity and quality, and reports local readiness. It never
+reports Tessl Quality or Impact.
+
+`test` runs the configured argv on the host without a shell, bounds cwd to the project, and limits
+time and output. Run it only for a repository whose test commands you trust.
+
+## Paired behavioral evaluation
+
+Provide a digest-pinned agent adapter image and explicit adapter argv:
 
 ```bash
-node dist/bin.js eval --project ./my-skill \
+skpress eval --project ./my-skill \
   --image <adapter-image@sha256:digest> \
   --model <model> -- <adapter-command> <adapter-args...>
 ```
 
-The paired runner uses separate baseline and with-skill sandboxes. It disables networking by
-default and writes raw results to private ignored `.skillpress/runs/` storage. Local readiness and
-paired behavior are necessary evidence classes, but neither is a Tessl score.
+The runner starts separate baseline and with-skill containers, disables networking by default,
+mounts the skill read-only only for the with-skill variant, and enforces CPU, memory, PID,
+filesystem, output, and wall-time limits. The adapter must echo the request digest and loaded skill
+digest. Raw results remain in private ignored `.skill-press/runs/` storage; the returned evidence
+contains digests, aggregate results, and redacted excerpts.
 
-Use the returned complete training and holdout evidence with three explicit role executables:
+An unpinned image can be permitted only with the explicit unsafe option, and its evidence is
+release-ineligible. A custom executor used by tests is also ineligible.
+
+## Bounded improvement
+
+Use complete training and holdout evidence with explicit role executables:
 
 ```bash
-node dist/bin.js improve --project ./my-skill \
+skpress improve --project ./my-skill \
   --training-evidence <training-evidence.json> \
   --holdout-evidence <holdout-evidence.json> \
-  --author-command <author> --reviewer-command <reviewer> \
-  --evaluator-command <evaluator> --json
+  --author-command <author> \
+  --reviewer-command <reviewer> \
+  --evaluator-command <evaluator> \
+  --json
 ```
 
-Repeat `--author-arg`, `--reviewer-arg`, or `--evaluator-arg` for argv. Environment forwarding is
-an explicit name allowlist through the corresponding `--*-env <NAME>` option. SkillPress appends
-`--skillpress-operation`, `--request`, and `--response`; adapters must write the versioned response
-schema. Each call gets a fresh private temporary directory. The author request contains training
-context only, while holdout scenarios go only to the evaluator. A report with exit code `3` is a
-bounded stop, not an internal failure or permission to bypass a gate.
+Repeat the corresponding `--author-arg`, `--reviewer-arg`, or `--evaluator-arg` option to add argv.
+Environment forwarding is an explicit variable-name allowlist through `--author-env`,
+`--reviewer-env`, and `--evaluator-env`.
 
-## Capture and verify Tessl evidence
+Skill Press appends operation, request, and response paths. Each call uses a fresh private
+temporary directory and a schema-versioned response. The author receives training findings only;
+holdout prompts are delivered only to the evaluator. An accepted candidate must pass canonical
+validation, reviewer approval, measured training improvement, and holdout non-regression before it
+replaces the canonical tree. Token, cost, iteration, no-improvement, and wall-time budgets are
+hard stops.
 
-Install the pinned official Tessl CLI 0.101.0, authenticate, and confirm the intended workspace.
-SkillPress intentionally does not expose the interactive login store to evidence or publication
-subprocesses. Generate a short-lived Tessl API key locally and export it only in the shell that
-launches SkillPress (or Codex); never paste it into chat, `skillpress.yaml`, or the skill.
+These role commands are user-authorized host programs, not sandboxed plugins. Run untrusted role
+binaries inside an external OS or container boundary.
+
+## Capture official Tessl evidence
+
+Skill Press currently trusts official Tessl CLI 0.101.0 by executable digest. Authenticate and
+confirm the intended workspace, then create a bounded-lifetime key locally:
 
 ```bash
 tessl login
 tessl auth whoami --json
-tessl api-key create --workspace <workspace> --name skillpress-release-<YYYYMMDD> \
+tessl api-key create --workspace <workspace> --name skill-press-evidence-<YYYYMMDD> \
   --role publisher --expiry-date <YYYY-MM-DDT00:00:00Z>
+```
+
+Export the value shown once only in the shell that launches Skill Press:
+
+```bash
 export TESSL_TOKEN='<value-shown-once>'
 export TESSL_BIN='<absolute-path-to-extracted-tessl-0.101.0-binary>'
-node dist/bin.js tessl review --project . --workspace <workspace> \
+export TESSL_AUTO_UPDATE_INTERVAL_MINUTES=0
+
+skpress tessl review --project . --workspace <workspace> \
   --executable "$TESSL_BIN" --json
-node dist/bin.js tessl eval --project . \
-  --source .skillpress/tessl-evals/<set> --executable "$TESSL_BIN" --json
+
+skpress tessl eval --project . \
+  --source .skill-press/tessl-evals/<set> \
+  --executable "$TESSL_BIN" --json
 ```
 
-If the Tessl workspace plan does not allow explicit model selection, omit both selection flags.
-Otherwise add `--agent <agent>` and/or `--model <model>`. The evidence still records the
-provider-resolved identities and binds the exact invocation. Keep generated or holdout sources in
-the ignored private path shown above; SkillPress digests their complete contents across capture and
-release-gate verification. The eval source must be a Tessl plugin whose only injectable content is
-`skills/<configured-skill-name>`, an exact copy of the canonical skill, and its manifest must declare
-that exact directory as its sole skill. SkillPress validates that exclusive embedded skill, rejects
-non-empty Tessl project dependencies, creates a private digest-verified, content-addressed snapshot,
-and evaluates it with an explicit context and skill selector while retaining the linked source as
-Tessl's positional project source. During submission, a temporary nested Git boundary stops Tessl
-0.101.0 from inheriting the outer `.gitignore` rule that protects the private snapshot; SkillPress
-must remove that boundary before it persists eligible evidence. Provider start and result output
-must agree on the exact submitted context (or its content-addressed basename normalization) and
-invocation. SkillPress compares both source trees before and after capture; the release gate rejects
-residual boundary metadata and repeats the
-original/snapshot/canonical comparison.
-Quality and Impact capture always pass the native Tessl
-`--force` flag so cached provider results from an older skill context cannot become release
-evidence. Use the same explicit versioned binary for `publish --tessl-executable`; an installer or
-auto-updating launcher is not a trusted release executable.
+Never paste `TESSL_TOKEN` into chat or store it in `skill-press.yaml`, the skill, fixtures, or Git.
+Rotate it when the evidence window or release work is complete.
 
-Retain the two returned private evidence paths. Immediately before staging a release, re-open and
-revalidate them against current Git inputs:
+Quality and Impact capture force fresh provider results. If the workspace plan permits selection,
+add `--agent <agent>` and/or `--model <model>` to eval; otherwise omit them and let Tessl choose
+workspace defaults. The returned provider identities and exact invocation remain evidence-bound.
 
-```bash
-node dist/bin.js package --project . \
-  --review-evidence <review-evidence.json> \
-  --eval-evidence <eval-evidence.json> --eval-source <tessl-eval-source> --json
-```
+The eval source must be a private Tessl plugin under `.skill-press/tessl-evals/<set>` with exactly
+one injectable `skills/<configured-name>` tree identical to the canonical skill. Its manifest must
+declare only that skill; non-empty provider dependencies, additional skills, hidden context,
+symlinks, unsafe paths, and digest mismatches fail closed. Capture copies the complete source into
+a content-addressed private snapshot and verifies original, snapshot, and canonical tree before
+and after the provider call.
 
-The command checks the gate before staging and again after private artifacts are written. A source
-change or final-gate failure blocks the result. The returned exact
-`.skillpress/staging/<run-id>/artifacts` path is the only accepted CLI publication input.
+See [the Tessl evidence contract](TESSL.md) for the exact argv, signed-binary pin update process,
+storage, and parser boundaries.
 
-The equivalent low-level API is:
+## Inspect the release gate
+
+Packaging and submission call `checkTesslReleaseGate` internally. Typed callers can invoke it
+directly:
 
 ```js
-import {
-  checkTesslReleaseGate,
-  packageStagedSkill,
-  stageCanonicalSkill,
-} from "@mushanyoung/skillpress";
+import { checkTesslReleaseGate } from "@skill-press/cli";
 
 const gate = await checkTesslReleaseGate(projectRoot, {
-  reviewEvidencePath,
-  evalEvidencePath,
-  evalSource,
-});
-if (!gate.passed) throw new Error(JSON.stringify(gate.issues));
-
-const staged = await stageCanonicalSkill(projectRoot);
-const packaged = await packageStagedSkill(projectRoot, staged);
-const artifacts = { ...packaged, sourceCommit: staged.sourceCommit };
-```
-
-An API caller must require `gate.passed` before any remote mutation. The low-level staging/package
-APIs do not accept manual score arguments and do not silently run an external provider gate. They
-require clean tracked canonical inputs, then emit private `.skillpress/staging/` artifacts,
-checksums, and source-bound provenance. Preserve that staging run until every target is verified.
-
-Read current local and release state without provider mutation:
-
-```bash
-node dist/bin.js status --project . \
-  --review-evidence <review-evidence.json> --eval-evidence <eval-evidence.json> \
-  --eval-source <tessl-eval-source> --artifacts <artifacts-directory> \
-  --receipt <receipt.json> --json
-node dist/bin.js doctor --project . \
-  --review-evidence <review-evidence.json> --eval-evidence <eval-evidence.json> \
-  --eval-source <tessl-eval-source> --json
-```
-
-`status` verifies local readiness and supplied evidence/package/receipt bindings. `doctor` probes
-only configured local executables, local install-name collisions, runtime support, credential
-context by variable name, and optional Tessl freshness. It never prints credential values or
-contacts registries; the publication dry run remains authoritative for provider identity,
-capability, authentication, and remote collisions.
-
-## Plan publication
-
-The CLI constructs exactly one adapter for each entry in `publish.targets`, in the same order.
-Adapter options bind provider identities; credentials stay in the provider's login store or named
-environment variable.
-
-Freeze the clean release candidate, capture current Tessl evidence, package that exact commit,
-then push the candidate commit to the public GitHub `main` branch and wait for every required CI
-check to pass before starting the publication dry run. This first source-publication phase is not
-a tag or formal Release. It is intentional: `skills-sh` and the import targets must be able to
-prove that public `main` already equals `sourceCommit` during the all-target preflight.
-
-Start with a dry run only after that public-source/CI checkpoint:
-
-```bash
-node dist/bin.js publish --project . --artifacts <artifacts-directory> \
-  --review-evidence <review-evidence.json> --eval-evidence <eval-evidence.json> \
-  --eval-source <tessl-eval-source> --tessl-workspace <workspace> \
-  --tessl-executable "$TESSL_BIN" --json
-```
-
-Omit provider flags for targets that are not configured. This self-host configuration intentionally
-omits ClawHub; the generic ClawHub adapter remains available to other projects. The equivalent
-low-level API is:
-
-```js
-import {
-  createAgentSkillHubPublicationAdapter,
-  createAgentSkillsHubCatalogAdapter,
-  createAskillPublicationAdapter,
-  createGitHubPublicationAdapter,
-  createSkillsShDerivedAdapter,
-  createTesslPublicationAdapter,
-  runPublicationSaga,
-} from "@mushanyoung/skillpress";
-
-const adapters = [
-  createTesslPublicationAdapter({
-    workspace: "<tessl-workspace>",
-    executable: "<absolute-path-to-extracted-tessl-0.101.0-binary>",
-  }),
-  createSkillsShDerivedAdapter({ source: "<github-owner>/<repository>" }),
-  createAskillPublicationAdapter({ author: "<github-login>" }),
-  createAgentSkillHubPublicationAdapter(),
-  createAgentSkillsHubCatalogAdapter({ contributor: "<github-login>" }),
-  createGitHubPublicationAdapter(),
-];
-
-const plan = await runPublicationSaga(projectRoot, artifacts, adapters);
-```
-
-This order matches the self-host configuration: GitHub is last, and its `publish-source` step is
-expected to be a verified no-op after the public-source checkpoint. Its final step creates the tag
-and formal Release only after the other five targets, including the derived skills.sh state, have
-been verified, so npm cannot start early. npm remains an exported adapter for integrations, but it
-is not a member of this production saga because trusted publishing requires the protected GitHub
-workflow context.
-
-Dry run is the default. Inspect every target's `preflight`, `capability`, `auth`, steps, and
-rollback statement. A failed preflight blocks the complete mutation run; resolve it without
-editing the receipt or weakening the gate. `skills-sh` is intentionally `derived` and has no
-mutation step. The catalog target is `submit`; an open pull request is not a merged listing.
-
-## Execute and recover
-
-Only after reviewing a fresh dry run and obtaining publication authority, start execution:
-
-```bash
-node dist/bin.js publish --project . --artifacts <artifacts-directory> \
-  --review-evidence <review-evidence.json> --eval-evidence <eval-evidence.json> \
-  --eval-source <tessl-eval-source> --tessl-workspace <workspace> \
-  --tessl-executable "$TESSL_BIN" --execute --json
-```
-
-The equivalent API call is:
-
-```js
-const receipt = await runPublicationSaga(projectRoot, artifacts, adapters, { execute: true });
-```
-
-The saga writes a schema-validated receipt after every completed step under
-`.skillpress/publications/<run-id>/receipt.json`. Directories are private and receipt files use
-mode `0600` on POSIX systems. Registry-specific projections remain under ignored private
-`.skillpress/projections/` storage. The receipt contains credential names, never values or provider
-error details.
-
-If `receipt.status === "failed"`, keep the artifacts and resume the exact receipt:
-
-```bash
-node dist/bin.js publish --project . --artifacts <artifacts-directory> \
-  --review-evidence <review-evidence.json> --eval-evidence <eval-evidence.json> \
-  --eval-source <tessl-eval-source> --tessl-workspace <workspace> \
-  --tessl-executable "$TESSL_BIN" --execute --resume <receipt.json> --json
-```
-
-The equivalent API call is:
-
-```js
-const resumed = await runPublicationSaga(projectRoot, artifacts, adapters, {
-  execute: true,
-  resumeReceiptPath: receipt.storagePath,
+  reviewEvidencePath: ".skill-press/tessl/<quality-run>/evidence.json",
+  evalEvidencePath: ".skill-press/tessl/<impact-run>/evidence.json",
+  evalSource: ".skill-press/tessl-evals/<set>",
 });
 ```
 
-Do not create a fresh run to conceal a partial result. Resume rechecks unfinished targets, skips
-verified targets and completed steps, and fails if the source commit, artifact digest, version,
-adapter order, capability, auth descriptors, steps, rollback contract, path, schema, or private
-permissions changed. Provider versions are treated as immutable; ambiguous remote state fails
-closed instead of retrying blindly.
+The gate reopens raw bounded provider output, reparses scores, verifies the trusted executable and
+command digests, checks clean current Git inputs, recomputes complete tree hashes, enforces
+freshness, and applies configured minimums. There is no manual-score option.
 
-## npm trusted release
+## Package an exact candidate
 
-The repository's `release.yml` workflow publishes only a formal, non-prerelease GitHub Release
-whose tag is exactly `v<package-version>`. The unprivileged `verify` job checks out that tag,
-reopens the exact four GitHub Release assets, reruns all gates and the production audit, produces
-one npm tarball, verifies it, and uploads that exact tarball plus its digest manifest and
-digest-bound registry verifier. Only the protected `publish` job can request OIDC; after approval
-it rehashes those three files, establishes whether the immutable version is explicitly absent or
-already an exact match, publishes only when absent, verifies the registry DSSE/SLSA subject,
-repository, commit, builder, and integrity, then uses `npm audit signatures` to cryptographically
-verify registry signatures and provenance attestations before preserving a receipt. This
-exact-existing branch makes a rerun safe after npm accepted the package but a later workflow step
-failed.
+```bash
+skpress package --project . \
+  --review-evidence <review-evidence.json> \
+  --eval-evidence <eval-evidence.json> \
+  --eval-source <tessl-eval-source> \
+  --json
+```
 
-Trusted publishing can be attached only after the package exists. Bootstrap the package name once
-under the npm account that owns the `@mushanyoung` scope:
+The command checks the gate, stages tracked canonical inputs, produces deterministic archives,
+checksums, and provenance, then rechecks the gate. Artifacts are private under:
 
-1. Enable account-level 2FA and run `npm whoami`; it must show the intended owner. Do this in a
-   disposable private directory, not by changing this checkout.
-2. Create a minimal `@mushanyoung/skillpress@0.0.0` package containing only a bootstrap README,
-   the MIT license declaration, and the exact GitHub repository URL. Publish it interactively with
-   `npm publish --access public --tag bootstrap --provenance=false`; complete the 2FA prompt. This
-   claims the name without consuming version `0.1.0`. npm may also assign `latest` on this first
-   publication; the formal `0.1.0` release will move `latest` to the production version.
-3. Confirm `npm view @mushanyoung/skillpress@0.0.0 name version dist-tags --json`, then remove the
-   disposable directory. The bootstrap version is public and immutable.
+```text
+.skill-press/staging/<run-id>/artifacts
+```
 
-Configure the release identity and approval boundary next:
+Do not edit, move through a symlink, or selectively replace files in that directory. A loader
+rechecks the exact inventory, permissions, bytes, source commit, config digest, and skill digest.
 
-1. In GitHub repository settings, create an environment named exactly `npm`. Add a required
-   reviewer, prevent self-review when another maintainer is available, add no npm secret, and
-   restrict deployment tags to `v*`.
-2. Add an active tag ruleset targeting `v*`; restrict tag creation, updates, and deletion to the
-   narrowest practical bypass list.
-3. In npm package **Settings → Trusted publishing**, choose GitHub Actions and enter organization
-   or user `mushanyoung`, repository `skillpress`, workflow filename `release.yml` (filename only),
-   environment `npm`, and allowed action `npm publish`. With npm 11.15.0 or newer, the CLI
-   equivalent is:
+## Prepare a submission locally
 
-   ```bash
-   npm trust github @mushanyoung/skillpress --repo mushanyoung/skillpress \
-     --file release.yml --env npm --allow-publish
-   ```
+The safe operational path while the backend is unavailable is:
 
-4. Confirm the repository is public and `package.json.repository.url` remains the exact GitHub
-   repository. Do not add `NODE_AUTH_TOKEN`, `NPM_TOKEN`, or a write-token fallback.
-5. After the first OIDC release succeeds, set npm **Publishing access** to **Require two-factor
-   authentication and disallow tokens**, then revoke any obsolete write tokens.
+```bash
+skpress submit --project . \
+  --artifacts .skill-press/staging/<run-id>/artifacts \
+  --review-evidence <review-evidence.json> \
+  --eval-evidence <eval-evidence.json> \
+  --eval-source <tessl-eval-source> \
+  --dry-run --json
+```
 
-The environment reviewer must wait for the unprivileged `verify` job and the local six-target
-publication receipt to finish, then compare the release tag/source commit, Tessl 90/90 evidence,
-four GitHub Release assets, and npm tarball manifest before approving `publish`. The workflow uses
-Node.js 26 (above npm's Node 22.14/npm 11.5.1 minimum), grants `id-token: write` only to the approved
-job, and relies on npm's automatic provenance for a public package from a public repository.
+Omit `--artifacts` to let `submit` stage and package the current gated source. A dry run returns an
+unpersisted receipt with `operationStatus: prepared`, the fixed registry origin, manifest and
+artifact bindings, and zero remote attempts. It does not require `SKILL_PRESS_TOKEN` and never
+contacts the service.
+
+The deterministic submission contains one canonical archive, provenance, checksums, Tessl Quality
+evidence, Tessl Impact evidence, and a manifest that marks client evidence advisory and requires
+server validation.
+
+## Live submission boundary
+
+When the production backend and token issuer are deployed, the intended command is:
+
+```bash
+export SKILL_PRESS_TOKEN='<short-lived-access-token>'
+
+skpress submit --project . \
+  --artifacts .skill-press/staging/<run-id>/artifacts \
+  --review-evidence <review-evidence.json> \
+  --eval-evidence <eval-evidence.json> \
+  --eval-source <tessl-eval-source> \
+  --json
+```
+
+Do not attempt this today expecting a live public service. The client is fixed to
+`https://skill-press.com/api/v1`; there is intentionally no endpoint flag or project-level registry
+setting.
+
+Before upload, the client verifies `GET /session`; this proves authentication only, not namespace
+authority. `POST /submissions` must atomically authorize the token for the manifest namespace before
+the service creates a candidate, reserves a key or version, or stores upload bytes. The client sends
+a deterministic idempotency key, then verifies the exact resource with `GET /submissions/{id}`.
+Remote output must bind the same namespace, key, source commit, project version, skill locator,
+artifact digest, and canonical URLs.
+
+Successful transport produces local `operationStatus: submitted` and a remote review status such
+as `received`. It does not imply `published`, and a published release separately needs trust
+`trusted` before normal installation.
+
+## Resume and refresh an exact submission
+
+A live mutating attempt journals state at:
+
+```text
+.skill-press/submissions/<idempotency-key>/receipt.json
+```
+
+If it fails or must refresh remote state, preserve the exact package and evidence and resume it:
+
+```bash
+skpress submit --project . \
+  --artifacts .skill-press/staging/<run-id>/artifacts \
+  --review-evidence <review-evidence.json> \
+  --eval-evidence <eval-evidence.json> \
+  --eval-source <tessl-eval-source> \
+  --resume .skill-press/submissions/<idempotency-key>/receipt.json \
+  --json
+```
+
+`--resume` requires `--artifacts` and cannot be combined with `--dry-run`. The equivalent typed
+option is `resumeReceiptPath`. Resume fails if the receipt path, registry origin, protocol,
+manifest, source, version, artifact, evidence, or permissions changed.
+
+Never create a second candidate merely because a timeout made remote state ambiguous. Preserve the
+journal. When it contains a validated remote ID, resume refreshes that resource without POSTing
+again; otherwise it retries the identical manifest under the same idempotency key.
+
+## Status and diagnostics
+
+Inspect local gate, package, and optional submission bindings without mutation:
+
+```bash
+skpress status --project . \
+  --review-evidence <review-evidence.json> \
+  --eval-evidence <eval-evidence.json> \
+  --eval-source <tessl-eval-source> \
+  --artifacts .skill-press/staging/<run-id>/artifacts \
+  --submission .skill-press/submissions/<idempotency-key>/receipt.json \
+  --json
+```
+
+The three evidence arguments are all-or-none. `--submission` requires `--artifacts` so the receipt
+can be rebound to the exact package, manifest, and evidence. Human output deliberately calls this
+“Local release-input readiness” and labels any release state as “Last observed release trust.” JSON
+always includes `currentTrustVerified: false`. `status` is therefore not a substitute for a fresh
+authenticated server query and cannot authorize installation.
+
+Probe local prerequisites and credential presence by variable name:
+
+```bash
+skpress doctor --project . \
+  --review-evidence <review-evidence.json> \
+  --eval-evidence <eval-evidence.json> \
+  --eval-source <tessl-eval-source> \
+  --tessl-executable "$TESSL_BIN" \
+  --json
+```
+
+`doctor` checks Node.js, Git, the configured Docker/Podman runtime, Tessl, local installed-skill
+collisions, `TESSL_TOKEN`, `SKILL_PRESS_TOKEN`, and optional evidence freshness. It never prints
+credential values or contacts the canonical registry. The live `/session` endpoint remains
+authoritative for Skill Press authentication once the service exists.
+
+## npm trusted release for the CLI
+
+The npm package is `@skill-press/cli`; its only executable is `skpress`. npm distributes the
+developer tool, not Agent Skill releases.
+
+The repository's `.github/workflows/release.yml` responds only to a formal non-prerelease GitHub
+Release whose tag is `v<package-version>`. Its unprivileged verification job checks the exact tag,
+repository identity, release assets, tests, production audit, package inventory, tarball digest,
+and source binding. The protected `publish` job alone receives `id-token: write` and uses npm OIDC
+trusted publishing; no npm write token is stored in GitHub.
+
+Configure the external identity before the first production release:
+
+1. Ensure the public npm package `@skill-press/cli` exists under the intended npm organization.
+2. Create a GitHub environment named `npm` with a required reviewer and tag restrictions.
+3. Protect `v*` tags from unauthorized creation, mutation, and deletion.
+4. Configure npm trusted publishing for GitHub organization `skill-press`, repository
+   `skill-press`, workflow filename `release.yml`, environment `npm`, and publish permission.
+5. Add no `NPM_TOKEN` or `NODE_AUTH_TOKEN` fallback.
+
+With a supported npm CLI, the intended trusted-publisher command is:
+
+```bash
+npm trust github @skill-press/cli --repo skill-press/skill-press \
+  --file release.yml --env npm --allow-publish
+```
+
+Before approval, compare the tag, source commit, current gate evidence, release assets, and npm
+tarball manifest. Rerun the original workflow after an external approval or transient service
+failure; do not edit and republish a GitHub Release to manufacture a new event. Exact-existing npm
+state must be reverified rather than republished.
 
 ## Incident checklist
 
-When a run stops:
+When a local or future remote operation stops:
 
-1. Preserve the exact staging directory, receipt, Git commit, and console-visible error code.
-2. Determine whether the failure was preflight, a journaled mutation step, or verification.
-3. Query provider state read-only. Never infer absence from a timeout or malformed response.
-4. Rotate a credential if exposure is suspected; receipt files should never contain its value.
-5. Fix external identity, access, approval, or service state without editing release inputs.
-6. Resume the original receipt. If source or artifacts must change, bump/rebuild deliberately and
-   treat it as a new release.
-7. Use the provider-specific rollback statement in [the registry guide](REGISTRIES.md); never
-   claim deletion or reversal that the provider does not guarantee.
+1. Preserve the exact Git commit, `.skill-press/staging/` artifacts, evidence, submission journal,
+   and console-visible error code.
+2. Determine whether the failure occurred before upload, during an ambiguous request, during
+   remote verification, or during later review.
+3. Do not infer remote absence from timeout, connection failure, invalid JSON, or an unexpected
+   status version.
+4. Rotate `TESSL_TOKEN` or `SKILL_PRESS_TOKEN` immediately if exposure is suspected.
+5. Resume only the exact journal and package. If source or evidence must change, prepare a new
+   semantic version or candidate deliberately.
+6. Treat `changes-requested`, `rejected`, `published`, `trusted`, `quarantined`, and `revoked` as
+   distinct server facts.
+7. For a published safety incident, quarantine first, preserve evidence, and release fixed bytes
+   under a new version rather than replacing the immutable artifact.
 
-For an npm workflow failure after the GitHub Release was published, fix only the external approval
-or service condition and rerun the original GitHub Actions workflow run. Do not recreate, edit, or
-republish the Release to manufacture another `release.published` event. The workflow re-verifies
-the immutable release bundle; if npm already contains the exact version with exact provenance, it
-skips `npm publish` and recovers the receipt. A conflict or unavailable registry state still fails
-closed.
-
-Private evidence and receipts are ignored working state, not disposable cache. Back them up with
-the same confidentiality as build logs and delete only an explicitly identified run after its
-retention requirement has expired.
+Private evidence and journals are ignored working state, not disposable cache. Back them up with
+the same confidentiality as build logs and remove only an explicitly identified run after its
+retention requirement expires.

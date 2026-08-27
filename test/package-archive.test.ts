@@ -101,8 +101,8 @@ describe("deterministic package archives", () => {
     const configRoot = await project();
     const configStage = await stageCanonicalSkill(configRoot);
     await writeFile(
-      join(configRoot, "skillpress.yaml"),
-      `${await readFile(join(configRoot, "skillpress.yaml"), "utf8")}\n`,
+      join(configRoot, "skill-press.yaml"),
+      `${await readFile(join(configRoot, "skill-press.yaml"), "utf8")}\n`,
     );
     await expect(packageStagedSkill(configRoot, configStage)).rejects.toBeInstanceOf(
       SkillPackageError,
@@ -133,7 +133,7 @@ describe("deterministic package archives", () => {
     await expect(packageStagedSkill(root, staged)).rejects.toBeInstanceOf(SkillPackageError);
   });
 
-  it("reloads an exact private package for resumable publication", async () => {
+  it("reloads an exact private package for resumable submission", async () => {
     const root = await project();
     const staged = await stageCanonicalSkill(root);
     const packaged = await packageStagedSkill(root, staged);
@@ -141,13 +141,15 @@ describe("deterministic package archives", () => {
     await expect(loadPackagedSkill(root, packaged.artifactsPath)).resolves.toEqual({
       ...packaged,
       sourceCommit: staged.sourceCommit,
+      projectConfigSha256: staged.projectConfigSha256,
+      skillSha256: staged.skillSha256,
     });
   });
 
   it("rejects unsafe paths, inventory drift, permissive files, and checksum tampering", async () => {
     const pathRoot = await project();
     await expect(
-      loadPackagedSkill(pathRoot, ".skillpress/staging/not-a-run/artifacts"),
+      loadPackagedSkill(pathRoot, ".skill-press/staging/not-a-run/artifacts"),
     ).rejects.toBeInstanceOf(SkillPackageError);
 
     const inventoryRoot = await project();
@@ -184,7 +186,7 @@ describe("deterministic package archives", () => {
     if (process.platform !== "win32") {
       const parentRoot = await project();
       const parent = await packageStagedSkill(parentRoot, await stageCanonicalSkill(parentRoot));
-      await chmod(join(parentRoot, ".skillpress"), 0o755);
+      await chmod(join(parentRoot, ".skill-press"), 0o755);
       await expect(loadPackagedSkill(parentRoot, parent.artifactsPath)).rejects.toBeInstanceOf(
         SkillPackageError,
       );

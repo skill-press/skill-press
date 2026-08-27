@@ -22,11 +22,11 @@ function manifestContract(value) {
   const manifest = record(value);
   if (
     manifest?.schemaVersion !== 2 ||
-    manifest.name !== "@mushanyoung/skillpress" ||
+    manifest.name !== "@skill-press/cli" ||
     typeof manifest.version !== "string" ||
     !/^(?:0|[1-9][0-9]*)[.](?:0|[1-9][0-9]*)[.](?:0|[1-9][0-9]*)$/u.test(manifest.version) ||
     manifest.package !== `${manifest.name}@${manifest.version}` ||
-    manifest.repository !== "https://github.com/mushanyoung/skillpress" ||
+    manifest.repository !== "https://github.com/skill-press/skill-press" ||
     typeof manifest.integrity !== "string" ||
     !/^sha512-[A-Za-z0-9+/]{86}==$/u.test(manifest.integrity) ||
     typeof manifest.shasum !== "string" ||
@@ -88,6 +88,9 @@ function json(body, label) {
 
 function canonicalAttestationUrl(input, manifest) {
   if (typeof input !== "string") fail("provenance URL is missing");
+  if (!input.startsWith("https://registry.npmjs.org/")) {
+    fail("provenance URL is not on the canonical npm origin");
+  }
   let url;
   try {
     url = new URL(input);
@@ -113,6 +116,36 @@ function canonicalAttestationUrl(input, manifest) {
     packageSpec !== manifest.package
   ) {
     fail("provenance URL does not bind the exact npm package");
+  }
+  return url.href;
+}
+
+function canonicalTarballUrl(input, manifest) {
+  if (typeof input !== "string") fail("tarball URL is missing");
+  if (!input.startsWith("https://registry.npmjs.org/")) {
+    fail("tarball URL is not on the canonical npm origin");
+  }
+  let url;
+  try {
+    url = new URL(input);
+  } catch {
+    fail("tarball URL is invalid");
+  }
+  const unscopedName = manifest.name.slice(manifest.name.indexOf("/") + 1);
+  const expectedPath = `/${manifest.name}/-/${unscopedName}-${manifest.version}.tgz`;
+  const expectedUrl = `https://registry.npmjs.org${expectedPath}`;
+  if (
+    input !== expectedUrl ||
+    url.protocol !== "https:" ||
+    url.hostname !== "registry.npmjs.org" ||
+    url.port !== "" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.pathname !== expectedPath ||
+    url.search !== "" ||
+    url.hash !== ""
+  ) {
+    fail("tarball URL does not bind the exact npm package");
   }
   return url.href;
 }
@@ -196,12 +229,12 @@ export async function verifyRegistryRelease(input, fetcher = globalThis.fetch.bi
   const dist = record(metadata.dist);
   const attestations = record(dist?.attestations);
   const signatures = dist?.signatures;
+  const tarballUrl = canonicalTarballUrl(dist?.tarball, manifest);
   if (
     metadata.name !== manifest.name ||
     metadata.version !== manifest.version ||
     dist?.integrity !== manifest.integrity ||
     dist?.shasum !== manifest.shasum ||
-    typeof dist.tarball !== "string" ||
     !Array.isArray(signatures) ||
     signatures.length === 0 ||
     !signatures.every((entry) => record(entry) !== null) ||
@@ -219,6 +252,7 @@ export async function verifyRegistryRelease(input, fetcher = globalThis.fetch.bi
     status: "match",
     package: manifest.package,
     integrity: manifest.integrity,
+    tarballUrl,
     provenanceUrl,
   });
 }

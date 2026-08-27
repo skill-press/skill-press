@@ -14,11 +14,11 @@ import {
 const integrity = `sha512-${Buffer.alloc(64, 1).toString("base64")}`;
 const manifest = Object.freeze({
   schemaVersion: 2,
-  package: "@mushanyoung/skillpress@0.1.0",
-  name: "@mushanyoung/skillpress",
+  package: "@skill-press/cli@0.1.0",
+  name: "@skill-press/cli",
   version: "0.1.0",
-  repository: "https://github.com/mushanyoung/skillpress",
-  filename: "mushanyoung-skillpress-0.1.0.tgz",
+  repository: "https://github.com/skill-press/skill-press",
+  filename: "skill-press-cli-0.1.0.tgz",
   bytes: 1,
   shasum: "1".repeat(40),
   integrity,
@@ -26,7 +26,7 @@ const manifest = Object.freeze({
   sourceCommit: "c".repeat(40),
 });
 const provenanceUrl =
-  "https://registry.npmjs.org/-/npm/v1/attestations/%40mushanyoung%2Fskillpress%400.1.0";
+  "https://registry.npmjs.org/-/npm/v1/attestations/%40skill-press%2Fcli%400.1.0";
 const execFileAsync = promisify(execFile);
 
 function metadata(overrides = {}) {
@@ -36,7 +36,7 @@ function metadata(overrides = {}) {
     dist: {
       integrity,
       shasum: manifest.shasum,
-      tarball: "https://registry.npmjs.org/@mushanyoung/skillpress/-/skillpress-0.1.0.tgz",
+      tarball: "https://registry.npmjs.org/@skill-press/cli/-/cli-0.1.0.tgz",
       signatures: [{}],
       attestations: {
         url: provenanceUrl,
@@ -47,13 +47,23 @@ function metadata(overrides = {}) {
   });
 }
 
+function metadataWithDist(overrides) {
+  const value = JSON.parse(metadata());
+  Object.assign(value.dist, overrides);
+  return JSON.stringify(value);
+}
+
+function metadataWithTarball(tarball) {
+  return metadataWithDist({ tarball });
+}
+
 function attestation(commit = manifest.sourceCommit) {
   const payload = {
     _type: "https://in-toto.io/Statement/v1",
     predicateType: "https://slsa.dev/provenance/v1",
     subject: [
       {
-        name: "pkg:npm/%40mushanyoung/skillpress@0.1.0",
+        name: "pkg:npm/%40skill-press/cli@0.1.0",
         digest: { sha512: Buffer.alloc(64, 1).toString("hex") },
       },
     ],
@@ -69,7 +79,7 @@ function attestation(commit = manifest.sourceCommit) {
         },
         resolvedDependencies: [
           {
-            uri: "git+https://github.com/mushanyoung/skillpress@refs/tags/v0.1.0",
+            uri: "git+https://github.com/skill-press/skill-press@refs/tags/v0.1.0",
             digest: { gitCommit: commit },
           },
         ],
@@ -122,14 +132,18 @@ describe("npm registry release verifier", () => {
       package: manifest.package,
       integrity,
       provenanceUrl,
+      tarballUrl: "https://registry.npmjs.org/@skill-press/cli/-/cli-0.1.0.tgz",
     });
     expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+      "https://registry.npmjs.org/%40skill-press%2Fcli/0.1.0",
+      provenanceUrl,
+    ]);
   });
 
   it("rejects conflicting package bytes or source provenance", async () => {
     const wrongBytes = vi.fn(
-      async () =>
-        new Response(metadata({ dist: { integrity: "sha512-conflict" } }), { status: 200 }),
+      async () => new Response(metadataWithDist({ integrity: "sha512-conflict" }), { status: 200 }),
     );
     await expect(verifyRegistryRelease(manifest, wrongBytes)).rejects.toThrow(/conflicts/u);
 
@@ -156,7 +170,7 @@ describe("npm registry release verifier", () => {
             digest: { gitCommit: manifest.sourceCommit },
           },
           {
-            uri: "git+https://github.com/mushanyoung/skillpress@refs/tags/v0.1.0",
+            uri: "git+https://github.com/skill-press/skill-press@refs/tags/v0.1.0",
             digest: { gitCommit: "f".repeat(40) },
           },
         ];
@@ -171,6 +185,24 @@ describe("npm registry release verifier", () => {
     }
   });
 
+  it.each([
+    "http://registry.npmjs.org/@skill-press/cli/-/cli-0.1.0.tgz",
+    "https://example.invalid/@skill-press/cli/-/cli-0.1.0.tgz",
+    "https://REGISTRY.NPMJS.ORG/@skill-press/cli/-/cli-0.1.0.tgz",
+    "https://user:secret@registry.npmjs.org/@skill-press/cli/-/cli-0.1.0.tgz",
+    "https://registry.npmjs.org:443/@skill-press/cli/-/cli-0.1.0.tgz",
+    "https://registry.npmjs.org/./@skill-press/cli/-/cli-0.1.0.tgz",
+    "https://registry.npmjs.org/@skill-press/cli/-/cli-0.1.0.tgz?download=1",
+    "https://registry.npmjs.org/@skill-press/cli/-/cli-0.1.0.tgz#fragment",
+    "https://registry.npmjs.org/@skill-press/other/-/other-0.1.0.tgz",
+    "https://registry.npmjs.org/@skill-press/cli/-/skill-press-cli-0.1.0.tgz",
+    "https://registry.npmjs.org/@skill-press/cli/-/cli-0.1.1.tgz",
+  ])("rejects a non-canonical npm tarball URL: %s", async (tarball) => {
+    const fetcher = vi.fn(async () => new Response(metadataWithTarball(tarball), { status: 200 }));
+    await expect(verifyRegistryRelease(manifest, fetcher)).rejects.toThrow(/tarball/u);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it("fails closed when registry state is unavailable or malformed", async () => {
     await expect(
       verifyRegistryRelease(manifest, async () => {
@@ -180,6 +212,20 @@ describe("npm registry release verifier", () => {
     await expect(
       verifyRegistryRelease(manifest, async () => new Response("not json", { status: 200 })),
     ).rejects.toThrow(/valid JSON/u);
+
+    await expect(
+      verifyRegistryRelease({
+        ...manifest,
+        name: "@mushanyoung/skillpress",
+        package: "@mushanyoung/skillpress@0.1.0",
+      }),
+    ).rejects.toThrow(/identity/u);
+    await expect(
+      verifyRegistryRelease({
+        ...manifest,
+        repository: "https://github.com/mushanyoung/skillpress",
+      }),
+    ).rejects.toThrow(/identity/u);
   });
 
   it("binds npm's cryptographic audit result to the exact provenance bundle", () => {
@@ -214,7 +260,7 @@ describe("npm registry release verifier", () => {
   });
 
   it("runs after being copied through a platform temporary-path alias", async () => {
-    const temporary = await mkdtemp(join(tmpdir(), "skillpress-npm-verifier-"));
+    const temporary = await mkdtemp(join(tmpdir(), "skill-press-npm-verifier-"));
     try {
       const script = join(temporary, "verify-npm-registry-release.mjs");
       const invalidManifest = join(temporary, "manifest.json");

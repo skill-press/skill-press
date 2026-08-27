@@ -90,12 +90,14 @@ describe("transactional project writing", () => {
         file.content,
       );
     }
-    expect(await readdir(output)).not.toContain(".skillpress-incomplete");
-    expect((await readdir(parent)).filter((name) => name.includes("skillpress-stage"))).toEqual([]);
+    expect(await readdir(output)).not.toContain(".skill-press-incomplete");
+    expect((await readdir(parent)).filter((name) => name.includes("skill-press-stage"))).toEqual(
+      [],
+    );
 
     if (process.platform !== "win32") {
       expect((await stat(output)).mode & 0o777).toBe(0o755);
-      expect((await stat(join(output, "skillpress.yaml"))).mode & 0o777).toBe(0o644);
+      expect((await stat(join(output, "skill-press.yaml"))).mode & 0o777).toBe(0o644);
     }
   });
 
@@ -164,10 +166,10 @@ describe("transactional project writing", () => {
         issues: expect.arrayContaining([expect.objectContaining({ code: "create.output_exists" })]),
       }),
     });
-    await expect(readFile(join(output, "skillpress.yaml"), "utf8")).resolves.toContain(
-      "schemaVersion: 1",
+    await expect(readFile(join(output, "skill-press.yaml"), "utf8")).resolves.toContain(
+      "schemaVersion: 2",
     );
-    expect(await readdir(output)).not.toContain(".skillpress-incomplete");
+    expect(await readdir(output)).not.toContain(".skill-press-incomplete");
   });
 
   it.each<ProjectWritePhase>(["stage-populated", "before-complete"])(
@@ -189,7 +191,7 @@ describe("transactional project writing", () => {
 
       expect(error.kind).toBe("io");
       await expect(lstat(output)).rejects.toMatchObject({ code: "ENOENT" });
-      expect((await readdir(parent)).filter((name) => name.includes("skillpress-stage"))).toEqual(
+      expect((await readdir(parent)).filter((name) => name.includes("skill-press-stage"))).toEqual(
         [],
       );
     },
@@ -304,7 +306,7 @@ describe("transactional project writing", () => {
 
     expect(error.kind).toBe("io");
     await expect(readFile(join(output, "foreign-sentinel"), "utf8")).resolves.toBe("preserve");
-    await expect(readFile(join(output, ".skillpress-incomplete"), "utf8")).resolves.toMatch(
+    await expect(readFile(join(output, ".skill-press-incomplete"), "utf8")).resolves.toMatch(
       /^[0-9a-f-]+\n$/u,
     );
   });
@@ -327,7 +329,7 @@ describe("transactional project writing", () => {
     expect(error.kind).toBe("unsafe-output");
     expect(error.issues.map((entry) => entry.code)).toContain("create.incomplete_preserved");
     await expect(readFile(join(output, "foreign-sentinel"), "utf8")).resolves.toBe("preserve");
-    expect(await readdir(output)).toContain(".skillpress-incomplete");
+    expect(await readdir(output)).toContain(".skill-press-incomplete");
   });
 
   it("preserves same-inode content changes under the incomplete marker", async () => {
@@ -338,7 +340,7 @@ describe("transactional project writing", () => {
       writeRenderedProject(rendered, output, {
         onPhase: async ({ phase, root }) => {
           if (phase === "before-complete") {
-            const path = join(root, "skillpress.yaml");
+            const path = join(root, "skill-press.yaml");
             const original = await readFile(path, "utf8");
             const replacement = `${original.startsWith("x") ? "y" : "x"}${original.slice(1)}`;
             expect(Buffer.byteLength(replacement)).toBe(Buffer.byteLength(original));
@@ -351,10 +353,10 @@ describe("transactional project writing", () => {
 
     expect(error.kind).toBe("unsafe-output");
     expect(error.issues.map((entry) => entry.code)).toContain("create.incomplete_preserved");
-    await expect(readFile(join(output, "skillpress.yaml"), "utf8")).resolves.not.toBe(
-      rendered.files.find((file) => file.path === "skillpress.yaml")?.content,
+    await expect(readFile(join(output, "skill-press.yaml"), "utf8")).resolves.not.toBe(
+      rendered.files.find((file) => file.path === "skill-press.yaml")?.content,
     );
-    await expect(lstat(join(output, ".skillpress-incomplete"))).resolves.toMatchObject({});
+    await expect(lstat(join(output, ".skill-press-incomplete"))).resolves.toMatchObject({});
   });
 
   it("preserves a truncated owned file under the incomplete marker", async () => {
@@ -365,7 +367,7 @@ describe("transactional project writing", () => {
       writeRenderedProject(rendered, output, {
         onPhase: async ({ phase, root }) => {
           if (phase === "before-complete") {
-            await writeFile(join(root, "skillpress.yaml"), "short\n", { flag: "w" });
+            await writeFile(join(root, "skill-press.yaml"), "short\n", { flag: "w" });
           }
         },
       }),
@@ -374,8 +376,8 @@ describe("transactional project writing", () => {
 
     expect(error.kind).toBe("unsafe-output");
     expect(error.issues.map((entry) => entry.code)).toContain("create.incomplete_preserved");
-    await expect(readFile(join(output, "skillpress.yaml"), "utf8")).resolves.toBe("short\n");
-    await expect(lstat(join(output, ".skillpress-incomplete"))).resolves.toMatchObject({});
+    await expect(readFile(join(output, "skill-press.yaml"), "utf8")).resolves.toBe("short\n");
+    await expect(lstat(join(output, ".skill-press-incomplete"))).resolves.toMatchObject({});
   });
 
   it("preserves a replaced target inode under the incomplete marker", async () => {
@@ -386,7 +388,7 @@ describe("transactional project writing", () => {
       writeRenderedProject(rendered, output, {
         onPhase: async ({ phase, root }) => {
           if (phase === "before-complete") {
-            const path = join(root, "skillpress.yaml");
+            const path = join(root, "skill-press.yaml");
             await unlink(path);
             await writeFile(path, "foreign replacement\n", { flag: "wx" });
           }
@@ -396,10 +398,10 @@ describe("transactional project writing", () => {
     );
 
     expect(error.issues.map((entry) => entry.code)).toContain("create.incomplete_preserved");
-    await expect(readFile(join(output, "skillpress.yaml"), "utf8")).resolves.toBe(
+    await expect(readFile(join(output, "skill-press.yaml"), "utf8")).resolves.toBe(
       "foreign replacement\n",
     );
-    await expect(lstat(join(output, ".skillpress-incomplete"))).resolves.toMatchObject({});
+    await expect(lstat(join(output, ".skill-press-incomplete"))).resolves.toMatchObject({});
   });
 
   it.runIf(process.platform !== "win32")(
@@ -417,7 +419,7 @@ describe("transactional project writing", () => {
             writeRenderedProject(rendered, output, {
               onPhase: async ({ phase, root }) => {
                 if (phase === "before-complete") {
-                  const path = join(root, "skillpress.yaml");
+                  const path = join(root, "skill-press.yaml");
                   await unlink(path);
                   symlinkSync(external, path);
                 }
@@ -433,8 +435,8 @@ describe("transactional project writing", () => {
       expect(error.kind).toBe("unsafe-output");
       expect(error.issues.map((entry) => entry.code)).toContain("create.incomplete_preserved");
       await expect(readFile(external, "utf8")).resolves.toBe("must not be read or changed\n");
-      await expect(lstat(join(output, "skillpress.yaml"))).resolves.toMatchObject({});
-      expect((await lstat(join(output, "skillpress.yaml"))).isSymbolicLink()).toBe(true);
+      await expect(lstat(join(output, "skill-press.yaml"))).resolves.toMatchObject({});
+      expect((await lstat(join(output, "skill-press.yaml"))).isSymbolicLink()).toBe(true);
     },
   );
 
@@ -446,7 +448,7 @@ describe("transactional project writing", () => {
       writeRenderedProject(rendered, output, {
         onPhase: async ({ phase, root }) => {
           if (phase === "before-complete") {
-            await unlink(join(root, "skillpress.yaml"));
+            await unlink(join(root, "skill-press.yaml"));
           }
         },
       }),
@@ -454,7 +456,7 @@ describe("transactional project writing", () => {
     );
 
     expect(error.issues.map((entry) => entry.code)).toContain("create.incomplete_preserved");
-    await expect(lstat(join(output, ".skillpress-incomplete"))).resolves.toMatchObject({});
+    await expect(lstat(join(output, ".skill-press-incomplete"))).resolves.toMatchObject({});
   });
 
   it("detects unknown staging data before writing anything to the target", async () => {
@@ -474,7 +476,7 @@ describe("transactional project writing", () => {
 
     expect(error.issues.map((entry) => entry.code)).toContain("create.incomplete_preserved");
     await expect(lstat(output)).rejects.toMatchObject({ code: "ENOENT" });
-    const stage = (await readdir(parent)).find((name) => name.includes("skillpress-stage"));
+    const stage = (await readdir(parent)).find((name) => name.includes("skill-press-stage"));
     expect(stage).toBeDefined();
     await expect(readFile(join(parent, stage as string, "foreign-sentinel"), "utf8")).resolves.toBe(
       "preserve",
@@ -550,7 +552,7 @@ describe("transactional project writing", () => {
 
     expect(error.kind).toBe("io");
     await expect(readFile(join(output, "foreign-sentinel"), "utf8")).resolves.toBe("preserve");
-    await expect(readFile(join(output, ".skillpress-incomplete"), "utf8")).resolves.toMatch(
+    await expect(readFile(join(output, ".skill-press-incomplete"), "utf8")).resolves.toMatch(
       /^[0-9a-f-]+\n$/u,
     );
   });
@@ -576,7 +578,7 @@ describe("transactional project writing", () => {
 
     expect(error.kind).toBe("unsafe-output");
     expect(error.issues.map((entry) => entry.code)).not.toContain("create.incomplete_preserved");
-    expect((await readdir(movedParent)).some((name) => name.includes("skillpress-stage"))).toBe(
+    expect((await readdir(movedParent)).some((name) => name.includes("skill-press-stage"))).toBe(
       false,
     );
     await expect(lstat(output)).rejects.toMatchObject({ code: "ENOENT" });

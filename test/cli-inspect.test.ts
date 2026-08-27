@@ -23,11 +23,12 @@ function status(ready: boolean): ProjectStatusReport {
     schemaVersion: 1,
     statusType: "skillpress.status",
     evaluatedAt: "2026-08-24T12:00:00.000Z",
+    currentTrustVerified: false,
     ready,
     local: { eligible: ready, score: ready ? 100 : 40, minimum: 90 },
     gate: null,
     package: null,
-    publication: null,
+    submission: null,
     issues: ready
       ? []
       : [{ code: "status.evidence.missing", path: "/gate", message: "evidence is missing" }],
@@ -71,24 +72,24 @@ describe("inspection CLI orchestration", () => {
     });
   });
 
-  it("requires artifacts when a receipt binding is requested", async () => {
+  it("requires artifacts when a submission binding is requested", async () => {
     const output = capture();
     await expect(
       runStatusCommand(
-        ["--receipt", `.skillpress/publications/${"1".repeat(64)}/receipt.json`],
+        ["--submission", `.skill-press/submissions/${"1".repeat(64)}/receipt.json`],
         output.io,
       ),
     ).resolves.toBe(2);
-    expect(output.stderr.join("")).toContain("--receipt requires --artifacts");
+    expect(output.stderr.join("")).toContain("--submission requires --artifacts");
   });
 
   it("passes exact optional package and receipt paths to read-only status", async () => {
     const ops = operations();
     const output = capture();
-    const artifacts = `.skillpress/staging/${"1".repeat(64)}/artifacts`;
-    const receipt = `.skillpress/publications/${"2".repeat(64)}/receipt.json`;
-    const review = `.skillpress/tessl/${"3".repeat(64)}/evidence.json`;
-    const evaluation = `.skillpress/tessl/${"4".repeat(64)}/evidence.json`;
+    const artifacts = `.skill-press/staging/${"1".repeat(64)}/artifacts`;
+    const receipt = `.skill-press/submissions/${"2".repeat(64)}/receipt.json`;
+    const review = `.skill-press/tessl/${"3".repeat(64)}/evidence.json`;
+    const evaluation = `.skill-press/tessl/${"4".repeat(64)}/evidence.json`;
 
     await expect(
       runStatusCommand(
@@ -103,7 +104,7 @@ describe("inspection CLI orchestration", () => {
           "tessl-evals",
           "--artifacts",
           artifacts,
-          "--receipt",
+          "--submission",
           receipt,
           "--json",
         ],
@@ -118,7 +119,7 @@ describe("inspection CLI orchestration", () => {
         evalSource: "tessl-evals",
       },
       artifactsPath: artifacts,
-      receiptPath: receipt,
+      submissionReceiptPath: receipt,
     });
     expect(JSON.parse(output.stdout[0] as string)).toMatchObject({
       command: "status",
@@ -176,8 +177,8 @@ describe("inspection CLI orchestration", () => {
   it("passes every optional doctor input and renders a ready human report", async () => {
     const ops = operations();
     const output = capture();
-    const review = `.skillpress/tessl/${"3".repeat(64)}/evidence.json`;
-    const evaluation = `.skillpress/tessl/${"4".repeat(64)}/evidence.json`;
+    const review = `.skill-press/tessl/${"3".repeat(64)}/evidence.json`;
+    const evaluation = `.skill-press/tessl/${"4".repeat(64)}/evidence.json`;
     await expect(
       runDoctorCommand(
         [
@@ -191,10 +192,6 @@ describe("inspection CLI orchestration", () => {
           "tessl-evals",
           "--tessl-executable",
           "/opt/tessl",
-          "--askill-executable",
-          "/opt/askill",
-          "--clawhub-executable",
-          "/opt/clawhub",
         ],
         output.io,
         ops,
@@ -207,13 +204,11 @@ describe("inspection CLI orchestration", () => {
         evalSource: "tessl-evals",
       },
       tesslExecutable: "/opt/tessl",
-      askillExecutable: "/opt/askill",
-      clawHubExecutable: "/opt/clawhub",
     });
     expect(output.stdout.join("")).toContain("Doctor: ready");
   });
 
-  it("renders package, publication, gate, URL, and issue details in human status", async () => {
+  it("renders package, submission, gate, and issue details in human status", async () => {
     const ops = operations();
     ops.status.mockResolvedValue({
       ...status(false),
@@ -233,25 +228,20 @@ describe("inspection CLI orchestration", () => {
         sourceCommit: "1".repeat(40),
         artifactSha256: "2".repeat(64),
       },
-      publication: {
+      submission: {
         receiptPath: "receipt",
-        status: "blocked",
+        namespace: "skill-press",
+        operationStatus: "failed",
         sourceCommit: "1".repeat(40),
         artifactSha256: "2".repeat(64),
-        targets: [
-          {
-            id: "github",
-            status: "preflight_failed",
-            preflightOk: false,
-            url: "https://example.invalid",
-          },
-        ],
+        remote: null,
       },
     });
     const output = capture();
     await expect(runStatusCommand([], output.io, ops)).resolves.toBe(3);
     expect(output.stdout.join("")).toContain("Tessl gate: blocked");
-    expect(output.stdout.join("")).toContain("Publication: blocked");
+    expect(output.stdout.join("")).toContain("Submission: failed");
+    expect(output.stdout.join("")).toContain("Submission namespace: skill-press");
     expect(output.stdout.join("")).toContain("evidence is missing");
   });
 

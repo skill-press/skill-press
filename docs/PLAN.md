@@ -1,349 +1,377 @@
-# SkillPress implementation plan
+# Skill Press product and implementation plan
 
-Status: accepted after independent review; all implementation phases complete locally, external
-identity setup, official evidence, registry approvals, and public release remain fail-closed
+Status: active implementation baseline
 
-Date: 2026-08-19
+Date: 2026-08-27
 
-Repository: `https://github.com/mushanyoung/skillpress`
+Repository: `https://github.com/skill-press/skill-press`
 
 ## Outcome
 
-SkillPress will be both an Agent Skill and a real CLI. It will guide an agent through designing a
-focused skill, turn the result into a portable and tested repository, measure behavior against a
-no-skill baseline, produce reproducible release artifacts, and publish through the supported path
-for each target registry.
+Skill Press is the trusted quality, curation, and immutable distribution layer for Agent Skills.
+It helps an author create and improve one canonical skill, prove that it behaves better than a
+no-skill baseline, package exact source-bound artifacts, and submit one candidate for automated and
+human review.
 
-The product must not claim that a skill has a Tessl Quality or Impact score of 90 or greater until
-that result is backed by evidence from Tessl. Local checks produce a clearly named **readiness
-score**, not a substitute Tessl score. A release profile will require current Tessl Quality and
-Impact evidence at or above the configured thresholds (90 by default).
+The canonical registry at `skill-press.com` is the only publication authority in the product
+model. Authors do not select downstream registries or supply credentials for other Agent Skill
+platforms. External catalogs may later discover or mirror a canonical release, but they do not
+decide whether it is accepted, published, trusted, quarantined, or revoked.
+
+The product promise is therefore narrower and stronger than “publish everywhere”:
+
+> Build once, prove quality, submit once, and install an immutable release whose current trust
+> state can be verified.
+
+## Product identity
+
+| Surface | Canonical identity |
+| --- | --- |
+| Brand | Skill Press |
+| Website and registry origin | `https://skill-press.com` |
+| Registry API | `https://skill-press.com/api/v1` |
+| GitHub organization | `skill-press` |
+| Main repository | `skill-press/skill-press` |
+| npm package | `@skill-press/cli` |
+| CLI executable | `skpress` |
+| Project definition | `skill-press.yaml` |
+| Private local state | `.skill-press/` |
+
+`SkillPress*` remains the stable prefix for exported TypeScript types and serialized protocol
+identifiers. It is not the product spelling used in prose.
+
+## Current implementation boundary
+
+The repository currently implements the local CLI, strict schemas, deterministic validation,
+sandboxed paired evaluation, bounded improvement, Tessl evidence capture, release gates,
+reproducible packaging, and a canonical submission client/journal contract.
+
+| Capability | Current state |
+| --- | --- |
+| `skpress init`, `check`, `test`, `eval`, `improve` | Implemented locally |
+| `skpress tessl`, `package`, `status`, `doctor` | Implemented locally |
+| `skpress submit --dry-run` | Implemented locally |
+| Canonical submission client for `https://skill-press.com/api/v1` | Implemented and hermetically testable |
+| Production registry backend and account/token issuance | Not live yet |
+| Curator review console and server-side revalidation | Not live yet |
+| Immutable registry downloads and attestations | Not live yet |
+| `skpress add` and `skpress install` | Planned, not implemented |
+| External catalog syndication | Deferred until the canonical registry is stable |
+
+This distinction is part of the contract. A compiled client or a schema does not prove that a
+remote service exists, and a locally prepared submission does not prove publication or trust.
 
 ## Product principles
 
-1. **Behavior over prose.** A good-looking `SKILL.md` is not proof that an agent performs better.
-   Every publishable skill needs positive, near-miss, holdout, failure, and adversarial scenarios.
-2. **Paired, sandboxed evaluation.** Behavioral evaluation runs the same task without and with the
-   exact skill under test in ephemeral sandboxes. It records setup, redacted transcripts, model,
-   repetitions, rubric results, and behavioral delta.
+1. **Behavior over prose.** A polished `SKILL.md` is not evidence that an agent performs better.
+   Publishable candidates need positive, near-miss, failure, adversarial, and untouched holdout
+   scenarios.
+2. **One canonical source.** A project maintains one Agent Skill tree. Package and submission
+   metadata are generated from it; provider-specific mirrors are not maintained by authors.
 3. **Deterministic gates first.** Structure, references, placeholders, scripts, fixtures,
-   packaging, secrets, manifests, versions, and receipts are checked by code. An LLM judge is used
-   only for semantic criteria that cannot be checked deterministically.
-4. **One canonical skill.** Runtime and registry distributions are generated into staging from one
-   source; generated mirrors are not maintained by hand.
-5. **Evidence, not badges.** Local readiness, live eval results, Tessl review/eval results, test
-   coverage, artifact hashes, commit IDs, and publication receipts remain distinct evidence types.
-6. **Fail closed for releases.** TODOs, example placeholders, missing licenses, unrun live evals,
-   stale score evidence, dirty tracked inputs, secret-like files, symlinks, or a failed target
-   preflight block release packaging and execution.
-7. **Safe publication.** Publication defaults to a dry run. `--execute` is explicit, every target
-   performs an auth/capability preflight, and completed steps are journaled for idempotent resume.
-8. **No invented automation.** If a registry has no supported publishing interface, SkillPress
-   reports the real derived or manual step instead of browser-scraping or declaring success.
-
-## What the references contribute
-
-`property-tax-appeal-skll` contributes its strongest production patterns: canonical source plus
-generated distributions, fail-closed fixtures, deterministic builders, adversarial and golden
-tests, tracked-only reproducible archives, checksums, release provenance, and pinned CI actions.
-SkillPress will avoid its large commits, monolithic validator, duplicated schemas, and manual-only
-registry records.
-
-[SkillForge](https://github.com/tripleyak/SkillForge/tree/4fc8bb486aa8edca12facbf02b53aa1ada76a4a9)
-contributes RED/GREEN skill development, positive/near-miss/holdout trigger sets, fresh-context
-generation, doctor/collision concepts, and target adapters. SkillPress will not reproduce its
-known false-positive paths: untouched TODO scaffolds passing validation, live tests that do not
-explicitly install the target skill, parsed-but-unused baseline/setup data, mocked-only live tests,
-or packaging that bypasses the full gate.
+   versions, source state, artifacts, and receipts are checked by code. Semantic judging is used
+   only where deterministic checks cannot establish the result.
+4. **Paired, sandboxed evaluation.** Behavioral evidence runs the same scenario without and with
+   the exact staged skill in separate bounded sandboxes.
+5. **Evidence types remain distinct.** Local readiness, local paired behavior, Tessl Quality and
+   Impact, curator decisions, artifact attestations, and release trust are never collapsed into a
+   single invented score.
+6. **Server validation is authoritative.** Client evidence is useful for fast feedback and
+   reproducible submission, but it is advisory to the service. The registry must independently
+   rerun policy and safety checks before publication.
+7. **Submission is not publication.** Upload success means only that an exact candidate entered
+   review. Human acceptance and immutable publication are later service-side events.
+8. **Trust can change; bytes cannot.** Published artifact bytes and versions are immutable. Their
+   safety disposition may move from `trusted` to `quarantined` or `revoked` without rewriting
+   history.
+9. **No author-facing multi-publish.** Skill Press accepts one canonical submission. Later
+   discovery and mirroring are platform operations downstream of publication.
+10. **Truth before growth.** Missing infrastructure, unavailable evidence, ambiguous remote
+    state, or a blocked review is reported as such rather than represented as success.
 
 ## User workflow
 
 ```text
-skillpress create       brief -> plan, canonical skill, eval fixtures, repository contracts
-skillpress improve      bounded author/review/eval loop driven by measured failures
-skillpress check        spec lint + references + safety + readiness report
-skillpress test         deterministic project and bundled-script tests
-skillpress eval         sandboxed baseline/with-skill behavioral runs
-skillpress tessl        official lint/review/eval bridge and score evidence capture
-skillpress package      reproducible .skill/.zip + checksums + provenance
-skillpress publish      target plan, preflight, execute, resume, and receipts
-skillpress status       gate/evidence/publication summary
-skillpress doctor       environment, collisions, credentials, and stale evidence
+skpress init       strict brief -> canonical skill, tests, eval inputs, project contract
+skpress improve    bounded author/reviewer/evaluator loop with holdout isolation
+skpress check      spec, references, safety, identity, and local readiness
+skpress test       trusted deterministic project commands without a shell
+skpress eval       isolated baseline/with-skill behavioral measurement
+skpress tessl      official external Quality and Impact evidence capture
+skpress package    reproducible candidate archive, checksums, and provenance
+skpress submit     one canonical Skill Press submission or local dry run
+skpress status     local gate, package, and submission-journal summary
+skpress doctor     runtime, sandbox, Tessl, credential-name, and collision diagnostics
 ```
 
-Commands will support human-readable and stable JSON output. Non-interactive operations will have
-documented exit codes. External commands are executed without a shell, with explicit arguments,
-bounded output, and timeouts. A command from an untrusted skill is not executed on the host merely
-because it appears in configuration or Markdown.
+The intended post-registry workflow will add:
+
+```text
+skpress add <owner>/<skill>@<version>  resolve and record a canonical trusted release
+skpress install                       restore exact locked releases and verify trust
+```
+
+These installation commands are not live or implemented yet. Their eventual default must be the
+Skill Press registry, not an arbitrary GitHub branch or third-party catalog entry.
+
+Commands support human-readable output and stable JSON. External processes are invoked without a
+shell, with explicit argv, bounded output, timeouts, and narrow environment forwarding.
 
 ## Repository architecture
 
 ```text
 src/
-  cli/                   argument parsing, output, exit codes
-  config/                versioned project schema and migrations
-  create/                brief validation and canonical scaffold generation
-  improve/               bounded feedback-to-patch iteration and regression control
-  check/                 Agent Skills spec, references, safety, readiness rubric
-  test/                  deterministic command and fixture runner
-  eval/                  scenario schema, isolated paired runner, evidence model
+  cli/                   commands, argument parsing, output, and exit codes
+  config/                schema-v2 skill-press.yaml loading and generated types
+  create/                strict brief loading and transactional project generation
+  check/                 deterministic Agent Skill validation and readiness
+  test/                  trusted project test runner
+  eval/                  scenario contracts and isolated paired evaluation
+  improve/               bounded author/review/evaluation state machine
+  tessl/                 pinned external evidence capture
+  release/               current source-bound evidence gate
   package/               tracked-only staging, deterministic archives, provenance
-  publish/
-    adapters/            github, tessl, askill, agent-skill-hub, clawhub, skills-sh
-  process/               safe subprocess and capability probing
-skills/skillpress/       the installable meta-skill
-templates/               generated repository/skill assets
-schemas/                 source JSON Schemas for config, eval, evidence, receipts
-test/                    unit, integration, end-to-end, adversarial, golden tests
-fixtures/                intentionally passing and failing repositories
-docs/                    product contracts and registry runbooks
+  submission/            fixed-origin manifest, client, journal, and recovery
+  status/                read-only local lifecycle summary
+  doctor/                local prerequisites and credential-name diagnostics
+skills/skill-press/       the self-hosted Skill Press meta-skill
+schemas/                 authoritative JSON Schemas
+test/                    hermetic, integration, adversarial, and golden tests
+docs/                    current operating and trust contracts
+docs/reviews/            historical slice reviews; not the current product contract
 ```
 
-The npm package will be `@mushanyoung/skillpress` because the unscoped `skillpress` package is
-already owned by another project. The installed binary remains `skillpress`. The initial runtime
-target is maintained Node.js 22 and newer; CI covers Node.js 22, 24, and 26. The implementation
-uses TypeScript and minimizes runtime dependencies.
+The future service is a separate authority boundary. It must provide authenticated submission,
+isolated validation workers, curator workflow, immutable object storage, signed release metadata,
+trust-state history, and read APIs used by installation clients.
 
-## Core data and evidence
+## Project, evidence, and artifact model
 
-`skillpress.yaml` is the single project definition. It records the canonical skill path, version,
-repository, test commands, quality thresholds, eval policy, risk profile, and requested publish
-targets. JSON Schemas are authoritative; TypeScript types and starter documents are generated or
-validated against them rather than maintained as competing definitions.
+`skill-press.yaml` schema version 2 records the project and canonical skill identity, requested
+`registry.namespace`, risk class, test commands, local readiness threshold, external Quality and
+Impact thresholds, evidence age, evaluation policy, and improvement budgets. The namespace is a
+request that the service must authorize; it is not inferred from the author or repository owner.
+The configuration deliberately has no `publish.targets`, endpoint override, or provider credential
+configuration.
 
-Evidence is append-only and bound to a content digest and git commit:
+Private working state is rooted at `.skill-press/`:
 
-- deterministic test report and coverage;
-- readiness diagnostics and score (local, never called Tessl Quality);
-- paired agent eval runs, including baseline, with-skill, repetitions, and delta;
-- Tessl lint/review/eval receipts and actual Quality/Impact scores;
-- package manifest, SHA-256 hashes, source commit, tool/runtime versions;
-- target publication receipt, remote identifier/version/URL, and verification state.
+```text
+.skill-press/
+  runs/           raw paired evaluation state
+  improvements/   bounded-loop reports, candidates, and rollback data
+  tessl/          raw external output and schema-validated evidence
+  tessl-evals/    private linked scenario sources
+  staging/        canonical snapshots and deterministic artifacts
+  submissions/    exact retry journals keyed by idempotency digest
+  tmp/            bounded temporary work
+```
 
-Stale evidence cannot satisfy a release gate after relevant inputs change.
+Evidence and artifacts are bound to the current clean Git commit and content digests:
 
-## Registry capability contract
+- local readiness diagnostics and score;
+- deterministic test reports;
+- paired baseline and with-skill scenario evidence;
+- current official Tessl Quality and Impact evidence;
+- complete canonical-skill and eval-source tree digests;
+- deterministic skill archive, checksums, and provenance;
+- a deterministic submission manifest and idempotency key;
+- a private submission retry journal.
 
-Each adapter declares one of `publish`, `submit`, or `derived`, plus auth requirements, mutation
-steps, verification method, idempotency key, and rollback limitations. Provider IDs are exact and
-never inferred from a display name: `github`, `tessl`, `skills-sh`, `askill-sh`,
-`agentskillhub-dev`, `agent-skills-hub-catalog`, and `clawhub`. npm is released by a separate
-protected GitHub Actions trusted-publishing workflow after the ordered local saga reaches its final
-GitHub target.
+Stale evidence cannot satisfy a release gate after relevant input changes. A local journal records
+what the client attempted and last observed; it is not a server attestation.
 
-| Target | Planned supported path | Important boundary |
-| --- | --- | --- |
-| GitHub | Create/configure repository, push commits/tags, create release and upload attestations | Requires authenticated GitHub API for repository creation; SSH alone can push only after creation |
-| Tessl | Official CLI lint, review, eval, publish, and evidence capture | First public approval is a Tessl web workflow; release gate needs real Quality and Impact >= 90 |
-| skills.sh | Publish-ready public GitHub source and listing verification | No official write API; indexing/ranking is derived from real installation activity |
-| askill.sh (`askill-sh`) | Official askill CLI local-token or GitHub-source publish | Provider identity and resulting listing are recorded in the receipt |
-| agentskillhub.dev (`agentskillhub-dev`) | Documented repository analyze/import API, then poll/verify | Treat unauthenticated remote mutation as explicit `--execute`, never as dry run |
-| Agent Skills Hub catalog (`agent-skills-hub-catalog`) | Create a contribution branch/PR | Human merge is `pr_review_required`, never reported as published |
-| ClawHub | Official CLI/workflow publish, poll asynchronous security review | Requires token; license compatibility is checked and never rewritten silently |
+## Canonical submission protocol
 
-Adapter behavior and command syntax will be pinned by contract tests using fake executables and
-HTTP servers. Optional live smoke tests require explicit credentials and never run on forks.
+The production client has one compiled origin: `https://skill-press.com/api/v1`. Project content
+cannot override it. The protocol currently defines:
 
-The canonical `SKILL.md` follows the Agent Skills specification. Target-only fields are projected
-into ephemeral staging: askill's top-level `slug`/`version`, Tessl's `tile.json`, and ClawHub
-metadata never pollute the canonical frontmatter. One project version maps to provider-specific
-versions, and every mapping is recorded in the publication receipt.
+- `GET /session` to establish the bearer-token identity;
+- `POST /submissions` to send one multipart candidate with an idempotency key;
+- `GET /submissions/{id}` to verify or refresh the exact remote resource.
 
-## Evaluation threat model
+The upload contains the deterministic manifest, one canonical archive, provenance, checksums,
+Tessl review evidence, and Tessl evaluation evidence. The manifest marks all submitted evidence as
+advisory and explicitly requires server validation.
 
-An isolated directory is not a security boundary. SkillPress treats skill instructions, bundled
-scripts, fixtures, tool output, model output, and downloaded registry content as untrusted.
+`SKILL_PRESS_TOKEN` is the only canonical submission credential name. It must never enter
+`skill-press.yaml`, canonical skill files, evidence, provenance, journals, or logs.
 
-- Host execution is denied by default. Deterministic scripts and agent tasks run through an
-  explicit sandbox backend (initially Docker/Podman); `--allow-unsafe-host-execution` is a noisy,
-  per-run override and its evidence is ineligible for a release gate.
-- The sandbox receives a read-only skill snapshot and the minimum scenario fixture. Output uses a
-  new writable mount; no repository root, SSH agent, cloud config, keychain socket, or user home is
-  mounted.
-- The environment starts empty and uses an allowlist. Provider credentials are short-lived and
-  injected only into the runner that needs them; their names and values are registered with the
-  redactor before process output is read.
-- Network is disabled by default. A live provider profile must declare required egress;
-  unrestricted networking is marked unsafe and cannot produce release-eligible evidence. Provider
-  support is deferred if an enforceable egress policy is unavailable on that platform.
-- Wall time, CPU, memory, process count, file count, output bytes, and artifact size are bounded.
-  Child processes are terminated as a group on timeout or cancellation.
-- Raw transcripts and model artifacts live under ignored, private-permission run storage, never in
-  a release archive. Persisted evidence contains redacted excerpts/digests; explicit export runs a
-  second secret/PII scan.
-- Setup actions are a typed, declarative fixture contract. Arbitrary setup shell is not accepted by
-  the release-eligible runner.
+The client binds every remote response to the expected idempotency key, source commit, version,
+skill locator, artifact digest, and canonical URLs. `GET /session` proves authentication only; the
+submission transaction must authorize the principal for the requested namespace before creating a
+candidate, reserving an idempotency key or version, or retaining bytes. Ambiguous failure is
+journaled and must be recovered by resuming the exact receipt rather than creating a different
+candidate with the same version.
 
-## Improvement loop
+The production backend and token issuer are not live yet. Until they exist, only the local
+`--dry-run` path is an operational user workflow.
 
-SkillPress does more than reject a weak scaffold. `create` begins with a concrete capability brief
-and RED baseline cases; `improve` then runs a bounded state machine:
+## Review lifecycle and release trust
 
-1. collect deterministic diagnostics, paired baseline/with-skill failures, and official Tessl
-   review/eval feedback;
-2. send only training scenarios and necessary artifacts to a configured authoring agent adapter;
-3. produce a patch proposal, validate its scope, and require review before acceptance;
-4. rerun deterministic checks and training scenarios;
-5. evaluate untouched holdouts only after a candidate passes training gates;
-6. accept only improvements that do not regress safety, activation precision, or holdout behavior;
-7. stop on success, no measurable improvement, repeated failure, or configured iteration, token,
-   cost, and wall-time budgets.
+Submission review status is candidate-scoped:
 
-Holdout tasks and expected results are never disclosed to the authoring adapter. Tessl feedback is
-treated as evidence for the next proposal, not instructions to obey. Each iteration retains the
-candidate digest and before/after metrics so a score cannot be optimized by silently deleting hard
-scenarios. Final Quality and Impact still come from Tessl; SkillPress iterates until both are at
-least 90 or reports a truthful blocked result.
+| Status | Meaning |
+| --- | --- |
+| `received` | Exact candidate accepted into the service queue |
+| `automated-review` | Service-side validation and evaluation are running |
+| `curator-review` | Automated gates passed far enough for human review |
+| `changes-requested` | Author must prepare a new candidate addressing explicit findings |
+| `accepted` | Review approved, but immutable release publication is not yet complete |
+| `published` | Immutable release record and artifact are available |
+| `rejected` | Candidate will not be published |
 
-Activation precision is recomputed as `true positives / (true positives + false positives)`. If a
-candidate predicts no activations, precision is `0` when positive runs exist and `1` only for an
-all-negative suite; this prevents silence from looking precise on a mixed suite.
+Release trust is a separate, release-scoped state:
+
+| Trust | Meaning |
+| --- | --- |
+| `trusted` | Current policy permits normal installation |
+| `quarantined` | New installation should stop while an incident is investigated |
+| `revoked` | Release is no longer trusted and must not be newly installed |
+
+Only a `published` submission can carry a release record. Publication does not imply that a
+release remains trusted forever. Quarantine and revocation append state transitions while keeping
+the original locator, version, digest, and attestation immutable.
+
+## Authority and distribution roles
+
+### Skill Press registry
+
+The registry is authoritative for namespaces, curator decisions, immutable versions, artifact
+digests, attestations, and trust history. The registry must fail closed on version conflicts and
+must never accept client claims as a substitute for server-side checks.
+
+### GitHub
+
+GitHub is the canonical open-source repository, CI, issue, and source-transparency surface. An
+author's repository and commit are evidence inputs. GitHub is not the Skill Press registry, and the
+generic CLI does not push author branches, tags, or releases as part of submission.
+
+### npm
+
+npm distributes only `@skill-press/cli`. The CLI release uses a protected GitHub Actions
+environment, OIDC trusted publishing, exact tag and source binding, package integrity checks, and
+provenance. Agent Skill releases are not npm packages.
+
+### Tessl
+
+Tessl supplies external Quality and Impact evidence through a pinned CLI. Skill Press does not
+publish skills to Tessl as part of its canonical workflow.
+
+### External catalogs and mirrors
+
+External discovery is deferred. A future platform-operated syndication service may expose an
+already published Skill Press release elsewhere only if it preserves the exact immutable digest,
+version, canonical URL, and current trust signal. A mirror or listing is never acceptance evidence
+and its availability must not block canonical publication.
 
 ## Quality model
 
-The default local readiness rubric is diagnostic and intentionally conservative:
+The local readiness rubric is diagnostic and conservative. Fatal findings make it ineligible
+regardless of its numeric total. The default client release gate additionally requires:
 
-- Agent Skills specification and activation precision;
-- narrow outcome, inputs, outputs, boundaries, and stop conditions;
-- actionable workflow and progressive disclosure;
-- deterministic helpers and error behavior;
-- positive, negative, near-miss, holdout, edge, and prompt-injection coverage;
-- executable project tests and minimum branch/statement coverage;
-- privacy, permissions, current-data, and untrusted-input treatment appropriate to risk;
-- clean, licensed, reproducible, registry-compatible distribution.
+- current clean source and matching project/skill identity;
+- passing deterministic tests and complete scenario/rubric inputs;
+- eligible paired baseline/with-skill evidence with no required regression;
+- current official Tessl Quality and Impact at or above the configured minimums, both 90 by
+  default;
+- reproducible tracked-only packaging, checksums, and provenance;
+- exact submission-manifest and artifact bindings.
 
-Fatal findings make the score ineligible regardless of numeric total. Readiness of 90 is necessary
-but not sufficient for a release. The default release profile additionally requires:
+These client gates are necessary to submit, not sufficient to publish. The service must rerun its
+own validation under the current policy and then obtain the required curator decision.
 
-- all deterministic tests pass;
-- paired live eval evidence is current and meets configured success/delta bounds;
-- Tessl Quality >= 90 and Tessl Impact >= 90 from current official evidence;
-- security and package checks pass;
-- every requested target preflight passes or is explicitly classified as derived/manual;
-- git inputs are clean, committed, and version/tag contracts agree.
+## Evaluation and improvement threat model
 
-## Testing strategy for SkillPress itself
+Skill instructions, resources, fixtures, model output, role output, archives, and service responses
+are untrusted.
 
-- unit tests for schemas, diagnostics, scoring, path handling, secret rules, command construction,
-  receipt transitions, and archive primitives;
-- property/fuzz tests for malformed frontmatter, hostile paths, duplicate YAML keys, oversized
-  files, Unicode, archive traversal, and output parsing;
-- integration tests with temporary git repositories, isolated homes, fake agent/registry CLIs,
-  and local HTTP servers;
-- golden tests for generated repositories, reports, manifests, and deterministic archives;
-- end-to-end tests covering create -> fail gate -> complete fixtures -> eval -> package -> publish
-  dry run -> resumable fake publication;
-- fault injection for timeouts, partial publication, invalid JSON, interrupted writes, stale
-  evidence, dirty worktrees, symlinks, and credential leakage;
-- coverage gates of at least 90% statements and 90% branches for deterministic TypeScript code;
-- Node.js 22, 24, and 26 CI, with release/security checks on the newest supported runner.
+- Canonical validation reads bounded files and never executes skill instructions.
+- Paired evaluation uses separate ephemeral sandboxes, read-only skill input, a new writable
+  output mount, disabled networking by default, and explicit CPU, memory, PID, filesystem, output,
+  and time limits.
+- Project test and improvement role commands are user-authorized host programs. No-shell argv and
+  bounded I/O reduce injection and denial-of-service risk but do not sandbox a malicious binary.
+- The author role never receives holdout prompts; the evaluator alone receives them.
+- Raw transcripts, private scenarios, provider prose, and candidate rollback data remain under
+  `.skill-press/` and do not enter a release artifact.
+- The service must treat submitted archives and client evidence as hostile input and process them
+  only in isolated workers.
 
-Real provider smoke tests are separate from hermetic CI. They are never replaced by mocks in the
-release evidence; mocks prove adapter behavior, while provider receipts prove provider behavior.
+## Testing strategy
 
-## Commit and review plan
+- schema and generated-type checks for configuration, evaluation, evidence, packaging, submission,
+  and server resource contracts;
+- unit and property tests for malformed YAML/frontmatter, hostile paths, Unicode aliases,
+  oversized files, archive traversal, receipt transitions, and output parsing;
+- integration tests with temporary Git repositories, isolated homes, fake role executables,
+  digest-pinned sandbox fixtures, and local HTTP servers;
+- golden tests for generated projects, reports, manifests, archives, and checksums;
+- fault injection for timeouts, partial writes, concurrent input changes, stale evidence,
+  ambiguous submission state, and credential leakage;
+- end-to-end local coverage from `init` through `submit --dry-run`;
+- live service tests only after an explicit staging backend and test identity exist.
 
-Every slice follows this sequence:
-
-1. implement only the named slice;
-2. run its focused tests and the accumulated suite;
-3. ask a subagent that did not author the slice to review the actual diff and tests;
-4. fix findings and rerun verification;
-5. make one focused commit and push it;
-6. record the review and verification summary for release provenance.
-
-Planned commits (each includes focused tests; split again if a diff becomes hard to review):
-
-1. `docs: establish SkillPress product and delivery plan`
-2. `chore: scaffold the typed CLI package`
-3. `chore: enforce formatting, typecheck, tests, and coverage`
-4. `feat: validate the versioned project schema`
-5. `feat: generate a canonical skill from a capability brief`
-6. `feat: validate Agent Skills frontmatter and references`
-7. `feat: detect placeholders, secrets, and unsafe bundled files`
-8. `feat: report local readiness without external-score claims`
-9. `feat: validate behavioral scenario and rubric schemas`
-10. `feat: add the sandbox backend and resource policy`
-11. `feat: run paired baseline and with-skill evaluations`
-12. `feat: add bounded improve and holdout regression control`
-13. `feat: capture Tessl review and eval evidence`
-14. `feat: enforce Tessl Quality and Impact release gates`
-15. `feat: stage tracked-only canonical skill inputs`
-16. `feat: produce deterministic archives and provenance`
-17. `feat: add publication saga and receipt recovery`
-18. `feat: publish GitHub source and immutable releases`
-19. `feat: publish the scoped npm CLI with provenance`
-20. `feat: publish through askill-sh`
-21. `feat: import through agentskillhub-dev`
-22. `feat: prepare Agent Skills Hub catalog pull requests`
-23. `feat: publish through ClawHub with MIT-0 consent`
-24. `feat: track skills-sh source and organic listing status`
-25. `feat: add the SkillPress agent skill`
-26. `test: add self-hosting and failure-recovery end-to-end cases`
-27. `ci: enforce supported runtimes and release provenance`
-28. `docs: publish operating, security, and registry guides`
-
-If a slice grows beyond a reviewable diff, it will be split before review. Commits will not mix
-format-only churn with behavior changes.
+The repository quality gate targets at least 90% statements and 90% branches for deterministic
+TypeScript code and covers maintained Node.js 22, 24, and 26 runtimes.
 
 ## Delivery phases
 
-Current delivery note (2026-08-24): the complete ten-command CLI, typed APIs, hermetic tests,
-self-host checks, deterministic artifacts, provider adapters, CI, and trusted-release workflow are
-implemented locally. Public release remains fail-closed because current official Tessl 90/90
-evidence, provider identities/approvals, npm trusted-publisher configuration, and GitHub release
-protections are external prerequisites. Three independent reviewers audited exact clean commit
-`7d77b4a8a5a74d6766040da06db712ebcb77aba1` across implementation/security,
-release/supply-chain, and macOS/Linux test portability; all returned PASS with no release-blocking
-code finding.
+### Phase 1: identity and local contract
 
-### Phase 0: remote and reviewed plan
+Complete the Skill Press branding, `skpress` binary, `@skill-press/cli` package identity,
+`skill-press.yaml` schema v2, `.skill-press/` storage migration, and removal of author-facing
+multi-publish code and documentation.
 
-Reauthenticate GitHub, create `mushanyoung/skillpress`, add the SSH remote, commit this reviewed
-plan, and push it. No implementation slice starts until the first commit is visible remotely.
+Exit criterion: all generated projects and local commands use only the canonical identity and no
+project config contains a provider target list.
 
-### Phase 1: trustworthy local loop
+### Phase 2: canonical submission client
 
-Deliver `create`, `check`, `test`, JSON diagnostics, versioned schemas, and a self-hosted sample.
-Exit criterion: a generated placeholder cannot pass release checks, while a completed fixture can
-pass all local deterministic checks.
+Complete the deterministic submission manifest, fixed-origin API client, private retry journal,
+dry run, exact resume, remote-response binding, status inspection, and adversarial tests.
 
-### Phase 2: behavioral proof
+Exit criterion: local tests prove that project input cannot redirect the bearer token and that a
+retry cannot change source, evidence, version, or artifact identity.
 
-Deliver sandboxed baseline/with-skill evaluation, bounded improvement, and the Tessl bridge. Exit
-criterion: the runner
-proves it loaded the intended skill digest, consumes setup data, preserves both transcripts, and
-cannot satisfy the external 90-point gates with local or hand-entered scores.
+### Phase 3: registry backend and curator workflow
 
-### Phase 3: secure artifacts and publication
+Implement authenticated accounts/tokens, isolated upload processing, independent automated
+validation, curator review, immutable storage, signed attestations, namespace/version collision
+handling, and complete review status history.
 
-Deliver reproducible packages, provenance, adapters, dry-run plans, resumable execution, and remote
-verification. Exit criterion: hermetic adapters survive partial failures without duplicate
-publishing and every reported success has a verifiable receipt.
+Exit criterion: a real service candidate can move from `received` to `published` only after server
+gates and curator approval, with exact artifact retrieval and audit history.
 
-### Phase 4: self-host and release
+### Phase 4: trusted installation
 
-Use the SkillPress skill to inspect and improve SkillPress itself, run independent adversarial
-review, obtain available external scores, and publish only to targets whose credentials and
-approval states are available.
+Implement canonical release resolution, lockfiles, digest and attestation verification, current
+trust-state checks, atomic installation, quarantine warnings, revocation refusal, and offline
+limitations for `skpress add` and `skpress install`.
 
-The CLI itself is released as `@mushanyoung/skillpress`: CI verifies `npm pack --dry-run`, installs
-the produced tarball in a clean temporary project, runs CLI smoke tests, and checks package contents
-before npm trusted publishing/provenance. npm publication is a separate explicit target and receipt;
-it never falls back to the occupied unscoped package name.
+Exit criterion: an install reproduces the exact trusted artifact and fails closed on a mismatched,
+quarantined, revoked, unavailable, or ambiguously identified release.
 
-## Known external prerequisites
+### Phase 5: controlled discovery and mirroring
 
-- The public repository exists and GitHub CLI authorization includes workflow-file access. The
-  exact reviewed source still must be present on public `main` and pass CI before any release saga.
-- Tessl scoring/publication needs a short-lived publisher API key inherited by the SkillPress
-  process, a publisher workspace, current official evidence, and public approval.
-- npm trusted publishing requires owner-side GitHub environment and npm publisher configuration.
-- askill, Agent Skill Hub, and catalog execution require provider-specific authority, identity,
-  token, or pull-request confirmation discovered during preflight.
-- A 90+ target is an acceptance gate and iteration objective, not a score that can be guaranteed in
-  advance or fabricated when a provider is unavailable.
+After the canonical registry is stable, design a platform-operated feed or syndication service for
+external catalogs. Do not add author provider credentials or restore a `publish.targets` model.
 
-Provider-specific implementation can proceed without Tessl/registry credentials after Phase 0;
-live provider acceptance remains blocked until the corresponding preflight succeeds. External
-operations stop with exact remediation instructions instead of weakening a gate.
+Exit criterion: every external record links back to the canonical release, preserves its exact
+digest, and cannot alter Skill Press review or trust state.
+
+## Definition of the initial platform release
+
+The initial platform is not complete until all of the following are true:
+
+- the CLI is formally released as `@skill-press/cli` with `skpress` and npm provenance;
+- `https://skill-press.com/api/v1` is deployed behind authenticated, rate-limited endpoints;
+- service-side validation does not trust client evidence or execute submitted code on the host;
+- curator decisions and review transitions are auditable;
+- immutable releases expose a canonical locator, version, digest, artifact, and attestation;
+- trust transitions are monotonic, signed or otherwise authenticated, and queryable;
+- `skpress add` and `skpress install` verify the canonical record and current trust state;
+- documentation and UI never equate submitted, accepted, published, and trusted.
+
+Until those conditions are met, Skill Press must describe itself as an actively developed local
+toolchain and protocol, not as a live public registry.

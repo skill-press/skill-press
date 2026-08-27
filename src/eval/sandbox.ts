@@ -270,14 +270,14 @@ export function createSandboxInvocation(request: SandboxRunRequest): SandboxInvo
   }
   if (issues.length > 0) throw new SandboxPolicyError(issues);
 
-  const containerName = `skillpress-${request.runId}`;
+  const containerName = `skill-press-${request.runId}`;
   const memory = `${policy.memoryMib}m`;
   const argv = [
     "run",
     "--rm",
     "--pull=never",
     `--name=${containerName}`,
-    "--hostname=skillpress",
+    "--hostname=skill-press",
     "--network=none",
     "--read-only",
     ...(request.backend === "podman" ? ["--read-only-tmpfs=false"] : []),
@@ -296,7 +296,7 @@ export function createSandboxInvocation(request: SandboxRunRequest): SandboxInvo
     "--env=HOME=/tmp",
     "--env=TMPDIR=/tmp",
     "--env=NO_COLOR=1",
-    "--env=SKILLPRESS_SANDBOX=1",
+    "--env=SKILL_PRESS_SANDBOX=1",
     "--workdir=/output",
     ...request.mounts.flatMap((mount) => ["--mount", mountArgument(mount)]),
     request.image,

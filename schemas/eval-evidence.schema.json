@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/mushanyoung/skillpress/main/schemas/eval-evidence.schema.json",
+  "$id": "https://raw.githubusercontent.com/skill-press/skill-press/main/schemas/eval-evidence.schema.json",
   "title": "SkillPressPairedEvaluationEvidence",
   "description": "Redacted local evidence from paired baseline and with-skill sandbox runs.",
   "type": "object",
@@ -90,7 +90,7 @@
     },
     "storagePath": {
       "type": "string",
-      "pattern": "^\\.skillpress/runs/[a-f0-9]{64}$"
+      "pattern": "^\\.skill-press/runs/[a-f0-9]{64}$"
     }
   },
   "definitions": {

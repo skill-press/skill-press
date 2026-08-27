@@ -3,14 +3,16 @@ dist/
 coverage/
 *.tgz
 
-# SkillPress keeps raw evaluation material private and out of source control.
-.skillpress/runs/
-.skillpress/tessl/
-.skillpress/tessl-evals/
-.skillpress/publications/
-.skillpress/projections/
-.skillpress/staging/
-.skillpress/tmp/
+# Skill Press keeps raw evaluation material private and out of source control.
+.skill-press/runs/
+.skill-press/tessl/
+.skill-press/tessl-evals/
+.skill-press/submissions/
+.skill-press/staging/
+.skill-press/tmp/
+
+# Legacy private state is never migrated or made trackable. Regenerate it under .skill-press/.
+.skillpress/
 
 # Local credentials and environment overrides are never package inputs.
 .env

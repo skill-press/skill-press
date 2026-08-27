@@ -355,7 +355,7 @@ async function gitState(
 }
 
 async function createStorage(root: string): Promise<{ path: string; reportPath: string }> {
-  const privateRoot = join(root, ".skillpress");
+  const privateRoot = join(root, ".skill-press");
   const parent = join(privateRoot, "tessl");
   await mkdir(privateRoot, { mode: 0o700 }).catch((error: unknown) => {
     if (!isRecord(error) || error.code !== "EEXIST") throw error;
@@ -363,7 +363,7 @@ async function createStorage(root: string): Promise<{ path: string; reportPath: 
   const privateRootMetadata = await lstat(privateRoot);
   if (!privateRootMetadata.isDirectory() || privateRootMetadata.isSymbolicLink()) {
     throw new TesslEvidenceError("SkillPress private storage is unsafe.", [
-      issue("tessl.storage.unsafe", "/storage", ".skillpress must be a real directory"),
+      issue("tessl.storage.unsafe", "/storage", ".skill-press must be a real directory"),
     ]);
   }
   await mkdir(parent, { mode: 0o700 }).catch((error: unknown) => {
@@ -381,7 +381,7 @@ async function createStorage(root: string): Promise<{ path: string; reportPath: 
   const path = join(parent, id);
   await mkdir(path, { mode: 0o700 });
   await chmod(path, 0o700);
-  return { path, reportPath: `.skillpress/tessl/${id}` };
+  return { path, reportPath: `.skill-press/tessl/${id}` };
 }
 
 function timeoutOf(options: CommonOptions): number {
@@ -410,9 +410,9 @@ async function commonContext(
       issue("tessl.skill.invalid", "/skill", "canonical skill validation failed"),
     ]);
   }
-  const configBytes = await readFile(join(root, "skillpress.yaml"));
+  const configBytes = await readFile(join(root, "skill-press.yaml"));
   const skillSha256 = await digestBoundedTree(join(root, skillPath));
-  const state = await gitState(root, ["skillpress.yaml", skillPath, ...extraGitPaths]);
+  const state = await gitState(root, ["skill-press.yaml", skillPath, ...extraGitPaths]);
   const executable = await resolveExecutablePath(root, options.executable ?? "tessl");
   const executableSha256 = await hashFile(executable);
   if (!DIGEST.test(executableSha256)) throw new TypeError("unreachable executable digest");
@@ -481,7 +481,7 @@ async function stageTesslLintPlugin(
     preserveTimestamps: false,
   });
   const manifest = {
-    name: `skillpress-local/${context.projectName}`,
+    name: `skill-press-local/${context.projectName}`,
     version: context.projectVersion,
     description: context.projectDescription,
     private: true,
@@ -591,7 +591,7 @@ async function postRunReasons(
   if (!context.trustedCli) reasons.push("untrusted_cli");
   const afterSkill = await digestBoundedTree(join(context.root, context.skillPath));
   const afterState = await gitState(context.root, [
-    "skillpress.yaml",
+    "skill-press.yaml",
     context.skillPath,
     ...extraGitPaths,
   ]);

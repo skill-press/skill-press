@@ -75,7 +75,7 @@ interface InvocationEvidence {
 
 const MAX_EVIDENCE_BYTES = 1024 * 1024;
 const MAX_RAW_BYTES = 4 * 1024 * 1024;
-const EVIDENCE_PATH = /^\.skillpress\/tessl\/([a-f0-9]{64})\/evidence\.json$/u;
+const EVIDENCE_PATH = /^\.skill-press\/tessl\/([a-f0-9]{64})\/evidence\.json$/u;
 const COMMIT = /^[a-f0-9]{40}$/u;
 const reviewSchema = JSON.parse(
   await readFile(
@@ -158,14 +158,14 @@ async function assertPrivateEvidencePath(root: string, input: string): Promise<s
       issue(
         "release.evidence.path",
         "/evidence",
-        "evidence must be .skillpress/tessl/<run-id>/evidence.json",
+        "evidence must be .skill-press/tessl/<run-id>/evidence.json",
       ),
     ]);
   }
   const components = [
-    join(root, ".skillpress"),
-    join(root, ".skillpress", "tessl"),
-    join(root, ".skillpress", "tessl", match[1] as string),
+    join(root, ".skill-press"),
+    join(root, ".skill-press", "tessl"),
+    join(root, ".skill-press", "tessl", match[1] as string),
   ];
   for (const component of components) {
     const metadata = await lstat(component);
@@ -682,7 +682,7 @@ export async function checkTesslReleaseGate(
   const evalSource = safeRelativeDirectory(root, options.evalSource, "/evalSource");
   const skillPath = safeRelativeDirectory(root, config.skill.path, "/skill");
   const sourceCommit = await gitHead(root);
-  const configSha256 = sha256(await readFile(join(root, "skillpress.yaml")));
+  const configSha256 = sha256(await readFile(join(root, "skill-press.yaml")));
   const skillSha256 = await digestBoundedTree(join(root, skillPath));
   const scenarioSourceSha256 = await digestBoundedTree(join(root, evalSource));
   const capturedEvalSource = safeRelativeDirectory(
@@ -727,7 +727,7 @@ export async function checkTesslReleaseGate(
   );
   addCheck(
     issues,
-    !(await gitInputsDirty(root, ["skillpress.yaml", skillPath, evalSource])),
+    !(await gitInputsDirty(root, ["skill-press.yaml", skillPath, evalSource])),
     "release.git.dirty",
     "/project",
     "release-relevant inputs must be clean",
@@ -820,7 +820,7 @@ export async function checkTesslReleaseGate(
     else throw error;
   }
   const finalCommit = await gitHead(root);
-  const finalConfigSha256 = sha256(await readFile(join(root, "skillpress.yaml")));
+  const finalConfigSha256 = sha256(await readFile(join(root, "skill-press.yaml")));
   const finalSkillSha256 = await digestBoundedTree(join(root, skillPath));
   const finalScenarioSha256 = await digestBoundedTree(join(root, evalSource));
   const finalCapturedScenarioSha256 = await digestExistingTree(join(root, capturedEvalSource));
@@ -832,7 +832,7 @@ export async function checkTesslReleaseGate(
     join(root, capturedEvalSource),
     config.skill.name,
   );
-  const finalDirty = await gitInputsDirty(root, ["skillpress.yaml", skillPath, evalSource]);
+  const finalDirty = await gitInputsDirty(root, ["skill-press.yaml", skillPath, evalSource]);
   addCheck(
     issues,
     finalCommit === sourceCommit &&

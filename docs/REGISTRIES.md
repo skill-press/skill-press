@@ -1,166 +1,218 @@
-# Registry publication guide
+# Canonical registry and distribution contract
 
-SkillPress generates every target distribution from one canonical Agent Skill. Provider-only
-frontmatter and manifests live in private staging; they never become a second hand-maintained
-source. Publication uses the TypeScript adapter APIs in 0.1.0 and always starts with a dry run.
+Skill Press has one publication authority: the registry at `https://skill-press.com`. The CLI
+submits an exact candidate only to the fixed API at `https://skill-press.com/api/v1`; it does not
+publish author-maintained copies across multiple Agent Skill platforms.
 
-## Capability matrix
+> [!IMPORTANT]
+> This document defines the client protocol and intended service contract. The production registry
+> backend, account/token issuance, immutable download service, and install commands are not live
+> yet. Today, `skpress submit --dry-run` can prepare and validate the exact candidate locally.
 
-| Provider ID | Capability | Required identity or credential | Verified success | Rollback boundary |
-| --- | --- | --- | --- | --- |
-| `github` | publish | authenticated `gh` / `GH_TOKEN` | public `main` and `v<version>` resolve to the source commit, release assets/digests match, `agent-skills` topic exists | release/tag deletion is manual; pushed history remains |
-| `npm` | publish | protected GitHub Actions OIDC workflow | exact public `@mushanyoung/skillpress@<version>` metadata, repository, tarball integrity, and provenance | versions are immutable; deprecation/unpublish is policy-bound and manual |
-| `tessl` | publish | pinned Tessl CLI, `TESSL_TOKEN`, workspace approval | exact public plugin version archive matches every projected byte, path, count, and executable mode | public cannot become private; unpublish is limited to two days, then archive manually |
-| `skills-sh` | derived | exact public GitHub source; optional read tokens | source is exact; listing metadata is recorded only when independently visible | no mutation; ranking/indexing is organic |
-| `askill-sh` | publish | official askill CLI login as configured author | exact immutable version and raw projected `SKILL.md` match | removal or a later version is manual |
-| `agentskillhub-dev` | publish | none; public GitHub source | import completes and exact path, commit, source, and content record become visible | public import is a provider snapshot; request removal manually |
-| `agent-skills-hub-catalog` | submit | authenticated `gh` as contributor | exact open PR or exact merged upstream tree is verified; capability remains submit while review is open | close PR/delete branch manually; merged history follows upstream policy |
-| `clawhub` | publish | official CLI login and explicit `MIT-0` consent | exact projected version passes asynchronous security review | withdraw manually; MIT-0 grant and version history are irreversible |
+## Authority matrix
 
-Provider IDs are exact configuration values. `publish`, `submit`, and `derived` are receipt
-capabilities, not synonyms. A derived target cannot execute steps; a submit target is not published
-until its external acceptance condition is met.
+| Surface | Role | Authoritative for | Explicitly not authoritative for |
+| --- | --- | --- | --- |
+| Skill Press registry | Canonical skill registry | namespace, review result, immutable release, artifact digest, attestation, trust history | an author's source-control history |
+| GitHub | Source and transparency | repository and exact source commit | Skill Press acceptance, release trust, or installation safety |
+| npm | Developer-tool distribution | `@skill-press/cli` package versions and provenance | Agent Skill versions |
+| Tessl | External evidence provider | official Quality and Impact results returned by its pinned CLI | canonical publication or trust state |
+| External catalogs and mirrors | Future discovery | their own listing availability | acceptance, canonical bytes, or current trust unless verified from Skill Press |
 
-## GitHub (`github`)
+The Skill Press meta-skill follows the same rule: its canonical source belongs in
+`skill-press/skill-press`, and its first authoritative Agent Skill release belongs in the Skill
+Press registry. It is not independently published to third-party skill registries at launch.
 
-The adapter requires the configured repository to exist and be public, authenticates the GitHub
-CLI, and runs official skill validation. Its journaled steps push the exact source commit to
-`main`, add the `agent-skills` topic, then create `v<version>` with the `.skill`, `.zip`, checksums,
-and provenance artifacts. Verification binds branch, tag, release metadata, every asset digest,
-and topic.
+## No author-facing multi-publish
 
-Repository creation is deliberately outside the adapter: create it with explicit owner authority
-before dry run. Before the all-target dry run, push the clean candidate commit to public `main` and
-wait for required CI; do not create the version tag or Release. The GitHub adapter runs last, so
-its source step should then be a no-op and its final step creates the exact tag/Release only after
-the first five targets verify. Existing tags/releases are reused only if every immutable fact
-matches. See the
-[GitHub CLI manual](https://cli.github.com/manual/) and
-[GitHub release documentation](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases).
+Skill Press does not provide author-facing multi-publish.
 
-## npm (`npm`)
+`skill-press.yaml` contains no provider target list. `skpress submit` has no `--target`, custom
+registry URL, or third-party credential option. This avoids several failure classes:
 
-Only the scoped package `@mushanyoung/skillpress` is valid. Production npm publication is not part
-of the local multi-registry saga: the final GitHub target creates the formal Release, which starts
-the protected `release.yml` workflow. Its unprivileged job verifies the exact release assets and
-tarball; its separately approved job receives OIDC, publishes that unchanged tarball, and verifies
-registry integrity and provenance. The exported adapter still fails closed on a conflicting
-existing version, but it is not used as a second production publish path.
+- the same version resolving to different bytes on different platforms;
+- provider-only metadata drifting away from the canonical `SKILL.md`;
+- authors granting broad credentials to every local project;
+- a weak downstream review being mistaken for Skill Press approval;
+- one unavailable catalog blocking publication everywhere;
+- security quarantine or revocation failing to reach users of an untracked copy.
 
-The protected job first distinguishes an explicit 404 from an exact existing version and from
-conflicting or unavailable state. It publishes only the explicit-absent case. The exact-existing
-case revalidates the remote DSSE/SLSA subject digest, repository, source commit, GitHub-hosted
-builder, and transparency-log presence, then runs npm's cryptographic `npm audit signatures`
-verification before recovering the receipt. If a post-publish step fails, rerun the original
-workflow run; never recreate or edit the GitHub Release to retrigger it.
+Portability is still a product goal. An immutable Skill Press bundle can be exported, cached, or
+mirrored as the exact same bytes. Portability does not require multiple independent publication
+authorities.
 
-npm requires the package to exist before a trusted publisher can be configured. Claim the package
-once with a 2FA-approved `0.0.0` bootstrap version under the `bootstrap` dist-tag, then bind GitHub
-owner `mushanyoung`, repository `skillpress`, workflow filename `release.yml`, environment `npm`,
-and allowed action `npm publish`. No npm write token belongs in GitHub. The protected environment
-reviewer approves only after the local saga receipt, Tessl gate, release assets, and verify job all
-bind to the same source commit.
+## Fixed API boundary
 
-Configure npm's trusted publisher with workflow filename `release.yml` and GitHub environment
-`npm`. Trusted publication of a public package from a public repository automatically generates
-provenance. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/) and
-[npm provenance](https://docs.npmjs.com/generating-provenance-statements/). The protected job also
-uses npm's documented
-[signature audit](https://docs.npmjs.com/cli/v11/commands/npm-audit/#audit-signatures).
+The production client compiles in these endpoints:
 
-## Tessl (`tessl`)
+```text
+GET  https://skill-press.com/api/v1/session
+POST https://skill-press.com/api/v1/submissions
+GET  https://skill-press.com/api/v1/submissions/{id}
+```
 
-SkillPress pins official Tessl CLI 0.101.0 by executable digest. The adapter projects
-`.tessl-plugin/plugin.json` and the complete canonical tree, requires a public workspace identity,
-and runs `tessl plugin publish --dry-run --skip-evals --verbose` before mutation. A temporary empty
-nested Git boundary prevents Tessl 0.101.0 from inheriting the outer ignore rule that protects the
-private projection; SkillPress removes the boundary after every dry run and publication attempt.
-First-public workspace approval is an external web workflow. Verification downloads the exact
-immutable public version through the CLI API and compares the complete archive.
+Project files cannot override the scheme, origin, base path, or redirects. This is a credential
+boundary: `SKILL_PRESS_TOKEN` must never be sent to an origin selected by untrusted project input.
 
-Tessl publication does not replace the separate pre-release Quality and Impact gate; both official
-scores must be current and at least the configured thresholds. See the
-[Tessl CLI reference](https://docs.tessl.io/reference/cli-commands),
-[plugin configuration](https://docs.tessl.io/reference/configuration), and
-[public sharing lifecycle](https://docs.tessl.io/distribute/sharing-plugins-publicly).
+Every request uses:
 
-## skills.sh (`skills-sh`)
+- `Authorization: Bearer <SKILL_PRESS_TOKEN>`;
+- `Skill-Press-Protocol-Version: 1`;
+- JSON responses with a bounded body;
+- redirect rejection;
+- a bounded timeout.
 
-skills.sh has no supported write API for SkillPress. The derived adapter first proves that the
-public GitHub default branch and canonical skill files exactly match the packaged source. It then
-queries listing status when the optional Vercel OIDC context is available. Missing listing data
-does not become a fabricated publication result: the receipt remains `derived`, with the public
-source/listing URL when available.
+The submission request is multipart and includes exactly:
 
-Installation activity controls organic indexing and ranking. Publish the exact public GitHub
-source and let users install it naturally; do not automate installs or scrape browser flows. See
-[skills.sh](https://skills.sh/) for the public index.
+- `manifest`: deterministic `skillpress.submission-manifest` JSON;
+- `artifact`: the canonical deterministic skill archive;
+- `provenance`: source, tree, runtime, and package bindings;
+- `checksums`: exact release payload digests;
+- `reviewEvidence`: current Tessl Quality evidence;
+- `evalEvidence`: current Tessl Impact evidence.
 
-## askill.sh (`askill-sh`)
+The manifest binds the explicitly requested lowercase registry namespace, project version, Git
+source commit, project-config digest, complete skill-tree digest, artifact digest, evidence digests,
+and eval-source digest. The namespace is neither `author.github` nor a value silently inferred from
+the repository owner; the service must authorize the authenticated submitter for it. The manifest
+says `serverValidationRequired: true` and marks client evidence advisory. The service must not
+convert a client upload directly into a trusted release.
 
-The adapter requires official askill CLI 0.1.15 or newer and a login whose GitHub author matches the
-configured adapter option. It creates a private `SKILL.md` projection with target `slug` and
-`version`, runs official validation, publishes that projection, then verifies the immutable
-provider ID, author, slug, version, and raw source-bound projected content.
+`GET /session` confirms authentication only. The `POST /submissions` transaction must verify that
+the authenticated principal controls the manifest namespace before creating a candidate, reserving
+the idempotency key or version, or retaining the upload. Authorization failure must leave no
+namespace, candidate, idempotency, version, or artifact record behind.
 
-Install the pinned entrypoint with `npm install --global askill-cli@0.1.15`, then run `askill login`
-interactively before local publication. An absent, malformed, unavailable, or conflicting listing
-is not safe to overwrite. See [askill.sh](https://askill.sh/) for the provider and official CLI
-entrypoint.
+## Idempotency and recovery
 
-## Agent Skill Hub (`agentskillhub-dev`)
+The client derives an idempotency key from the exact deterministic submission manifest and sends
+it as `Idempotency-Key`. The same manifest must resolve to the same submission resource. A version
+or key conflict with different bytes fails closed.
 
-Agent Skill Hub documents public repository analysis/import endpoints that do not require a
-credential. Lack of authentication does not make the POST harmless: SkillPress classifies import
-as a mutation and calls it only under explicit execution. Preflight analyzes the exact public
-GitHub repository/path; execution imports it; verification polls the public record and binds the
-repository, canonical path, source commit, and skill contents.
+Before and after the request, the client rechecks:
 
-Timeouts and provider errors remain ambiguous and fail closed. Do not post again until a read-only
-detail query establishes state. See [agentskillhub.dev](https://agentskillhub.dev/) for current
-provider behavior.
+- the current Tessl release gate;
+- the clean source commit;
+- the packaged artifact inventory and digests;
+- the generated manifest and idempotency key;
+- the remote namespace, source commit, version, artifact digest, and status version.
 
-## Agent Skills Hub catalog (`agent-skills-hub-catalog`)
+A mutating attempt writes a private journal to:
 
-This adapter contributes to
-[`agent-skills-hub/agent-skills-hub`](https://github.com/agent-skills-hub/agent-skills-hub). It
-binds the canonical tracked files to the packaged commit, verifies contributor identity, checks
-upstream and fork state, creates/reuses a fork, writes a deterministic contribution branch, and
-opens/reuses a pull request. A conflicting upstream path, branch, fork, or PR fails closed.
-Fork absence is established only by an explicit REST HTTP 404; authentication, transport, and
-provider errors remain unavailable rather than being treated as permission to create a fork.
+```text
+.skill-press/submissions/<idempotency-key>/receipt.json
+```
 
-An open PR is `pr_review_required`, not publication. Adapter verification can prove either an exact
-open submission or the exact files merged to upstream `main`; the receipt's `submit` capability and
-PR URL preserve that distinction even when saga status is `verified`. Pull-request text must
-disclose material AI assistance when required by the target repository's current contribution
-policy.
+The journal is written after state transitions and can be resumed only with the exact artifact and
+evidence bindings. A timeout or malformed response is ambiguous; it is not proof that the server
+did nothing. If a validated remote ID was saved, resume refreshes that exact resource without a
+second POST. If no remote ID was received, resume repeats the POST with the identical manifest and
+idempotency key so the service resolves it to the same candidate rather than creating another one.
 
-## ClawHub (`clawhub`)
+The receipt records client operation states `submitting`, `failed`, and `submitted`. A dry run
+returns an unpersisted `prepared` receipt. These are local transport/recovery states, not service
+review or release trust.
 
-ClawHub publication requires official CLI 0.23.3 or newer, the configured owner identity, an exact
-dry-run fingerprint/file count, and an explicit constructor option `licenseConsent: "MIT-0"`.
-SkillPress creates a private MIT-0 target projection and does not edit the canonical skill's
-license. Execution rechecks CLI, identity, remote state, projection, and fingerprint immediately
-before publishing, then polls the asynchronous security result.
+## Submission review lifecycle
 
-Pending moderation is journaled but does not become verified until the exact version is accepted;
-a rejection or conflicting version blocks the target. The MIT-0 grant is deliberate and
-irreversible even if a listing is later withdrawn. See the
-[ClawHub publishing guide](https://clawhub.ai/clawhub-master/skills/skill-publish-guide).
+The canonical service resource exposes one candidate review status:
 
-## Ordering, recovery, and receipts
+| Status | Contract |
+| --- | --- |
+| `received` | The service accepted and durably identified the exact candidate |
+| `automated-review` | Isolated server-side validation and evaluation are running |
+| `curator-review` | Automated policy permits human review to proceed |
+| `changes-requested` | The candidate cannot advance without an updated, newly identified submission |
+| `accepted` | Automated and curator review approved the candidate; release creation is pending |
+| `published` | An immutable release record exists and matches the submitted artifact |
+| `rejected` | The candidate will not be published |
 
-The saga preflights every configured target before the first mutation and processes adapters in
-configuration order. It stops on the first execution or verification failure. Every completed step
-is persisted before advancing, so resume can skip exact verified work and retry only unfinished
-steps.
+`received`, `automated-review`, `curator-review`, `changes-requested`, and `accepted` must never be
+displayed as “published.” A local `operationStatus: submitted` means only that the client verified
+the remote candidate record.
 
-The production sequence has two explicit checkpoints: first publish the clean candidate commit to
-public GitHub `main` and wait for CI; then run the six-target saga. This lets every source-derived
-preflight bind public `main` while keeping the formal GitHub Release last.
+Published resources additionally expose a release record with:
 
-Never reorder adapters, edit a receipt, rebuild the artifact, or change the source commit during
-resume. Preserve the original private storage and use `resumeReceiptPath`. See
-[the operations runbook](OPERATIONS.md) for the API sequence and
-[the security model](SECURITY.md) for credential, storage, and rollback requirements.
+- canonical locator;
+- semantic version;
+- immutable artifact SHA-256;
+- canonical release URL;
+- attestation URL;
+- current release trust state and sequence.
+
+## Release trust lifecycle
+
+Trust is separate from candidate review:
+
+| Trust | Required consumer behavior |
+| --- | --- |
+| `trusted` | Normal installation may proceed after digest and attestation verification |
+| `quarantined` | Block new installation by default while an incident is investigated |
+| `revoked` | Refuse new installation and surface remediation for existing locks |
+
+The bytes, version, locator, and original attestation of a published release are immutable. Trust
+changes append a newer authenticated state with a monotonically increasing sequence; quarantine or
+revocation never rewrites history to pretend the version did not exist.
+
+A cached artifact is not enough to install safely when current trust cannot be established. The
+future installation design must document its offline policy and fail closed for a release whose
+trust state is unavailable, quarantined, revoked, mismatched, or older than the lock's observed
+sequence.
+
+## GitHub role
+
+GitHub hosts source, reviewable history, CI, issues, and the Skill Press CLI product release. A
+Skill Press candidate binds a canonical GitHub repository and exact commit, but generic submission
+does not push branches, tags, topics, or releases to an author's repository.
+
+The repository `skill-press/skill-press` may create GitHub Releases for the CLI product and its
+audited build artifacts. That is product release infrastructure, not the Agent Skill registry.
+
+## npm role
+
+npm contains one package: `@skill-press/cli`, with executable `skpress`. The package uses
+GitHub Actions OIDC trusted publishing and npm provenance. npm does not contain canonical Agent
+Skill release records, curator decisions, or trust history.
+
+The absence, deprecation, or compromise of an npm CLI version is handled through the CLI product
+supply chain. It does not mutate the immutable Agent Skill artifacts already held by the Skill
+Press registry.
+
+## Tessl role
+
+Tessl provides external evidence used by the client release gate.
+Skill Press does not publish the canonical skill to Tessl, and a Tessl result does not itself
+create a Skill Press submission, curator approval, release, or trust record. The server may
+independently re-run or corroborate external evidence under its current policy.
+
+## Future catalogs, mirrors, and feeds
+
+External discovery is a later platform feature, not an author command. A future Skill Press feed
+or syndication worker may expose a release to a catalog only after canonical publication. It must:
+
+1. use the exact canonical artifact digest and version;
+2. link to the canonical Skill Press release and attestation;
+3. distinguish a mirror from the publication authority;
+4. propagate current `trusted`, `quarantined`, or `revoked` state where the target supports it;
+5. avoid provider-specific source mutations or silent license changes;
+6. record failure independently without blocking or rolling back canonical publication;
+7. never fabricate installation activity, rankings, acceptance, or verification.
+
+If a catalog cannot preserve those boundaries, Skill Press may provide a discovery link rather
+than a mirrored package. Organic indexing of public GitHub source is an external fact and is not a
+Skill Press publication receipt.
+
+## Rollback and incident boundary
+
+Candidate review can be stopped by `changes-requested` or `rejected`. Published versions are
+immutable and are not overwritten or reused. If a released skill becomes unsafe:
+
+1. move the release to `quarantined` while assessing scope;
+2. preserve the exact artifact, attestation, review record, and audit history;
+3. move to `trusted` only after a documented resolution, or to `revoked` when trust cannot be
+   restored;
+4. publish a fixed new semantic version rather than modifying the old bytes;
+5. notify locked consumers and downstream mirrors through authenticated trust-state updates.
+
+Deletion is not the primary safety control because it destroys the evidence consumers need to
+understand an incident. Trust history and replacement guidance are the durable rollback mechanism.

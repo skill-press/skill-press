@@ -41,7 +41,7 @@ function invokeBin(...args: readonly string[]): {
   };
 }
 
-describe("compiled SkillPress binary", () => {
+describe("compiled Skill Press binary", () => {
   it("prints help as a real process", () => {
     const result = invokeBin("--help");
 
@@ -58,8 +58,8 @@ describe("compiled SkillPress binary", () => {
     expect(result.stderr).toBe("");
   });
 
-  it("returns the usage exit code for an incomplete create command", () => {
-    const result = invokeBin("create");
+  it("returns the usage exit code for an incomplete init command", () => {
+    const result = invokeBin("init");
 
     expect(result.status).toBe(2);
     expect(result.stdout).toBe("");
@@ -79,13 +79,13 @@ describe("compiled SkillPress binary", () => {
     const parent = mkdtempSync(join(realpathSync(tmpdir()), "skillpress-bin-test-"));
     const output = join(parent, "project");
     try {
-      const result = invokeBin("create", "--brief", briefPath, "--output", output, "--json");
+      const result = invokeBin("init", "--brief", briefPath, "--output", output, "--json");
 
       expect(result.status, result.stderr).toBe(0);
       expect(result.stderr).toBe("");
       expect(JSON.parse(result.stdout)).toMatchObject({
         ok: true,
-        command: "create",
+        command: "init",
         root: output,
         skillPath: "skills/incident-summary",
       });

@@ -1,7 +1,8 @@
-schemaVersion: 1
+schemaVersion: 2
 name: incident-summary
 title: Incident Summary
 summary: Summarize operational incident records when responders need a factual, source-linked handoff.
+namespace: example
 repository: https://github.com/example/incident-summary
 author:
   name: Example Maintainer
@@ -69,8 +70,6 @@ tests:
     - name: project tests
       argv: [node, --test]
       timeoutSeconds: 300
-publish:
-  targets: [github, tessl]
 scenarios:
   training:
     positive:

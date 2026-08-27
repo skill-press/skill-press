@@ -72,9 +72,11 @@ function paths(result) {
     "dist/bin.js",
     "dist/index.js",
     "package.json",
-    "schemas/skillpress.schema.json",
+    "schemas/skill-press.schema.json",
     "schemas/package-provenance.schema.json",
-    "schemas/publication-receipt.schema.json",
+    "schemas/submission-manifest.schema.json",
+    "schemas/submission-resource.schema.json",
+    "schemas/submission-receipt.schema.json",
     "schemas/improve-adapter-request.schema.json",
     "schemas/improve-adapter-response.schema.json",
   ]) {
@@ -93,7 +95,7 @@ const packageJson = JSON.parse(await readFile(join(root, "package.json"), "utf8"
 const temporaryBase = await realpath(
   process.env.RUNNER_TEMP ?? (process.platform === "darwin" ? "/private/tmp" : tmpdir()),
 );
-const temporary = await mkdtemp(join(temporaryBase, "skillpress-package-"));
+const temporary = await mkdtemp(join(temporaryBase, "skill-press-package-"));
 
 try {
   const dryRun = packResult((await run(npm, ["pack", "--dry-run", "--json", "--silent"])).stdout);
@@ -139,7 +141,7 @@ try {
   await mkdir(installRoot, { mode: 0o700 });
   await writeFile(
     join(installRoot, "package.json"),
-    `${JSON.stringify({ name: "skillpress-install-smoke", private: true })}\n`,
+    `${JSON.stringify({ name: "skill-press-install-smoke", private: true })}\n`,
     { mode: 0o600 },
   );
   await run(
@@ -151,16 +153,16 @@ try {
     installRoot,
     "node_modules",
     ".bin",
-    process.platform === "win32" ? "skillpress.cmd" : "skillpress",
+    process.platform === "win32" ? "skpress.cmd" : "skpress",
   );
   const version = (await run(installedBinary, ["--version"], installRoot)).stdout.trim();
   if (version !== packageJson.version) fail("installed CLI returned the wrong version");
   const apiProbe =
-    'const api = await import("@mushanyoung/skillpress");' +
-    'if (typeof api.checkProject !== "function" || typeof api.runPublicationSaga !== "function") process.exit(1);';
+    'const api = await import("@skill-press/cli");' +
+    'if (typeof api.checkProject !== "function" || typeof api.runSkillSubmission !== "function") process.exit(1);';
   await run(process.execPath, ["--input-type=module", "--eval", apiProbe], installRoot);
 
-  const releaseOutput = process.env.SKILLPRESS_PACKAGE_OUTPUT_DIR;
+  const releaseOutput = process.env.SKILL_PRESS_PACKAGE_OUTPUT_DIR;
   if (releaseOutput !== undefined) {
     if (!isAbsolute(releaseOutput)) fail("release output directory must be absolute");
     const destination = resolve(releaseOutput);

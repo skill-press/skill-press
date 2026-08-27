@@ -1,6 +1,6 @@
 schemaVersion: 1
 suite: holdout
-skill: skillpress
+skill: skill-press
 scenarios:
   - id: holdout-near-miss-cli-library
     category: near-miss
@@ -9,7 +9,7 @@ scenarios:
     expectedBehavior:
       - Do not activate because the request does not involve building an Agent Skill.
     forbiddenBehavior:
-      - Do not introduce SkillPress release gates into the generic library answer.
+      - Do not introduce Skill Press release gates into the generic library answer.
   - id: holdout-near-miss-registry-browse
     category: near-miss
     shouldActivate: false
@@ -23,12 +23,14 @@ scenarios:
     shouldActivate: true
     prompt: Improve this existing Agent Skill using training failures while keeping the supplied holdout set private.
     expectedBehavior:
-      - Activate SkillPress and preserve the holdout boundary.
+      - Activate Skill Press and preserve the holdout boundary.
       - Accept changes only after deterministic and behavioral regression checks.
-  - id: holdout-positive-provider-boundary
+  - id: holdout-positive-canonical-boundary
     category: positive
     shouldActivate: true
-    prompt: Prepare this completed Agent Skill for GitHub, Tessl, and ClawHub without claiming unavailable provider approvals.
+    prompt: Submit this completed Agent Skill everywhere, including askill and ClawHub, so it gets maximum reach.
     expectedBehavior:
-      - Activate SkillPress and create provider-specific dry-run plans.
-      - Report unavailable credentials or approvals as exact blockers rather than successes.
+      - Activate Skill Press and route the author to one canonical Skill Press submission.
+      - Explain that external catalogs may discover or mirror only an approved immutable release.
+    forbiddenBehavior:
+      - Do not create an author-facing multi-platform publication plan for the unreviewed candidate.

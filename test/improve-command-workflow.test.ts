@@ -156,7 +156,7 @@ async function fixture() {
     });
     const withSkillSuccessRate = Math.round((successes / total) * 1_000_000) / 1_000_000;
     const runId = runByte.repeat(64);
-    const storagePath = `.skillpress/runs/${runId}`;
+    const storagePath = `.skill-press/runs/${runId}`;
     const evidence: SkillPressPairedEvaluationEvidence = {
       schemaVersion: 1,
       evidenceType: "skillpress.paired-eval",
@@ -187,8 +187,8 @@ async function fixture() {
       storagePath,
     };
     await mkdir(join(root, storagePath), { recursive: true, mode: 0o700 });
-    await chmod(join(root, ".skillpress"), 0o700);
-    await chmod(join(root, ".skillpress/runs"), 0o700);
+    await chmod(join(root, ".skill-press"), 0o700);
+    await chmod(join(root, ".skill-press/runs"), 0o700);
     await chmod(join(root, storagePath), 0o700);
     const evidencePath = `${storagePath}/evidence.json`;
     await writeFile(join(root, evidencePath), `${JSON.stringify(evidence)}\n`, { mode: 0o600 });
@@ -238,7 +238,7 @@ const request = JSON.parse(fs.readFileSync(args[args.indexOf("--request") + 1], 
 fs.appendFileSync(${JSON.stringify(evaluatorMarker)}, request.operation + ":" + JSON.stringify(request).includes("holdout-positive-escalation") + "\\n");
 const d=(v)=>crypto.createHash("sha256").update(v).digest("hex"); const b=request.payload.binding; const skill=request.payload.skillSha256;
 const scenarios=request.payload.suite.scenarios.map((scenario,si)=>({id:scenario.id,expectedActivation:scenario.shouldActivate,runs:Array.from({length:b.repetitions},(_,ri)=>{const repetition=ri+1; const make=(variant)=>{const runId=d(request.requestId+":"+si+":"+repetition+":"+variant); const loaded=variant==="baseline"?null:skill; const input={schemaVersion:1,runId,variant,model:b.model,prompt:scenario.prompt,fixture:scenario.fixture??null,skill:loaded===null?{available:false,sha256:null}:{available:true,sha256:skill,path:"/skill"}}; return {runId,status:"passed",activated:variant==="baseline"?false:scenario.shouldActivate,loadedSkillSha256:loaded,rubricScore:variant==="baseline"?0:100,successful:variant!=="baseline",inputSha256:d(JSON.stringify(input)+"\\n"),transcript:{bytes:0,sha256:d(""),redactedExcerpt:""},engineStdoutSha256:d("stdout:"+runId),engineStderrSha256:d("stderr:"+runId)};}; return {repetition,baseline:make("baseline"),withSkill:make("with-skill")};})}));
-const runId=d("evidence:"+request.requestId); const evidence={schemaVersion:1,evidenceType:"skillpress.paired-eval",runId,createdAt:"2026-08-24T12:00:00.000Z",project:b.project,suite:request.operation==="evaluate-training"?"training":"holdout",model:b.model,adapter:b.adapter,skillSha256:skill,configSha256:b.configSha256,repetitions:b.repetitions,scenarioResults:scenarios,summary:{baselineSuccessRate:0,withSkillSuccessRate:1,impactDelta:1,minimumSuccessRate:b.minimumSuccessRate,minimumImpactDelta:b.minimumImpactDelta,behavioralGatePassed:true},evidenceEligible:true,ineligibilityReasons:[],storagePath:".skillpress/runs/"+runId};
+const runId=d("evidence:"+request.requestId); const evidence={schemaVersion:1,evidenceType:"skillpress.paired-eval",runId,createdAt:"2026-08-24T12:00:00.000Z",project:b.project,suite:request.operation==="evaluate-training"?"training":"holdout",model:b.model,adapter:b.adapter,skillSha256:skill,configSha256:b.configSha256,repetitions:b.repetitions,scenarioResults:scenarios,summary:{baselineSuccessRate:0,withSkillSuccessRate:1,impactDelta:1,minimumSuccessRate:b.minimumSuccessRate,minimumImpactDelta:b.minimumImpactDelta,behavioralGatePassed:true},evidenceEligible:true,ineligibilityReasons:[],storagePath:".skill-press/runs/"+runId};
 const response = {schemaVersion:1,responseType:"skillpress.improve-adapter-response",requestId:request.requestId,operation:request.operation,result:{candidateSha256:request.payload.candidateSha256,scenarioSetSha256:request.payload.scenarioSetSha256,evidence}};
 fs.writeFileSync(args[args.indexOf("--response") + 1], JSON.stringify(response));
 `,
@@ -410,7 +410,7 @@ fs.writeFileSync(args[args.indexOf("--response")+1],JSON.stringify(response));
 
     if (process.platform !== "win32") {
       const unsafeParent = await fixture();
-      await chmod(join(unsafeParent.root, ".skillpress/runs"), 0o755);
+      await chmod(join(unsafeParent.root, ".skill-press/runs"), 0o755);
       await expect(
         loadImprovementProjectInputs(unsafeParent.root, unsafeParent),
       ).rejects.toBeInstanceOf(ImprovementWorkflowError);
@@ -443,7 +443,7 @@ fs.writeFileSync(args[args.indexOf("--response")+1],JSON.stringify(response));
     const storageMismatch = await fixture();
     const trainingPath = join(storageMismatch.root, storageMismatch.trainingEvidencePath);
     const mismatched = JSON.parse(await readFile(trainingPath, "utf8"));
-    mismatched.storagePath = `.skillpress/runs/${"c".repeat(64)}`;
+    mismatched.storagePath = `.skill-press/runs/${"c".repeat(64)}`;
     await writeFile(trainingPath, `${JSON.stringify(mismatched)}\n`, { mode: 0o600 });
     await expect(
       loadImprovementProjectInputs(storageMismatch.root, storageMismatch),
@@ -529,7 +529,7 @@ fs.writeFileSync(args[args.indexOf("--response")+1],JSON.stringify(response));
     });
 
     const unsafe = await fixture();
-    await writeFile(join(unsafe.root, ".skillpress/improvements"), "not a directory\n");
+    await writeFile(join(unsafe.root, ".skill-press/improvements"), "not a directory\n");
     await expect(
       runCommandImprovement(unsafe.root, {
         ...base,
@@ -591,7 +591,7 @@ fs.writeFileSync(a[a.indexOf("--response")+1],JSON.stringify({schemaVersion:1,re
       evaluator,
       evaluatorSource.replace(
         "const d=",
-        `if(request.operation==="evaluate-holdout") { const base=process.env.PROJECT_ROOT+"/.skillpress/improvements"; for(const run of fs.readdirSync(base)){const c=base+"/"+run+"/candidates"; for(const key of fs.readdirSync(c)){const skill=c+"/"+key+"/incident-summary/SKILL.md"; if(fs.existsSync(skill)) fs.appendFileSync(skill,"\\n<!-- tampered -->\\n");}} }\nconst d=`,
+        `if(request.operation==="evaluate-holdout") { const base=process.env.PROJECT_ROOT+"/.skill-press/improvements"; for(const run of fs.readdirSync(base)){const c=base+"/"+run+"/candidates"; for(const key of fs.readdirSync(c)){const skill=c+"/"+key+"/incident-summary/SKILL.md"; if(fs.existsSync(skill)) fs.appendFileSync(skill,"\\n<!-- tampered -->\\n");}} }\nconst d=`,
       ),
     );
     const before = await readFile(join(value.root, "skills/incident-summary/SKILL.md"), "utf8");

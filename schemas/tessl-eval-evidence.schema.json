@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/mushanyoung/skillpress/main/schemas/tessl-eval-evidence.schema.json",
+  "$id": "https://raw.githubusercontent.com/skill-press/skill-press/main/schemas/tessl-eval-evidence.schema.json",
   "title": "SkillPressTesslEvalEvidence",
   "description": "Paired Impact evidence parsed from completed Tessl CLI eval results.",
   "type": "object",
@@ -68,7 +68,7 @@
     "result": { "$ref": "#/definitions/invocation" },
     "storagePath": {
       "type": "string",
-      "pattern": "^\\.skillpress/tessl/[a-f0-9]{64}$"
+      "pattern": "^\\.skill-press/tessl/[a-f0-9]{64}$"
     },
     "evidenceEligible": { "type": "boolean" },
     "ineligibilityReasons": {

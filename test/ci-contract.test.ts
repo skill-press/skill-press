@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 
-import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
 
 interface WorkflowStep {
   readonly if?: string;
@@ -40,6 +40,13 @@ async function workflow(
   return { source, value: parse(source) as Workflow };
 }
 
+async function json(path: string): Promise<Record<string, unknown>> {
+  return JSON.parse(await readFile(new URL(`../${path}`, import.meta.url), "utf8")) as Record<
+    string,
+    unknown
+  >;
+}
+
 describe("GitHub Actions release contracts", () => {
   it("runs the complete gates on every supported Node.js major", async () => {
     const { value } = await workflow("ci.yml");
@@ -73,6 +80,7 @@ describe("GitHub Actions release contracts", () => {
     expect(value.on).toEqual({ release: { types: ["published"] } });
     expect(value.permissions).toEqual({ contents: "read" });
     expect(verify?.environment).toBeUndefined();
+    expect(verify?.if).toContain("skill-press/skill-press");
     expect(verify?.permissions).toEqual({ contents: "read" });
     expect(verify?.steps?.map((step) => step.uses).filter(Boolean)).toEqual([
       checkout,
@@ -98,7 +106,7 @@ describe("GitHub Actions release contracts", () => {
       "npm run package:verify",
     ]);
     expect(publish?.environment).toBe("npm");
-    expect(publish?.if).toContain("mushanyoung/skillpress");
+    expect(publish?.if).toContain("skill-press/skill-press");
     expect(publish?.if).toContain("!github.event.release.prerelease");
     expect(publish?.permissions).toEqual({ contents: "read", "id-token": "write" });
     expect(publish?.["runs-on"]).toBe("ubuntu-latest");
@@ -125,8 +133,83 @@ describe("GitHub Actions release contracts", () => {
     expect(source).toContain("installed?.integrity !== manifest.integrity");
     expect(source).toContain('v.status !== "audit-match"');
     expect(source).toContain("skillpress.npm-trusted-release");
+    expect(source).toContain("SKILL_PRESS_PACKAGE_OUTPUT_DIR");
+    expect(source).toContain('manifest.name !== "@skill-press/cli"');
+    expect(source).toContain(
+      'manifest.repository !== "https://github.com/skill-press/skill-press"',
+    );
+    expect(source).toMatch(
+      /manifest[.]filename !== `skill-press-cli-\$\{manifest[.]version\}[.]tgz`/u,
+    );
+    expect(source).not.toContain("@mushanyoung/skillpress");
+    expect(source).not.toContain("mushanyoung/skillpress");
     expect(source).not.toContain("npm view");
     expect(source).not.toMatch(/(?:NODE_AUTH_TOKEN|NPM_TOKEN|secrets\.)/u);
     expect(source).not.toContain("workflow_dispatch");
+  });
+
+  it("locks the canonical package, executable, repository, and schema inventory", async () => {
+    const packageJson = await json("package.json");
+    const packageLock = await json("package-lock.json");
+    const lockRoot = (packageLock.packages as Record<string, Record<string, unknown>>)[""];
+
+    expect(packageJson).toMatchObject({
+      name: "@skill-press/cli",
+      description: "Build, verify, submit, and install trusted agent skills.",
+      repository: {
+        type: "git",
+        url: "git+https://github.com/skill-press/skill-press.git",
+      },
+      homepage: "https://skill-press.com",
+      bugs: { url: "https://github.com/skill-press/skill-press/issues" },
+      bin: { skpress: "./dist/bin.js" },
+    });
+    expect(packageJson.bin).toEqual({ skpress: "./dist/bin.js" });
+    expect(lockRoot).toMatchObject({
+      name: "@skill-press/cli",
+      bin: { skpress: "dist/bin.js" },
+    });
+
+    const schemaNames = [
+      "skill-press",
+      "submission-manifest",
+      "submission-resource",
+      "submission-receipt",
+    ] as const;
+    const schemas = await Promise.all(
+      schemaNames.map(async (name) => [name, await json(`schemas/${name}.schema.json`)] as const),
+    );
+    for (const [name, schema] of schemas) {
+      expect(schema.$id).toBe(
+        `https://raw.githubusercontent.com/skill-press/skill-press/main/schemas/${name}.schema.json`,
+      );
+    }
+
+    const project = schemas[0][1];
+    const projectProperties = project.properties as Record<string, unknown>;
+    expect((projectProperties.schemaVersion as Record<string, unknown>).const).toBe(2);
+    expect(project.required).toContain("registry");
+    expect(projectProperties).not.toHaveProperty("publish");
+    expect(project.required).not.toContain("publish");
+
+    const manifest = schemas[1][1];
+    const manifestProperties = manifest.properties as Record<string, Record<string, unknown>>;
+    expect(manifestProperties.configSchemaVersion.const).toBe(2);
+    expect(manifest.required).toContain("registry");
+    expect(
+      (manifestProperties.tool.properties as Record<string, Record<string, unknown>>).name.const,
+    ).toBe("@skill-press/cli");
+
+    expect(schemas[2][1].required).toContain("namespace");
+    expect(
+      (schemas[3][1].properties as Record<string, Record<string, unknown>>).registry.required,
+    ).toContain("namespace");
+
+    await expect(
+      readFile(new URL("../schemas/skillpress.schema.json", import.meta.url), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      readFile(new URL("../schemas/publication-receipt.schema.json", import.meta.url), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

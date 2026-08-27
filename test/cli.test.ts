@@ -22,7 +22,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SkillPressProject } from "../src/config/generated.js";
 import {
   renderCheckHelp,
-  renderCreateHelp,
+  renderInitHelp,
   renderDoctorHelp,
   renderEvalHelp,
   renderHelp,
@@ -30,7 +30,7 @@ import {
   renderHumanTesslReport,
   renderImproveHelp,
   renderPackageHelp,
-  renderPublishHelp,
+  renderSubmitHelp,
   renderStatusHelp,
   renderTestHelp,
   renderTesslHelp,
@@ -65,7 +65,7 @@ function captureIo(): {
   };
 }
 
-describe("SkillPress CLI scaffold", () => {
+describe("Skill Press CLI scaffold", () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     await Promise.all(
@@ -87,7 +87,7 @@ describe("SkillPress CLI scaffold", () => {
       await expect(runCli(args, capture.io)).resolves.toBe(0);
       expect(capture.stdout).toEqual([renderHelp()]);
       expect(capture.stderr).toEqual([]);
-      expect(renderHelp()).toContain("SkillPress");
+      expect(renderHelp()).toContain("Skill Press");
     },
   );
 
@@ -102,11 +102,11 @@ describe("SkillPress CLI scaffold", () => {
     },
   );
 
-  it.each([["--help"], ["-h"]])("renders create help for %s", async (flag) => {
+  it.each([["--help"], ["-h"]])("renders init help for %s", async (flag) => {
     const capture = captureIo();
 
-    await expect(runCli(["create", flag as string], capture.io)).resolves.toBe(0);
-    expect(capture.stdout).toEqual([renderCreateHelp()]);
+    await expect(runCli(["init", flag as string], capture.io)).resolves.toBe(0);
+    expect(capture.stdout).toEqual([renderInitHelp()]);
     expect(capture.stderr).toEqual([]);
   });
 
@@ -145,7 +145,7 @@ describe("SkillPress CLI scaffold", () => {
 
   it.each([
     { command: "package", help: renderPackageHelp },
-    { command: "publish", help: renderPublishHelp },
+    { command: "submit", help: renderSubmitHelp },
     { command: "status", help: renderStatusHelp },
     { command: "doctor", help: renderDoctorHelp },
     { command: "improve", help: renderImproveHelp },
@@ -176,9 +176,7 @@ describe("SkillPress CLI scaffold", () => {
     },
     {
       args: [
-        "publish",
-        "--artifacts",
-        "artifacts",
+        "submit",
         "--review-evidence",
         "review",
         "--eval-evidence",
@@ -188,11 +186,11 @@ describe("SkillPress CLI scaffold", () => {
         "--resume",
         "receipt",
       ],
-      message: "--resume requires --execute",
+      message: "--resume requires --artifacts",
     },
     {
-      args: ["publish", "FORGED\u001b[31m"],
-      message: "Unknown release option",
+      args: ["submit", "FORGED\u001b[31m"],
+      message: "Unknown submit option",
     },
   ])("rejects invalid release arguments: $message", async ({ args, message }) => {
     const capture = captureIo();
@@ -207,7 +205,7 @@ describe("SkillPress CLI scaffold", () => {
     const parent = await temporaryDirectory();
     const project = join(parent, "release-project");
     await expect(
-      runCli(["create", "--brief", briefPath, "--output", project], captureIo().io),
+      runCli(["init", "--brief", briefPath, "--output", project], captureIo().io),
     ).resolves.toBe(0);
     const capture = captureIo();
     await expect(
@@ -217,9 +215,9 @@ describe("SkillPress CLI scaffold", () => {
           "--project",
           project,
           "--review-evidence",
-          `.skillpress/tessl/${"1".repeat(64)}/evidence.json`,
+          `.skill-press/tessl/${"1".repeat(64)}/evidence.json`,
           "--eval-evidence",
-          `.skillpress/tessl/${"2".repeat(64)}/evidence.json`,
+          `.skill-press/tessl/${"2".repeat(64)}/evidence.json`,
           "--eval-source",
           "evals/tessl",
           "--json",
@@ -233,7 +231,7 @@ describe("SkillPress CLI scaffold", () => {
       code: "release_blocked",
       issues: [{ code: "release.storage.unavailable" }],
     });
-    await expect(lstat(join(project, ".skillpress/staging"))).rejects.toMatchObject({
+    await expect(lstat(join(project, ".skill-press/staging"))).rejects.toMatchObject({
       code: "ENOENT",
     });
   });
@@ -328,7 +326,7 @@ describe("SkillPress CLI scaffold", () => {
     const parent = await temporaryDirectory();
     const project = join(parent, "project");
     await expect(
-      runCli(["create", "--brief", briefPath, "--output", project], captureIo().io),
+      runCli(["init", "--brief", briefPath, "--output", project], captureIo().io),
     ).resolves.toBe(0);
     const evalSource = join(project, "tessl-evals");
     await mkdir(join(evalSource, ".tessl-plugin"), { recursive: true });
@@ -484,7 +482,7 @@ else process.exit(2);
 
     const parent = await temporaryDirectory();
     const project = join(parent, "project");
-    await runCli(["create", "--brief", briefPath, "--output", project], captureIo().io);
+    await runCli(["init", "--brief", briefPath, "--output", project], captureIo().io);
     await execFileAsync("git", ["init", "-q"], { cwd: project });
     await execFileAsync("git", ["add", "."], { cwd: project });
     await execFileAsync(
@@ -658,7 +656,7 @@ else process.exit(2);
       },
       evidenceEligible: true,
       ineligibilityReasons: [],
-      storagePath: `.skillpress/runs/${"a".repeat(64)}`,
+      storagePath: `.skill-press/runs/${"a".repeat(64)}`,
     } as unknown as SkillPressPairedEvaluationEvidence;
 
     const passing = renderHumanEvalReport(evidence);
@@ -702,7 +700,7 @@ else process.exit(2);
     const parent = await temporaryDirectory();
     const output = join(parent, "project");
     await expect(
-      runCli(["create", "--brief", briefPath, "--output", output], captureIo().io),
+      runCli(["init", "--brief", briefPath, "--output", output], captureIo().io),
     ).resolves.toBe(0);
     const policyCapture = captureIo();
     await expect(
@@ -754,8 +752,8 @@ else process.exit(2);
     { args: ["bad\nFORGED"] },
     { args: ["\u001b[31mFORGED\u001b[0m"] },
     { args: ["bad\u202eFORGED"] },
-    { args: ["create", "bad\nFORGED"] },
-    { args: ["create", "\u001b[31mFORGED\u001b[0m"] },
+    { args: ["init", "bad\nFORGED"] },
+    { args: ["init", "\u001b[31mFORGED\u001b[0m"] },
   ])("never reflects untrusted command tokens from $args", async ({ args }) => {
     const capture = captureIo();
 
@@ -768,58 +766,58 @@ else process.exit(2);
   });
 
   it.each([
-    { args: ["create"], message: "requires both" },
-    { args: ["create", "--brief"], message: "requires a path" },
+    { args: ["init"], message: "requires both" },
+    { args: ["init", "--brief"], message: "requires a path" },
     {
-      args: ["create", "--brief", briefPath, "--brief", briefPath, "--output", "out"],
+      args: ["init", "--brief", briefPath, "--brief", briefPath, "--output", "out"],
       message: "only once",
     },
     {
-      args: ["create", "--brief", briefPath, "--output", "out", "--output", "other"],
+      args: ["init", "--brief", briefPath, "--output", "out", "--output", "other"],
       message: "only once",
     },
     {
-      args: ["create", "--brief", briefPath, "--output", "out", "--json", "--json"],
+      args: ["init", "--brief", briefPath, "--output", "out", "--json", "--json"],
       message: "only once",
     },
     {
-      args: ["create", "--brief", briefPath, "--output", "out", "positional"],
-      message: "Unknown create argument.",
+      args: ["init", "--brief", briefPath, "--output", "out", "positional"],
+      message: "Unknown init argument.",
     },
     {
-      args: ["create", "--brief", "bad\npath", "--output", "out"],
+      args: ["init", "--brief", "bad\npath", "--output", "out"],
       message: "unambiguous Unicode path",
     },
     {
-      args: ["create", "--brief", "bad\u0085path", "--output", "out"],
+      args: ["init", "--brief", "bad\u0085path", "--output", "out"],
       message: "unambiguous Unicode path",
     },
     {
-      args: ["create", "--brief", "bad\u2028path", "--output", "out"],
+      args: ["init", "--brief", "bad\u2028path", "--output", "out"],
       message: "unambiguous Unicode path",
     },
     {
-      args: ["create", "--brief", "bad\u202epath", "--output", "out"],
+      args: ["init", "--brief", "bad\u202epath", "--output", "out"],
       message: "unambiguous Unicode path",
     },
     {
-      args: ["create", "--brief", "bad\u200bpath", "--output", "out"],
+      args: ["init", "--brief", "bad\u200bpath", "--output", "out"],
       message: "unambiguous Unicode path",
     },
     {
-      args: ["create", "--brief", `bad${String.fromCodePoint(0x10ffff)}path`, "--output", "out"],
+      args: ["init", "--brief", `bad${String.fromCodePoint(0x10ffff)}path`, "--output", "out"],
       message: "unambiguous Unicode path",
     },
     {
-      args: ["create", "--brief", "bad\ufdd0path", "--output", "out"],
+      args: ["init", "--brief", "bad\ufdd0path", "--output", "out"],
       message: "unambiguous Unicode path",
     },
     {
-      args: ["create", "--brief", "bad\ufffepath", "--output", "out"],
+      args: ["init", "--brief", "bad\ufffepath", "--output", "out"],
       message: "unambiguous Unicode path",
     },
     {
-      args: ["create", "--brief", `bad${String.fromCodePoint(0x10fffe)}path`, "--output", "out"],
+      args: ["init", "--brief", `bad${String.fromCodePoint(0x10fffe)}path`, "--output", "out"],
       message: "unambiguous Unicode path",
     },
   ])("returns usage exit 2 for $message", async ({ args, message }) => {
@@ -837,7 +835,7 @@ else process.exit(2);
     const capture = captureIo();
 
     await expect(
-      runCli(["create", "--brief", briefPath, "--output", output], capture.io),
+      runCli(["init", "--brief", briefPath, "--output", output], capture.io),
     ).resolves.toBe(0);
 
     expect(capture.stderr).toEqual([]);
@@ -855,7 +853,7 @@ else process.exit(2);
     const capture = captureIo();
 
     await expect(
-      runCli(["create", "--brief", briefPath, "--output", output], capture.io),
+      runCli(["init", "--brief", briefPath, "--output", output], capture.io),
     ).resolves.toBe(2);
 
     expect(capture.stdout).toEqual([]);
@@ -870,14 +868,14 @@ else process.exit(2);
     const capture = captureIo();
 
     await expect(
-      runCli(["create", "--json", "--output", output, "--brief", briefPath], capture.io),
+      runCli(["init", "--json", "--output", output, "--brief", briefPath], capture.io),
     ).resolves.toBe(0);
 
     expect(capture.stderr).toEqual([]);
     expect(capture.stdout).toHaveLength(1);
     expect(JSON.parse(capture.stdout[0] as string)).toMatchObject({
       ok: true,
-      command: "create",
+      command: "init",
       root: output,
       skillPath: "skills/incident-summary",
       files: expect.arrayContaining([
@@ -891,7 +889,7 @@ else process.exit(2);
     const output = join(parent, "project");
     const creation = captureIo();
     await expect(
-      runCli(["create", "--brief", briefPath, "--output", output], creation.io),
+      runCli(["init", "--brief", briefPath, "--output", output], creation.io),
     ).resolves.toBe(0);
 
     const human = captureIo();
@@ -917,7 +915,7 @@ else process.exit(2);
   it("returns the complete failed check report with exit 3", async () => {
     const parent = await temporaryDirectory();
     const output = join(parent, "project");
-    await runCli(["create", "--brief", briefPath, "--output", output], captureIo().io);
+    await runCli(["init", "--brief", briefPath, "--output", output], captureIo().io);
     const skillPath = join(output, "skills/incident-summary/SKILL.md");
     const skill = await readFile(skillPath, "utf8");
     await writeFile(skillPath, skill.replace("# Incident Summary", "# TODO: finish title"));
@@ -960,7 +958,7 @@ else process.exit(2);
   it("does not render terminal-unsafe diagnostic paths in human output", async () => {
     const parent = await temporaryDirectory();
     const output = join(parent, "project");
-    await runCli(["create", "--brief", briefPath, "--output", output], captureIo().io);
+    await runCli(["init", "--brief", briefPath, "--output", output], captureIo().io);
     await writeFile(join(output, "skills/incident-summary/bad\nFORGED.env"), "secret=false\n");
     const capture = captureIo();
 
@@ -1000,7 +998,7 @@ else process.exit(2);
         timeoutSeconds: 2,
       },
     ];
-    await writeFile(join(project, "skillpress.yaml"), stringify(config));
+    await writeFile(join(project, "skill-press.yaml"), stringify(config));
 
     const human = captureIo();
     await expect(runCli(["test", "--project", project], human.io)).resolves.toBe(0);
@@ -1031,7 +1029,7 @@ else process.exit(2);
         timeoutSeconds: 2,
       },
     ];
-    await writeFile(join(project, "skillpress.yaml"), stringify(config));
+    await writeFile(join(project, "skill-press.yaml"), stringify(config));
     const capture = captureIo();
 
     await expect(runCli(["test", "--project", project, "--json"], capture.io)).resolves.toBe(3);
@@ -1070,7 +1068,7 @@ else process.exit(2);
         timeoutSeconds: 2,
       },
     ];
-    await writeFile(join(project, "skillpress.yaml"), stringify(config));
+    await writeFile(join(project, "skill-press.yaml"), stringify(config));
 
     await expect(
       runCli(["test", "--project", project], {
@@ -1108,7 +1106,7 @@ else process.exit(2);
     const capture = captureIo();
 
     await expect(
-      runCli(["create", "--brief", invalidBrief, "--output", output, "--json"], capture.io),
+      runCli(["init", "--brief", invalidBrief, "--output", output, "--json"], capture.io),
     ).resolves.toBe(3);
 
     expect(capture.stdout).toEqual([]);
@@ -1128,13 +1126,13 @@ else process.exit(2);
     const capture = captureIo();
 
     await expect(
-      runCli(["create", "--brief", briefPath, "--output", output, "--json"], capture.io),
+      runCli(["init", "--brief", briefPath, "--output", output, "--json"], capture.io),
     ).resolves.toBe(4);
 
     expect(capture.stdout).toEqual([]);
     expect(JSON.parse(capture.stderr[0] as string)).toMatchObject({
       ok: false,
-      code: "create.unsafe_output",
+      code: "init.unsafe_output",
       issues: [expect.objectContaining({ code: "create.output_exists" })],
     });
     await expect(readFile(output, "utf8")).resolves.toBe("sentinel");
@@ -1146,13 +1144,13 @@ else process.exit(2);
     const capture = captureIo();
 
     await expect(
-      runCli(["create", "--brief", briefPath, "--output", output, "--json"], capture.io),
+      runCli(["init", "--brief", briefPath, "--output", output, "--json"], capture.io),
     ).resolves.toBe(1);
 
     expect(capture.stdout).toEqual([]);
     expect(JSON.parse(capture.stderr[0] as string)).toMatchObject({
       ok: false,
-      code: "create.io",
+      code: "init.io",
       issues: [expect.objectContaining({ code: "create.io" })],
     });
   });
@@ -1163,7 +1161,7 @@ else process.exit(2);
     const stderr: string[] = [];
 
     await expect(
-      runCli(["create", "--brief", briefPath, "--output", output, "--json"], {
+      runCli(["init", "--brief", briefPath, "--output", output, "--json"], {
         stdout: () => {
           throw new Error("sensitive adapter detail");
         },
@@ -1188,7 +1186,7 @@ else process.exit(2);
     ]);
 
     await expect(
-      runCli(["create", "--brief", briefPath, "--output", output, "--json"], {
+      runCli(["init", "--brief", briefPath, "--output", output, "--json"], {
         stdout: () => {
           throw forged;
         },
@@ -1219,7 +1217,7 @@ else process.exit(2);
   it("uses an immutable argument snapshot across create awaits", async () => {
     const parent = await temporaryDirectory();
     const output = join(parent, "project");
-    const args = ["create", "--brief", briefPath, "--output", output, "--json"];
+    const args = ["init", "--brief", briefPath, "--output", output, "--json"];
     const capture = captureIo();
 
     const operation = runCli(args, capture.io);
@@ -1228,7 +1226,7 @@ else process.exit(2);
     await expect(operation).resolves.toBe(0);
     expect(JSON.parse(capture.stdout[0] as string)).toMatchObject({
       ok: true,
-      command: "create",
+      command: "init",
       root: output,
     });
     await expect(lstat(output)).resolves.toMatchObject({});
@@ -1284,8 +1282,8 @@ else process.exit(2);
 
   it("preserves explicit JSON mode when the argument snapshot exceeds a bound", async () => {
     for (const args of [
-      ["create", "--json", ...new Array(63).fill("unknown")],
-      ["create", "--json", "x".repeat(64 * 1024 + 1)],
+      ["init", "--json", ...new Array(63).fill("unknown")],
+      ["init", "--json", "x".repeat(64 * 1024 + 1)],
     ]) {
       const capture = captureIo();
 
@@ -1308,12 +1306,12 @@ else process.exit(2);
         { args: ["--help"], output: undefined },
         { args: ["--version"], output: undefined },
         {
-          args: ["create", "--brief", briefPath, "--output", join(parent, `${failureMode}-human`)],
+          args: ["init", "--brief", briefPath, "--output", join(parent, `${failureMode}-human`)],
           output: join(parent, `${failureMode}-human`),
         },
         {
           args: [
-            "create",
+            "init",
             "--brief",
             briefPath,
             "--output",

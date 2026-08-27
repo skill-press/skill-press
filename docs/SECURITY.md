@@ -1,110 +1,193 @@
-# Security model
+# Skill Press security model
 
-SkillPress processes skill instructions, repository files, model output, fixtures, subprocess
-output, archives, and registry responses as untrusted data. Its deterministic checks reduce
-accidental and adversarial release risk; they do not turn a host directory or third-party service
-into a security boundary.
+Skill Press processes skill instructions, repository files, fixtures, model output, role output,
+subprocess output, archives, client evidence, and service responses as untrusted data. Its
+deterministic controls reduce accidental and adversarial release risk; they do not turn a host
+directory, container runtime, external evidence provider, or future registry service into an
+absolute security boundary.
+
+> [!IMPORTANT]
+> The production registry backend, account/token issuer, immutable download service, and install
+> commands are not live yet. Service-side controls in this document are requirements for that
+> deployment, not claims about an already operating public service.
 
 ## Trust boundaries
 
 | Boundary | Trusted for | Not trusted for |
 | --- | --- | --- |
-| Repository owner and current Git checkout | choosing release inputs and policy | proving an owner did not deliberately rewrite all local evidence |
-| Canonical skill tree | data to validate and package | instructions to execute on the host |
-| Docker/Podman sandbox | enforcing the configured eval resource policy | protecting against a compromised container runtime or kernel |
-| Private `.skillpress/` storage | retaining raw evidence and journals for the same OS account | hostile processes running as that account |
-| Provider CLI/API | authenticated remote facts after exact parsing and verification | arbitrary prose, stable schemas, absence after ambiguous errors, or rollback guarantees |
-| GitHub-hosted release runner | bound OIDC publication identity | bypassing repository/environment/tag protection chosen by the owner |
+| Repository owner and current Git checkout | selecting source and local policy | proving that the owner did not deliberately rewrite all local evidence |
+| Canonical skill tree | bounded data to validate, evaluate, and package | instructions to execute on the host |
+| `skill-press.yaml` | versioned project policy and requested registry namespace after strict validation | executable shell content, remote endpoint selection, or proof of namespace ownership |
+| Docker/Podman sandbox | enforcing the configured evaluation resource policy | protecting against a compromised runtime, daemon, kernel, or host administrator |
+| Private `.skill-press/` storage | retaining evidence, artifacts, and journals for one OS account | hostile processes running as the same account |
+| Official Tessl CLI/service | parsed external Quality and Impact facts under the documented pin | detached proof that the local filesystem owner is honest, publication, or release trust |
+| Skill Press submission client | exact manifest, digest, idempotency, and response binding | server-side validation, curator approval, or release safety |
+| Future Skill Press registry | canonical review, immutable release, attestation, and trust history after authenticated verification | trusting client evidence or executing submitted content on the service host |
+| GitHub Actions/npm OIDC | bound publication identity for `@skill-press/cli` | Agent Skill review or registry trust |
+| External catalogs and mirrors | discovery of a linked canonical release | acceptance, canonical bytes, or current trust without verification |
 
 ## Main threats and controls
 
 | Threat | Control | Residual boundary |
 | --- | --- | --- |
-| Prompt injection or malicious skill instructions | validation reads bounded files and never executes the skill; eval runs in an explicit sandbox | a user can still authorize unsafe external tools or host execution outside SkillPress |
-| Path traversal, links, device files, races, and Unicode aliases | safe relative paths, no symlinks/special files, bounded tree snapshots, Unicode collision checks, before/after digests | a same-account hostile process can race portable filesystem calls; isolate mutually untrusted work by OS/container boundary |
-| Secret files or credential-like resources entering a skill | basename rules, semantic secret scans, tracked-only staging, package allowlists | novel encodings and credentials deliberately embedded in otherwise ordinary prose require human review |
-| Shell injection or unbounded subprocesses | argv execution without a shell, explicit cwd, time/output limits, process-group termination | provider binaries and the container runtime remain privileged dependencies |
-| Holdout leakage or hostile improvement roles | separate author/reviewer/evaluator processes; author payload contains training only; schema-bound private request/response files; canonical validation and regression gates before atomic acceptance | role executables are user-authorized host programs and retain that authority; run untrusted roles inside an external OS/container boundary |
-| Fabricated readiness or external scores | separate evidence types; official Tessl CLI pin; raw output hashes; current Git/tree/time binding; gate reparsing | current Tessl CLI output has no detached provider signature, so a hostile filesystem owner is outside the proof model |
-| Duplicate or partial publication | all-target preflight, deterministic idempotency key, per-step private receipt, exact remote verification, resume binding | some providers expose irreversible public history or require manual rollback/review |
-| Dependency/action substitution | exact npm lockfile, generated-source checks, full-SHA official GitHub actions, no release cache, production audit | registry or action-owner compromise still requires pin/lock review and incident response |
-| Long-lived npm credential theft | GitHub OIDC trusted publishing, no npm write-token secret, protected environment, exact tag/repository/source checks | repository/environment administrators can authorize a release by design |
+| Prompt injection or malicious skill instructions | canonical validation reads bounded data and never executes the skill; behavior evaluation runs in an explicit sandbox | users can still authorize unsafe external tools outside Skill Press |
+| Path traversal, symlinks, special files, races, and Unicode aliases | safe relative paths, no symlinks/special files, bounded tree snapshots, portable-name checks, before/after metadata and digests | a same-account hostile process can race portable filesystem operations; isolate mutually untrusted work by OS/container boundary |
+| Secrets entering a skill or package | suspicious basename rules, semantic scans, tracked-only staging, explicit artifact inventory, no provider projections | novel encodings or deliberately embedded credentials still require human review |
+| Shell injection and unbounded subprocesses | direct argv execution, explicit cwd, narrow environment, output/time limits, process-group termination | user-authorized binaries and container runtimes retain their native authority |
+| Holdout leakage or malicious improvement roles | separate author/reviewer/evaluator requests, author receives training only, schema-bound files, canonical validation and non-regression before atomic replacement | role executables run on the host unless the operator adds a stronger external sandbox |
+| Fabricated local readiness or Tessl scores | separate evidence types, signed-release CLI digest pin, raw-output hashes, exact command digest, clean Git/tree/time binding, release-gate reparsing | current Tessl CLI output has no detached provider signature protecting against a hostile filesystem owner |
+| Client claims becoming trusted publication | submission manifest marks evidence advisory and requires server validation; service must independently unpack, validate, evaluate, and obtain curator approval | service policy, worker isolation, and curator accounts become critical trusted components |
+| Bearer-token exfiltration through project configuration | canonical API origin is compiled as `https://skill-press.com/api/v1`; redirects and endpoint overrides are rejected | DNS, TLS, host trust store, runtime, or deployed service compromise remains in scope for incident response |
+| Duplicate or ambiguous submission | deterministic idempotency key, private journal, exact response binding, bounded status version, resume of the same candidate | timeout cannot prove whether the remote request committed; preserve and resume the journal |
+| Confusing review and safety state | distinct candidate review statuses and release trust statuses; a local receipt is never a trust attestation | UI and downstream mirrors must preserve those semantics |
+| Dependency or CI action substitution | exact npm lockfile, generated-source checks, full-SHA GitHub Actions, audits, exact release/tag/package binding | upstream registry, action-owner, or repository-administrator compromise requires supply-chain response |
+| Long-lived npm credential theft | GitHub OIDC trusted publishing, protected `npm` environment, no npm write-token fallback | repository/environment administrators can authorize a CLI release by design |
 
-## Execution and sandbox policy
+## Host execution and sandbox policy
 
-`skillpress test` runs project-configured commands on the host and is only for trusted project
-tests. Configuration supplies argv, not a shell string; cwd stays inside the project and output and
-wall time are bounded. Do not run an untrusted repository's test configuration on the host.
+`skpress check` and canonical validation read files only. They do not execute instructions or
+bundled scripts merely because those files exist.
 
-`skillpress eval` is the untrusted behavior path. It uses a digest-pinned Docker or Podman image,
-separate baseline and with-skill containers, a read-only staged skill, the minimum fixture input,
-a new writable output mount, an empty/allowlisted environment, and disabled networking by default.
-It enforces CPU, memory, PID, filesystem, file-count, output, and time limits. The repository root,
-home directory, SSH agent, cloud configuration, and keychain sockets are not mounted.
+`skpress test` runs project-configured commands on the host. Configuration supplies argv rather
+than a shell string; cwd remains inside the project and output and wall time are bounded. This is
+for trusted project tests only. Do not run an unknown repository's test configuration on the host.
 
-An isolated directory alone is not a sandbox. Unsafe host execution cannot create release-eligible
-evidence. A live network profile must be explicit and should use the narrowest enforceable egress;
-unrestricted networking is not release evidence.
+`skpress eval` is the untrusted behavior path. It uses a digest-pinned Docker or Podman image,
+separate baseline and with-skill containers, a read-only staged skill, the minimum scenario input,
+a new writable output mount, an empty or allowlisted environment, and disabled networking by
+default. It enforces CPU, memory, PID, filesystem, file-count, output, and time limits. The
+repository root, home directory, SSH agent, cloud configuration, and keychain sockets are not
+mounted.
 
-`skillpress improve` runs explicitly supplied role executables on the host without a shell. Each
-call uses a fresh private temporary directory, bounded output and time, and an explicit environment
-allowlist. This isolates role requests from one another but is not an operating-system sandbox.
-The author payload excludes holdout suites; the evaluator alone receives them. Candidate paths,
-file counts, sizes, encodings, Agent Skill structure, measured training progress, holdout
-non-regression, and live project identity are rechecked before the canonical tree is replaced.
+An isolated directory alone is not a sandbox. A mutable image or unsafe host execution cannot
+produce release-eligible evidence. A restricted live-network profile must declare the narrowest
+enforceable egress; unrestricted networking is not eligible release evidence.
+
+`skpress improve` starts explicitly supplied author, reviewer, and evaluator binaries on the host
+without a shell. Each gets a fresh private temporary directory, bounded I/O and time, and an
+explicit environment-name allowlist. This isolates request data but not operating-system authority.
+The author payload excludes holdouts. Candidate paths, file counts, sizes, encodings, skill shape,
+training progress, holdout behavior, and live project identity are rechecked before replacement.
+
+The future registry must process uploaded archives, Markdown, scripts, and evidence only in
+ephemeral isolated workers with no registry database credentials, signing keys, curator sessions,
+cloud control-plane tokens, or unrestricted network access. A validation result must cross a typed,
+bounded result channel before a higher-trust service records it.
 
 ## Credential handling
 
-Credential values must never enter `skillpress.yaml`, a canonical skill, an eval fixture, a
-receipt, provenance, or Git. Adapter `auth` arrays are names/descriptors written to plans and
-receipts, not credential values.
+Credential values must never enter `skill-press.yaml`, canonical skill files, eval fixtures,
+submission manifests, receipts, provenance, package archives, Git, shared logs, or chat.
 
-| Target | Credential boundary |
+| Credential | Boundary |
 | --- | --- |
-| GitHub and catalog | authenticated `gh`; `GH_TOKEN`/`GITHUB_TOKEN` only in the provider subprocess environment |
-| npm | GitHub's short-lived `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN`; `NODE_AUTH_TOKEN` and `NPM_TOKEN` are forbidden in the release workflow |
-| Tessl | `TESSL_TOKEN` only for authenticated identity, dry-run, and publish calls; public verification and binary/version checks do not receive it |
-| askill.sh | official CLI login state; the receipt records `ASKILL_LOGIN`, never the local token |
-| agentskillhub.dev | no credential; its unauthenticated import endpoint is still a remote mutation requiring explicit execution |
-| Agent Skills Hub catalog | authenticated `gh` identity and reviewable fork/branch/PR |
-| ClawHub | official CLI login/config plus explicit in-memory `MIT-0` consent; receipt descriptors are `CLAWHUB_LOGIN` and `CLAWHUB_MIT0_CONSENT`, never values; no license is silently rewritten in canonical source |
-| skills.sh | no write credential; optional GitHub/Vercel tokens improve read-only verification only |
+| `TESSL_TOKEN` | forwarded only to the pinned Tessl evidence subprocess; rotate after the bounded evidence window |
+| `SKILL_PRESS_TOKEN` | future bearer token sent only to the fixed `https://skill-press.com/api/v1` origin; not required for `submit --dry-run` |
+| `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` | short-lived GitHub Actions OIDC values available only to the protected npm publish job |
 
-Register all provider secrets with the surrounding log redactor before invoking SkillPress. Use
-short-lived and least-privilege credentials. If a value appears in output, stop, rotate it, preserve
-a redacted incident record, and inspect private raw storage before sharing anything.
+`NPM_TOKEN` and `NODE_AUTH_TOKEN` are forbidden as write-token fallbacks in the trusted npm release
+workflow. General GitHub credentials may be used by repository operations and CI, but generic
+Skill Press submission does not push an author's repository or write to external catalogs.
 
-## Evidence and storage
+Register secret values with the surrounding log redactor before invoking a process. If a value
+appears in output, stop, revoke it, preserve a redacted incident record, and inspect private raw
+storage before sharing any artifact.
 
-Raw eval, Tessl, improvement, staging, and publication state lives under ignored `.skillpress/` directories.
-POSIX directories use mode `0700` and evidence/receipt/artifact files use `0600`. Loaders reject
-unsafe path shapes, symlinks, non-regular files, oversized data, permissive receipt/evidence files,
-schema drift, digest mismatch, and concurrent source change.
+## Fixed canonical API
 
-Redaction is defense in depth, not permission to publish raw transcripts. Persisted public evidence
-should contain only the documented hashes, byte counts, aggregates, identifiers, bounded excerpts,
-and eligibility reasons. Keep holdout prompts outside author-adapter input.
+The production client accepts no custom registry URL. It contacts only:
 
-## Release and rollback security
+```text
+GET  https://skill-press.com/api/v1/session
+POST https://skill-press.com/api/v1/submissions
+GET  https://skill-press.com/api/v1/submissions/{id}
+```
 
-All publication defaults to dry run. Explicit `execute: true` authorizes only the configured
-adapter steps; it does not authorize bypassing evidence gates, changing a license, deleting remote
-state, or treating a submitted/pending/derived target as published.
+Requests reject redirects, enforce bounded response size and timeout, require JSON responses, and
+send protocol version 1. Remote resources are schema-validated and must bind the expected namespace,
+idempotency key, source commit, project version, skill locator, artifact digest, and canonical URLs.
 
-Git, npm, Tessl, askill, Agent Skill Hub snapshots, catalog PRs, and ClawHub each have different
-rollback limits. Public history, immutable versions, license grants, moderation records, and human
-review cannot be assumed reversible. Use the exact target contract in
-[the registry guide](REGISTRIES.md) and preserve the receipt when coordinating manual recovery.
+`GET /session` is authentication, not namespace authorization. Before `POST /submissions` creates
+or reserves any candidate, idempotency key, version, or stored bytes, the service must atomically
+authorize that principal for the requested namespace. A denied request leaves no durable claim that
+could block the legitimate namespace owner.
 
-The npm release workflow responds only to a formal non-prerelease release in the canonical public
-repository, checks the exact `v<version>` tag commit, reruns tests/audit/package smoke, disables
-package-manager caching, does not persist checkout credentials, and grants OIDC only to the publish
-job. Protect the `npm` environment and release tags in GitHub settings.
+This fixed-origin decision is intentional. An enterprise or test deployment cannot be selected by
+putting a URL in an untrusted project. Tests inject an in-process client/fetch implementation rather
+than weakening the production origin contract.
 
-## Vulnerability response
+## Evidence, artifacts, and private storage
 
-Do not place live credentials, private transcripts, holdout cases, or exploit data containing
-third-party secrets in a public issue. Revoke exposed credentials first, preserve redacted hashes
-and exact versions, and contact the repository owner privately through the maintainer identity in
-`package.json`. Once disclosure is safe, record affected versions, entry point, impact, minimal
-reproduction, and whether remote state or release artifacts require revocation/deprecation.
+Raw eval, Tessl, improvement, staging, and submission state lives under ignored
+`.skill-press/` directories. On POSIX systems, private directories use mode `0700` and sensitive
+files use `0600`. Loaders reject unsafe path shapes, symbolic links, special files, oversized data,
+permissive evidence/journal permissions, schema drift, digest mismatch, and concurrent changes.
+
+Redaction is defense in depth, not permission to publish raw transcripts or holdout prompts. Public
+release metadata should contain only documented hashes, sizes, aggregate evidence facts, canonical
+identifiers, policy decisions, and authenticated trust state.
+
+The submission manifest includes client Tessl evidence so the service can reproduce and compare
+the candidate. It explicitly marks that evidence advisory. The service must independently validate
+the archive and may require fresh external evidence under the current policy.
+
+## Submission, publication, and trust
+
+These statements are security invariants:
+
+- `operationStatus: prepared` means local preparation only.
+- `operationStatus: submitted` means the client verified a remote candidate record only.
+- `received`, `automated-review`, `curator-review`, `changes-requested`, `accepted`, and `rejected`
+  are not publication.
+- only review status `published` can include an immutable release record.
+- publication does not imply perpetual safety; current release trust is independently `trusted`,
+  `quarantined`, or `revoked`.
+- a private local receipt is a retry journal, never a registry attestation.
+
+The future install client must verify the canonical locator, semantic version, artifact digest,
+attestation, and latest authenticated trust sequence. It must reject mismatched, quarantined,
+revoked, unavailable, or ambiguous state by default. `skpress add` and `skpress install` are not
+implemented today.
+
+## External discovery and mirrors
+
+Skill Press does not expose author-facing multi-publish. Future catalog feeds or mirrors are
+platform-operated after canonical publication. They must preserve the exact digest and canonical
+URL, identify themselves as discovery or mirrors, and propagate quarantine/revocation where
+possible. Their failure cannot turn a canonical trusted release into unpublished state, and their
+listing cannot turn an unaccepted candidate into a Skill Press release.
+
+No automation may fabricate installs, rankings, reviews, or catalog acceptance. A catalog that
+cannot preserve current trust information should link to the canonical release rather than serve
+an independently mutable copy.
+
+## CLI product supply chain
+
+The npm release workflow publishes only `@skill-press/cli` from a formal non-prerelease release in
+`skill-press/skill-press`. It checks the exact `v<version>` tag and source commit, reruns quality
+gates and audits, verifies the tarball inventory and digest, disables package-manager caching,
+does not persist checkout credentials, and grants OIDC only to the protected publish job.
+
+Protect the `npm` environment, formal release authority, and `v*` tags. An npm CLI release is
+separate from Agent Skill submission and cannot create or alter a canonical Skill Press skill
+release.
+
+## Vulnerability and release response
+
+Do not place credentials, private transcripts, holdout cases, unredacted provider output, or
+third-party exploit data in a public issue. Revoke exposed credentials first and preserve redacted
+hashes, exact versions, artifact digests, source commits, and journal identifiers.
+
+For a published Agent Skill incident:
+
+1. authenticate the affected locator, version, digest, attestation, and current trust sequence;
+2. move the release to `quarantined` while determining scope;
+3. preserve immutable bytes and audit history;
+4. move to `revoked` when safety cannot be restored, or back to `trusted` only with a documented
+   resolution and a newer trust sequence;
+5. ship corrected bytes under a new semantic version;
+6. notify locked consumers and downstream mirrors without erasing the original record.
+
+For a CLI supply-chain incident, use npm deprecation or policy-compliant unpublish only where
+appropriate, revoke release authority, and publish a corrected CLI version with new provenance.
+Do not confuse that response with the Agent Skill registry trust lifecycle.

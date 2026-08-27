@@ -14,7 +14,7 @@ concurrency:
 jobs:
   verify:
     name: Verify exact npm tarball
-    if: github.repository == 'mushanyoung/skillpress' && !github.event.release.prerelease
+    if: github.repository == 'skill-press/skill-press' && !github.event.release.prerelease
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -42,7 +42,7 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Run release quality gates
         run: npm run check
-      - name: Verify SkillPress GitHub Release assets
+      - name: Verify Skill Press GitHub Release assets
         env:
           RELEASE_ASSETS_JSON: ${{ toJSON(github.event.release.assets) }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
@@ -51,7 +51,7 @@ jobs:
         run: npm run security:audit
       - name: Verify the packed CLI
         env:
-          SKILLPRESS_PACKAGE_OUTPUT_DIR: ${{ runner.temp }}/npm-release
+          SKILL_PRESS_PACKAGE_OUTPUT_DIR: ${{ runner.temp }}/npm-release
         run: npm run package:verify
       - name: Bind the release manifest output
         id: release-manifest
@@ -67,7 +67,7 @@ jobs:
   publish:
     name: Publish approved exact tarball
     needs: verify
-    if: github.repository == 'mushanyoung/skillpress' && !github.event.release.prerelease
+    if: github.repository == 'skill-press/skill-press' && !github.event.release.prerelease
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: npm
@@ -99,8 +99,8 @@ jobs:
           const manifestMetadata = await lstat(manifestPath);
           if (!manifestMetadata.isFile() || manifestMetadata.size > 64 * 1024) throw new Error("release manifest storage changed");
           const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-          if (manifest.schemaVersion !== 2 || manifest.name !== "@mushanyoung/skillpress" || manifest.package !== `${manifest.name}@${manifest.version}` || manifest.repository !== "https://github.com/mushanyoung/skillpress") throw new Error("release manifest identity changed");
-          if (!/^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/.test(manifest.version) || manifest.filename !== `mushanyoung-skillpress-${manifest.version}.tgz`) throw new Error("release manifest version changed");
+          if (manifest.schemaVersion !== 2 || manifest.name !== "@skill-press/cli" || manifest.package !== `${manifest.name}@${manifest.version}` || manifest.repository !== "https://github.com/skill-press/skill-press") throw new Error("release manifest identity changed");
+          if (!/^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/.test(manifest.version) || manifest.filename !== `skill-press-cli-${manifest.version}.tgz`) throw new Error("release manifest version changed");
           if (!/^[a-f0-9]{40}$/.test(manifest.sourceCommit) || !/^[a-f0-9]{40}$/.test(manifest.shasum) || !/^[a-f0-9]{64}$/.test(manifest.sha256) || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(manifest.integrity)) throw new Error("release manifest digest changed");
           if (manifest.verifier?.filename !== "verify-npm-registry-release.mjs" || !Number.isSafeInteger(manifest.verifier.bytes) || manifest.verifier.bytes < 1 || !/^[a-f0-9]{64}$/.test(manifest.verifier.sha256)) throw new Error("release verifier identity changed");
           const names = (await readdir(root)).sort();
@@ -157,7 +157,7 @@ jobs:
           import { readFile, writeFile } from "node:fs/promises";
           import { join } from "node:path";
           const manifest = JSON.parse(await readFile(join(process.env.RUNNER_TEMP, "npm-release/manifest.json"), "utf8"));
-          const packageJson = {name:"skillpress-npm-signature-audit",private:true,dependencies:{[manifest.name]:manifest.version}};
+          const packageJson = {name:"skill-press-npm-signature-audit",private:true,dependencies:{[manifest.name]:manifest.version}};
           await writeFile(join(process.env.RUNNER_TEMP, "npm-signature-audit/package.json"), `${JSON.stringify(packageJson)}\n`, {mode:0o600});
           NODE
           npm install --prefix "$AUDIT_ROOT" --ignore-scripts --no-audit --no-fund --save-exact "$PACKAGE_SPEC"

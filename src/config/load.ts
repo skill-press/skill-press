@@ -9,7 +9,8 @@ import { Lexer, parseAllDocuments } from "yaml";
 import type { SkillPressProject } from "./generated.js";
 import { type ConfigIssue, ProjectConfigError } from "./errors.js";
 
-export const CONFIG_FILE_NAME = "skillpress.yaml";
+export const CONFIG_FILE_NAME = "skill-press.yaml";
+export const LEGACY_CONFIG_FILE_NAME = "skillpress.yaml";
 export const MAX_CONFIG_BYTES = 64 * 1024;
 
 const MAX_YAML_FLOW_DEPTH = 32;
@@ -20,7 +21,7 @@ const MAX_YAML_TOKENS = 8192;
 const applySnapshot = Reflect.apply;
 const charCodeAtSnapshot = String.prototype.charCodeAt;
 
-const schemaUrl = new URL("../../schemas/skillpress.schema.json", import.meta.url);
+const schemaUrl = new URL("../../schemas/skill-press.schema.json", import.meta.url);
 const schema = JSON.parse(await readFile(schemaUrl, "utf8")) as object;
 const ajv = new Ajv({ allErrors: true, strict: true });
 const validate = ajv.compile<SkillPressProject>(schema) as ValidateFunction<SkillPressProject>;
@@ -106,7 +107,7 @@ async function inspectPath(path: string): Promise<InspectedPath> {
       throw error;
     }
     throw new ProjectConfigError(
-      `Unable to inspect SkillPress configuration at ${absolutePath}.`,
+      `Unable to inspect Skill Press configuration at ${absolutePath}.`,
       [issue("config.read", "/", "configuration path cannot be inspected")],
       error,
     );
@@ -119,9 +120,30 @@ async function resolveConfigPath(path: string): Promise<InspectedPath> {
   const inspected = await inspectPath(path);
 
   if (inspected.metadata.isDirectory()) {
-    const config = await inspectPath(join(inspected.path, CONFIG_FILE_NAME));
+    const configPath = join(inspected.path, CONFIG_FILE_NAME);
+    try {
+      await lstat(configPath);
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+        try {
+          const legacy = await lstat(join(inspected.path, LEGACY_CONFIG_FILE_NAME));
+          if (legacy.isFile() || legacy.isSymbolicLink()) {
+            throw new ProjectConfigError("Skill Press configuration requires migration.", [
+              issue(
+                "config.legacy_filename",
+                "/",
+                `rename ${LEGACY_CONFIG_FILE_NAME} to ${CONFIG_FILE_NAME} and migrate to schema version 2`,
+              ),
+            ]);
+          }
+        } catch (legacyError) {
+          if (legacyError instanceof ProjectConfigError) throw legacyError;
+        }
+      }
+    }
+    const config = await inspectPath(configPath);
     if (!config.metadata.isFile()) {
-      throw new ProjectConfigError("SkillPress configuration must be a regular file.", [
+      throw new ProjectConfigError("Skill Press configuration must be a regular file.", [
         issue("config.file_type", "/", "configuration path is not a regular file"),
       ]);
     }
@@ -129,8 +151,17 @@ async function resolveConfigPath(path: string): Promise<InspectedPath> {
   }
 
   if (!inspected.metadata.isFile()) {
-    throw new ProjectConfigError("SkillPress configuration must be a regular file.", [
+    throw new ProjectConfigError("Skill Press configuration must be a regular file.", [
       issue("config.file_type", "/", "configuration path is not a regular file"),
+    ]);
+  }
+  if (parse(inspected.path).base === LEGACY_CONFIG_FILE_NAME) {
+    throw new ProjectConfigError("Skill Press configuration requires migration.", [
+      issue(
+        "config.legacy_filename",
+        "/",
+        `rename ${LEGACY_CONFIG_FILE_NAME} to ${CONFIG_FILE_NAME} and migrate to schema version 2`,
+      ),
     ]);
   }
 
@@ -149,7 +180,7 @@ export async function readConfigText(
   openFile: OpenConfigFile = open,
 ): Promise<string> {
   if (config.metadata.size > MAX_CONFIG_BYTES) {
-    throw new ProjectConfigError("SkillPress configuration exceeds the size limit.", [
+    throw new ProjectConfigError("Skill Press configuration exceeds the size limit.", [
       issue("config.too_large", "/", `configuration exceeds ${MAX_CONFIG_BYTES} bytes`),
     ]);
   }
@@ -160,7 +191,7 @@ export async function readConfigText(
     handle = await openFile(config.path, constants.O_RDONLY | noFollow);
   } catch (error) {
     throw new ProjectConfigError(
-      `Unable to read SkillPress configuration at ${config.path}.`,
+      `Unable to read Skill Press configuration at ${config.path}.`,
       [issue("config.read", "/", "configuration file cannot be read")],
       error,
     );
@@ -169,19 +200,19 @@ export async function readConfigText(
   try {
     const openedMetadata = await handle.stat();
     if (!openedMetadata.isFile()) {
-      throw new ProjectConfigError("SkillPress configuration must be a regular file.", [
+      throw new ProjectConfigError("Skill Press configuration must be a regular file.", [
         issue("config.file_type", "/", "opened configuration is not a regular file"),
       ]);
     }
 
     if (!sameFileIdentity(config.metadata, openedMetadata)) {
-      throw new ProjectConfigError("SkillPress configuration changed while it was being opened.", [
+      throw new ProjectConfigError("Skill Press configuration changed while it was being opened.", [
         issue("config.changed", "/", "configuration file identity changed during loading"),
       ]);
     }
 
     if (openedMetadata.size > MAX_CONFIG_BYTES) {
-      throw new ProjectConfigError("SkillPress configuration exceeds the size limit.", [
+      throw new ProjectConfigError("Skill Press configuration exceeds the size limit.", [
         issue("config.too_large", "/", `configuration exceeds ${MAX_CONFIG_BYTES} bytes`),
       ]);
     }
@@ -197,7 +228,7 @@ export async function readConfigText(
     }
 
     if (offset > MAX_CONFIG_BYTES) {
-      throw new ProjectConfigError("SkillPress configuration exceeds the size limit.", [
+      throw new ProjectConfigError("Skill Press configuration exceeds the size limit.", [
         issue("config.too_large", "/", `configuration exceeds ${MAX_CONFIG_BYTES} bytes`),
       ]);
     }
@@ -206,7 +237,7 @@ export async function readConfigText(
       return new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, offset));
     } catch (error) {
       throw new ProjectConfigError(
-        "SkillPress configuration must contain valid UTF-8.",
+        "Skill Press configuration must contain valid UTF-8.",
         [issue("config.encoding", "/", "configuration is not valid UTF-8")],
         error,
       );
@@ -217,7 +248,7 @@ export async function readConfigText(
 }
 
 function complexityError(message: string): ProjectConfigError {
-  return new ProjectConfigError("SkillPress configuration exceeds the YAML complexity budget.", [
+  return new ProjectConfigError("Skill Press configuration exceeds the YAML complexity budget.", [
     issue("config.complexity", "/", message),
   ]);
 }
@@ -258,14 +289,14 @@ function parseConfig(text: string): unknown {
     });
   } catch (error) {
     throw new ProjectConfigError(
-      "SkillPress configuration is not valid YAML.",
+      "Skill Press configuration is not valid YAML.",
       [issue("config.yaml", "/", "configuration cannot be parsed as YAML")],
       error,
     );
   }
 
   if (documents.length !== 1) {
-    throw new ProjectConfigError("SkillPress configuration must contain one YAML document.", [
+    throw new ProjectConfigError("Skill Press configuration must contain one YAML document.", [
       issue("config.yaml_documents", "/", "expected exactly one YAML document"),
     ]);
   }
@@ -274,7 +305,7 @@ function parseConfig(text: string): unknown {
   if (document.errors.length > 0 || document.warnings.length > 0) {
     const messages = [...document.errors, ...document.warnings].map((error) => error.message);
     throw new ProjectConfigError(
-      "SkillPress configuration contains YAML errors.",
+      "Skill Press configuration contains YAML errors.",
       messages.map((message) => issue("config.yaml", "/", message)),
     );
   }
@@ -283,7 +314,7 @@ function parseConfig(text: string): unknown {
     return document.toJS({ maxAliasCount: 0 });
   } catch (error) {
     throw new ProjectConfigError(
-      "SkillPress configuration uses unsupported YAML aliases.",
+      "Skill Press configuration uses unsupported YAML aliases.",
       [issue("config.yaml_alias", "/", "YAML aliases are not allowed")],
       error,
     );
@@ -306,7 +337,7 @@ export async function loadProjectConfig(path: string = process.cwd()): Promise<S
 
   if (!validate(value)) {
     throw new ProjectConfigError(
-      "SkillPress configuration does not match schema version 1.",
+      "Skill Press configuration does not match schema version 2.",
       schemaIssues(validate.errors as ErrorObject[]),
     );
   }

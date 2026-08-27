@@ -1,32 +1,47 @@
 # Tessl evidence contract
 
-SkillPress treats Tessl Quality and Impact as external evidence. It does not translate local
-readiness, local paired evaluation, or a user-supplied number into a Tessl score.
+Skill Press treats Tessl Quality and Impact as external evidence. It never translates local
+readiness, local paired evaluation, curator opinion, or a user-supplied number into a Tessl score.
 
-## Authentication and commands
+Tessl is an evidence provider, not a Skill Press publication target. Capturing a Tessl result does
+not submit, accept, publish, trust, quarantine, or revoke an Agent Skill.
 
-Install and authenticate the official Tessl CLI, then check the active identity:
+## Authentication and pinned executable
+
+Skill Press currently trusts official Tessl CLI 0.101.0 by executable digest. Install the official
+CLI, authenticate, and inspect the active identity:
 
 ```bash
 tessl login
 tessl auth whoami --json
 ```
 
-For a non-interactive SkillPress run, the pinned 0.101.0 CLI creates a bounded-lifetime publisher
-key with `tessl api-key create --workspace <workspace> --name <name> --role publisher
---expiry-date <ISO-8601>`; export the value shown once as `TESSL_TOKEN` in the shell that starts
-SkillPress. Do not use the newer documentation's `tessl auth token` spelling with the pinned CLI.
-This is the only ambient credential variable forwarded to the provider subprocess; the interactive
-login store and home directory are intentionally not forwarded. Interactive login remains useful
-for direct Tessl CLI administration. Never paste the value into chat or commit it; rotate it after
-release. Automatic CLI updates are disabled for captured runs with the official
-`TESSL_AUTO_UPDATE_INTERVAL_MINUTES=0` setting so the executable digest stays stable.
-Pass `--executable <absolute-versioned-binary>` to evidence capture and
-`--tessl-executable <absolute-versioned-binary>` to publication. Point these options at the
-extracted 0.101.0 executable whose digest is in the signed trust set, not at an installer or
-auto-updating launcher.
+For a non-interactive captured run, create a bounded-lifetime key with the pinned CLI:
 
-SkillPress 0.1.0 pins Tessl CLI 0.101.0 and invokes these no-shell argv sequences:
+```bash
+tessl api-key create --workspace <workspace> --name <name> --role publisher \
+  --expiry-date <YYYY-MM-DDT00:00:00Z>
+```
+
+Export the value shown once as `TESSL_TOKEN` in the shell that starts Skill Press. Do not use the
+newer documentation's `tessl auth token` spelling with pinned CLI 0.101.0; that command is not
+available in this version. Never paste the token into chat or commit it. Rotate it after the
+bounded evidence or release window.
+
+Automatic updates are disabled for captured runs:
+
+```bash
+export TESSL_AUTO_UPDATE_INTERVAL_MINUTES=0
+```
+
+Pass `--executable <absolute-versioned-binary>` to `skpress tessl review` and
+`skpress tessl eval`. The path must identify the extracted 0.101.0 executable whose SHA-256 is in
+the signed trust set, not an installer, shim, or auto-updating launcher. A version string alone is
+not trusted.
+
+## Exact provider commands
+
+Skill Press invokes these no-shell argv shapes:
 
 ```text
 tessl --version
@@ -36,78 +51,153 @@ tessl eval run --json --force --context <private-eval-snapshot> --skill <configu
 tessl eval view --json <run-id>
 ```
 
-Agent and model selection are optional. When omitted, Tessl selects the workspace defaults and
-SkillPress binds the resolved agent/model returned by the provider plus the exact command digest
-without selection flags. Every official Quality and Impact capture uses `--force` so the provider
-recomputes current review and paired-eval results instead of reusing an older context. This supports
-plans that do not permit explicit model selection without weakening evidence.
-Keep generated or holdout scenario sources under the ignored `.skillpress/tessl-evals/<set>` path;
-the complete private tree is still digested before and after capture and again at the release gate.
-The source must be a Tessl plugin with a real `.tessl-plugin/plugin.json`, `evals/`, and exactly one
-injectable `skills/<configured-skill-name>` tree. Its private manifest must declare exactly
-`skills: ["skills/<configured-skill-name>"]`, ensuring Tessl 0.101.0 packages the canonical skill and
-makes the explicit selector resolvable; docs, rules, extra skills, and other plugin context are
-rejected. If the linked source has `tessl.json`, it must be a vendored project with an empty
-dependency map; provider dependencies cannot supply hidden context. Because Tessl injects plugin
-content into the paired run, SkillPress validates the
-embedded skill, requires its complete tree digest to equal the canonical skill, copies the complete
-source into a content-addressed private evidence directory, rechecks the snapshot digest, and passes
-that snapshot as explicit `--context` with an explicit `--skill` selector. The original linked
-source remains the final positional argument so Tessl retains its registered project identity. The
-snapshot stays under ignored private storage. For the duration of the CLI call, SkillPress creates a
-nested Git boundary in the evidence-run directory so Tessl 0.101.0 stops inheriting the outer
-`.gitignore`; the exact boundary must be removed successfully before evidence is persisted, and the
-release gate rejects any residual boundary.
-Capture and the release gate require the provider's start and completed-result JSON to echo that
-same context path, accepting only the exact argv path or Tessl's content-addressed basename
-normalization, and require final `metadata.cliInvocation` to equal the complete submitted argv. The
-original and snapshot are checked again after capture and at release time.
+Every official Quality and Impact capture uses `--force` so an older provider cache cannot satisfy
+the release gate for changed source.
 
-The lint command requires Tessl plugin context, so SkillPress creates a private temporary plugin
-manifest and copies the canonical skill into it, verifies that the copied skill has the same full
-tree digest, runs lint, then verifies the digest again. The generated provider manifest never
-enters the canonical skill or a commit.
+Agent and model selection are optional. When omitted, Tessl selects workspace defaults; Skill
+Press binds the resolved agent and model returned by the provider plus the exact command digest
+without selection flags. This supports plans that do not permit explicit model selection without
+weakening evidence identity.
 
-The review bridge uses `--force`, then reads `review.reviewScore` and `validation.overallPassed`
-from the official JSON result. The eval bridge binds the returned run ID, agent, model, and scenario
-count to its request, then computes each baseline and with-context percentage from the returned
-assessment criteria. Impact is the mean with-context percentage; its baseline, delta, and uplift
-ratio remain separate.
+## Quality capture
 
-## Trust and freshness
+Run:
 
-The executable itself is SHA-256 checked against every platform binary extracted from Tessl's
-ECDSA-signed 0.101.0 release manifest. A version string alone is not trusted. To update the pin:
+```bash
+skpress tessl review --project . --workspace <workspace> \
+  --executable <absolute-versioned-binary> --json
+```
 
-1. download the new release manifest and detached signature from `install.tessl.io`;
-2. verify that signature using the public key shipped by the official installer;
-3. verify each release archive against the signed manifest;
+The lint command needs Tessl plugin context, so Skill Press creates a private temporary plugin
+manifest and copies the complete canonical skill into it. It verifies the full tree digest before
+and after lint. The generated manifest never enters canonical source, the package, or Git.
+
+The review bridge reads `review.reviewScore` and `validation.overallPassed` only from the official
+JSON result. Raw output is bounded and hashed. There is no CLI option or library API for entering a
+Quality score manually.
+
+## Impact capture
+
+Keep a private linked Tessl eval project under:
+
+```text
+.skill-press/tessl-evals/<set>
+```
+
+Run:
+
+```bash
+skpress tessl eval --project . \
+  --source .skill-press/tessl-evals/<set> \
+  --executable <absolute-versioned-binary> \
+  [--agent <agent>] [--model <model>] [--runs <count>] \
+  --json
+```
+
+The eval source must contain a real `.tessl-plugin/plugin.json`, evaluation scenarios, and exactly
+one injectable `skills/<configured-skill-name>` tree. Its manifest must declare exactly:
+
+```json
+{
+  "skills": ["skills/<configured-skill-name>"]
+}
+```
+
+Additional skills, docs/rules context, hidden plugin content, symlinks, unsafe paths, and special
+files are rejected. If the source has `tessl.json`, it must represent a vendored project with an
+empty dependency map; provider dependencies cannot supply undisclosed evaluation context.
+
+Because Tessl injects plugin content into the paired run, Skill Press validates the embedded skill
+and requires its complete tree digest to equal the canonical skill. It copies the complete source
+into a content-addressed private evidence directory, rechecks that snapshot, passes it as explicit
+`--context`, and narrows activation with the explicit `--skill` selector. The original linked
+source remains the final positional argument so Tessl retains its registered project identity.
+
+For the duration of the provider command, Skill Press creates a temporary nested Git boundary in
+the evidence-run directory. This prevents Tessl 0.101.0 from inheriting the outer `.gitignore`
+entry that protects `.skill-press/`. The boundary must be removed successfully before evidence is
+persisted, and the later release gate rejects residual boundary metadata.
+
+Provider start and completed-result JSON must echo the same context path, accepting only the exact
+argv path or Tessl's documented content-addressed basename normalization. Final
+`metadata.cliInvocation` must equal the complete submitted argv. Original, snapshot, and embedded
+canonical skill are checked before capture, after capture, and again at release-gate time.
+
+The eval bridge binds returned run ID, resolved agent and model, repetitions, and scenario count to
+its request. It computes each baseline and with-context percentage from returned assessment
+criteria. Impact is the mean with-context percentage; baseline, delta, and uplift remain separate.
+Required scenario non-regression is enforced independently.
+
+## Executable trust and pin updates
+
+The executable is SHA-256 checked against supported-platform binaries extracted from Tessl's
+ECDSA-signed 0.101.0 release manifest. To update the pin:
+
+1. download the new release manifest and detached signature from the official Tessl distribution;
+2. verify the signature using the public key shipped by the official installer;
+3. verify every supported release archive against the signed manifest;
 4. extract each supported executable and record its SHA-256 in `src/tessl/trusted-cli.ts`;
-5. update parser contract tests against the new CLI's actual JSON output and command help;
-6. review and commit the pin as an explicit supply-chain change.
+5. update parser and command contract tests against actual CLI output and help;
+6. independently review and commit the change as an explicit supply-chain update.
 
-Before and after a provider run, SkillPress binds evidence to Git HEAD, `skillpress.yaml`, the
-complete canonical skill tree, and (for Impact) the complete eval-source tree, its private capture
-snapshot, and their exclusive embedded canonical-skill copy. Symlinks, special files, unsafe paths,
-oversized trees, relevant dirty state, or concurrent source changes fail closed or make evidence
-ineligible. A later release gate must independently recompute the same bindings and reject stale
-evidence.
+Do not trust a new version because its output looks compatible. Command syntax, provider JSON,
+context packaging, cache behavior, and authentication storage are part of the reviewed contract.
 
-## Storage and privacy
+## Source binding and freshness
+
+Before and after a provider run, Skill Press binds evidence to:
+
+- current Git HEAD and release-relevant clean state;
+- exact `skill-press.yaml` bytes;
+- the complete canonical skill tree;
+- the trusted Tessl executable digest and exact command digest;
+- raw stdout/stderr byte counts and SHA-256 values;
+- for Impact, the complete original eval source, its private snapshot, and the exclusive embedded
+  canonical skill.
+
+Symlinks, special files, unsafe paths, oversized trees, relevant dirty state, concurrent changes,
+malformed output, unexpected identity, or a residual nested Git boundary fail closed or make the
+evidence ineligible. A later `checkTesslReleaseGate` independently recomputes the same bindings and
+rejects stale evidence according to `quality.evidenceMaxAgeHours`.
+
+## Process isolation and storage
 
 Every Tessl subprocess receives a fresh private temporary HOME, USERPROFILE, XDG, and AppData
-boundary, plus only the explicit provider variables required for that command. The temporary home
-is removed after the command, so an ambient interactive Tessl login cannot authenticate evidence
-or publication. Raw version, lint, review, submission, and completed-result streams are bounded and
-written under `.skillpress/tessl/<random-id>/` with directory mode `0700` and file mode `0600`.
-That directory is ignored by Git and must not enter a package. The schema-validated `evidence.json`
-exposes only provider facts, hashes, aggregate scores, scenario fingerprint hashes, and eligibility reasons.
-It does not expose provider prose, scenario text, or credentials. Only `TESSL_TOKEN` is forwarded
-to Tessl from the ambient environment.
+boundary plus only explicit provider variables required for the command. The interactive login
+store is not forwarded. Only `TESSL_TOKEN` is copied from the ambient environment.
 
-## External boundary
+The temporary home is removed after the command. Raw version, lint, review, submission, and result
+streams are bounded and written beneath:
 
-Provider authentication, workspace access, service availability, and actual scores are external
-facts. If they are unavailable, SkillPress reports the provider error and preserves the 90-point
-release gate. Tests with a custom or digest-untrusted executable prove parsing and failure behavior
-but are always marked ineligible.
+```text
+.skill-press/tessl/<random-id>/
+```
+
+On POSIX systems, directories use mode `0700` and sensitive files use `0600`. The tree is ignored
+by Git and excluded from release packages. Schema-validated `evidence.json` retains provider facts,
+command and output hashes, source bindings, aggregate scores, scenario fingerprints, and
+eligibility reasons. It does not expose credentials, provider prose, or scenario prompts.
+
+## Submission and service boundary
+
+The deterministic Skill Press submission manifest includes current Tessl Quality and Impact
+evidence and their digests. It marks them `advisory: true` and sets
+`serverValidationRequired: true`.
+
+Client evidence is necessary for the current local release gate, but it is not a curator decision
+or registry attestation. The future registry must independently validate the submitted archive and
+apply the service's current automated and human review policy. The production registry backend is
+not live yet, so no current Tessl capture can be described as a live Skill Press publication.
+
+## External failure boundary
+
+Tessl authentication, workspace access, plan capabilities, service availability, and actual
+scores are external facts. If they are unavailable, Skill Press reports the failure and preserves
+the configured minimums. Tests with a fake, custom, or digest-untrusted executable prove parsing
+and failure behavior only; their evidence is always release-ineligible.
+
+Tessl currently does not provide a detached signature over the captured CLI result. The local
+contract detects accidental or inconsistent tampering and blocks manual score substitution, but it
+does not cryptographically prove that a hostile repository/filesystem owner is honest. Stronger
+service-side assurance requires a future provider-signed receipt or independent online
+verification.

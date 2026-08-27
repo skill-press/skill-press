@@ -20,7 +20,7 @@ try {
   fail("release asset metadata is not valid JSON");
 }
 if (!Array.isArray(assets)) fail("release asset metadata must be an array");
-const baseName = `skillpress-${packageJson.version}`;
+const baseName = `skill-press-${packageJson.version}`;
 const expectedNames = [
   "SHA256SUMS",
   "provenance.json",
@@ -35,24 +35,24 @@ if (!/^[a-f0-9]{40}$/u.test(head)) fail("source commit is invalid");
 const runId = createHash("sha256")
   .update(`${process.env.GITHUB_RUN_ID ?? ""}:${head}`)
   .digest("hex");
-const relativeRun = `.skillpress/staging/${runId}`;
+const relativeRun = `.skill-press/staging/${runId}`;
 const runRoot = join(root, relativeRun);
-const canonical = join(runRoot, "canonical", "skillpress");
+const canonical = join(runRoot, "canonical", "skill-press");
 const artifacts = join(runRoot, "artifacts");
 
 try {
   await mkdir(join(runRoot, "canonical"), { recursive: true, mode: 0o700 });
   await mkdir(artifacts, { mode: 0o700 });
   for (const privateDirectory of [
-    join(root, ".skillpress"),
-    join(root, ".skillpress", "staging"),
+    join(root, ".skill-press"),
+    join(root, ".skill-press", "staging"),
     runRoot,
     join(runRoot, "canonical"),
     artifacts,
   ]) {
     await chmod(privateDirectory, 0o700);
   }
-  await cp(join(root, "skills", "skillpress"), canonical, {
+  await cp(join(root, "skills", "skill-press"), canonical, {
     recursive: true,
     errorOnExist: true,
     force: false,
@@ -74,7 +74,7 @@ try {
       url.protocol !== "https:" ||
       url.hostname !== "github.com" ||
       !url.pathname.startsWith(
-        `/mushanyoung/skillpress/releases/download/${encodeURIComponent(process.env.RELEASE_TAG)}/`,
+        `/skill-press/skill-press/releases/download/${encodeURIComponent(process.env.RELEASE_TAG)}/`,
       )
     ) {
       fail("release asset URL is not canonical");

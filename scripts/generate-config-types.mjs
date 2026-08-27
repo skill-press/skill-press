@@ -7,7 +7,7 @@ import { compileFromFile } from "json-schema-to-typescript";
 const checkOnly = process.argv.includes("--check");
 const targets = [
   {
-    schema: "schemas/skillpress.schema.json",
+    schema: "schemas/skill-press.schema.json",
     output: "src/config/generated.ts",
   },
   {
@@ -55,8 +55,16 @@ const targets = [
     output: "src/package/generated-provenance.ts",
   },
   {
-    schema: "schemas/publication-receipt.schema.json",
-    output: "src/publish/generated-receipt.ts",
+    schema: "schemas/submission-manifest.schema.json",
+    output: "src/submission/generated-manifest.ts",
+  },
+  {
+    schema: "schemas/submission-resource.schema.json",
+    output: "src/submission/generated-resource.ts",
+  },
+  {
+    schema: "schemas/submission-receipt.schema.json",
+    output: "src/submission/generated-receipt.ts",
   },
 ];
 

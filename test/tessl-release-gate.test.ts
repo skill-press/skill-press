@@ -552,8 +552,8 @@ describe("Tessl release gate", () => {
 
     const configValue = await fixture();
     await writeFile(
-      join(configValue.root, "skillpress.yaml"),
-      `${await readFile(join(configValue.root, "skillpress.yaml"), "utf8")}\n`,
+      join(configValue.root, "skill-press.yaml"),
+      `${await readFile(join(configValue.root, "skill-press.yaml"), "utf8")}\n`,
     );
     const configReport = await gate(configValue);
     expect(

@@ -399,7 +399,7 @@ export async function runCommandImprovement(
       issue("improve.command.timeout", "/commandTimeoutSeconds", "timeout must be from 1 to 7200"),
     ]);
   }
-  if (!(await gitClean(root, ["skillpress.yaml", config.skill.path, "evals"]))) {
+  if (!(await gitClean(root, ["skill-press.yaml", config.skill.path, "evals"]))) {
     throw new ImprovementWorkflowError("Improvement inputs must start clean.", [
       issue(
         "improve.git.dirty",
@@ -409,9 +409,9 @@ export async function runCommandImprovement(
     ]);
   }
   const inputs = await loadImprovementProjectInputs(root, options);
-  const initialConfigSha256 = sha256(await readFile(join(root, "skillpress.yaml")));
+  const initialConfigSha256 = sha256(await readFile(join(root, "skill-press.yaml")));
   const initialEvalsSha256 = await digestBoundedTree(join(root, "evals"));
-  const privateRoot = join(root, ".skillpress");
+  const privateRoot = join(root, ".skill-press");
   const improvementsRoot = join(privateRoot, "improvements");
   for (const path of [privateRoot, improvementsRoot]) await ensurePrivateDirectory(path);
   const runId = randomBytes(32).toString("hex");
@@ -433,7 +433,7 @@ export async function runCommandImprovement(
   ): Promise<AdapterProposal | AdapterReview | AdapterEvaluation> => {
     const requestId = randomBytes(32).toString("hex");
     const temporaryParent = await realpath(tmpdir());
-    const callRoot = await mkdtemp(join(temporaryParent, "skillpress-improve-role-"));
+    const callRoot = await mkdtemp(join(temporaryParent, "skill-press-improve-role-"));
     await chmod(callRoot, 0o700);
     const requestPath = join(callRoot, "request.json");
     const responsePath = join(callRoot, "response.json");
@@ -457,7 +457,7 @@ export async function runCommandImprovement(
       const result = await runCapturedCommand({
         argv: [
           ...command.argv,
-          "--skillpress-operation",
+          "--skill-press-operation",
           operation,
           "--request",
           requestPath,
@@ -588,7 +588,7 @@ export async function runCommandImprovement(
         const liveFiles = await candidateFilesFromDirectory(skillRoot, config.skill.name);
         if (
           improvementCandidateSha256(liveFiles) !== currentCandidateSha256 ||
-          sha256(await readFile(join(root, "skillpress.yaml"))) !== initialConfigSha256 ||
+          sha256(await readFile(join(root, "skill-press.yaml"))) !== initialConfigSha256 ||
           (await digestBoundedTree(join(root, "evals"))) !== initialEvalsSha256
         ) {
           throw new Error("project changed during improvement");
@@ -628,7 +628,7 @@ export async function runCommandImprovement(
       },
     },
   });
-  const storagePath = `.skillpress/improvements/${runId}/report.json`;
+  const storagePath = `.skill-press/improvements/${runId}/report.json`;
   await writeFile(join(root, storagePath), `${JSON.stringify(report)}\n`, {
     flag: "wx",
     mode: 0o600,

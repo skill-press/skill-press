@@ -7,7 +7,7 @@ export async function withPrivateProviderHome<T>(
   providerEnvironment: Readonly<Record<string, string>>,
   operation: (environment: Readonly<Record<string, string>>) => Promise<T>,
 ): Promise<T> {
-  const home = await mkdtemp(join(tmpdir(), "skillpress-provider-home-"));
+  const home = await mkdtemp(join(tmpdir(), "skill-press-provider-home-"));
   await chmod(home, 0o700);
   const environment = Object.freeze({
     ...providerEnvironment,

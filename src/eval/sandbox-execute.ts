@@ -46,7 +46,7 @@ function clientEnvironment(): NodeJS.ProcessEnv {
     (entry): entry is [string, string] => entry[1] !== undefined,
   );
   return Object.assign(Object.create(null), Object.fromEntries(entries), {
-    SKILLPRESS: "1",
+    SKILL_PRESS: "1",
   }) as NodeJS.ProcessEnv;
 }
 

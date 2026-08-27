@@ -47,17 +47,21 @@ export type ScenarioText = string;
 export type ScenarioList = ScenarioCase[];
 
 /**
- * A complete, testable capability brief from which SkillPress renders one canonical Agent Skill.
+ * A complete, testable capability brief from which Skill Press renders one canonical Agent Skill.
  */
 export interface SkillPressCapabilityBrief {
-  schemaVersion: 1;
+  schemaVersion: 2;
   name: Name;
   title: ShortLine;
   /**
-   * Project version used when rendering skillpress.yaml; defaults to 0.1.0 without mutating the input document.
+   * Project version used when rendering skill-press.yaml; defaults to 0.1.0 without mutating the input document.
    */
   version?: Semver;
   summary: string;
+  /**
+   * The canonical Skill Press registry namespace requested by the generated project.
+   */
+  namespace: string;
   repository: string;
   author: Author;
   license: License;
@@ -65,7 +69,6 @@ export interface SkillPressCapabilityBrief {
   execution: Execution;
   capability: Capability;
   tests: Tests;
-  publish: Publish;
   scenarios: Scenarios;
 }
 /**
@@ -167,37 +170,6 @@ export interface TestCommand {
   argv: [string, ...string[]];
   cwd?: string;
   timeoutSeconds: number;
-}
-/**
- * This interface was referenced by `SkillPressCapabilityBrief`'s JSON-Schema
- * via the `definition` "publish".
- */
-export interface Publish {
-  /**
-   * @minItems 1
-   */
-  targets: [
-    (
-      | "github"
-      | "npm"
-      | "tessl"
-      | "skills-sh"
-      | "askill-sh"
-      | "agentskillhub-dev"
-      | "agent-skills-hub-catalog"
-      | "clawhub"
-    ),
-    ...(
-      | "github"
-      | "npm"
-      | "tessl"
-      | "skills-sh"
-      | "askill-sh"
-      | "agentskillhub-dev"
-      | "agent-skills-hub-catalog"
-      | "clawhub"
-    )[],
-  ];
 }
 /**
  * This interface was referenced by `SkillPressCapabilityBrief`'s JSON-Schema

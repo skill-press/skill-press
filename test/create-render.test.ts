@@ -82,9 +82,9 @@ describe("capability brief rendering", () => {
     const brief = await loadCapabilityBrief(briefPath);
 
     expect(brief.name).toBe("incident-summary");
+    expect(brief.namespace).toBe("example");
     expect(brief.version).toBe("0.1.0");
     expect(brief.scenarios.training.positive).toHaveLength(2);
-    expect(brief.publish.targets).toEqual(["github", "tessl"]);
   });
 
   it("renders the exact canonical tree without empty resource directories", async () => {
@@ -98,7 +98,7 @@ describe("capability brief rendering", () => {
       "evals/holdout.yaml",
       "evals/rubric.yaml",
       "evals/training.yaml",
-      "skillpress.yaml",
+      "skill-press.yaml",
       "skills/incident-summary/LICENSE",
       "skills/incident-summary/SKILL.md",
     ]);
@@ -109,7 +109,7 @@ describe("capability brief rendering", () => {
       fileContent(project, "skills/incident-summary/LICENSE"),
     );
     expect(fileContent(project, ".gitignore")).toBe(
-      ".skillpress/runs/\n.skillpress/tessl/\n.skillpress/tessl-evals/\n.skillpress/publications/\n.skillpress/projections/\n.skillpress/staging/\n.skillpress/tmp/\n",
+      ".skill-press/runs/\n.skill-press/tessl/\n.skill-press/tessl-evals/\n.skill-press/submissions/\n.skill-press/staging/\n.skill-press/tmp/\n.skillpress/\n",
     );
   });
 
@@ -143,10 +143,11 @@ describe("capability brief rendering", () => {
 
   it("maps the rendered project document back through the versioned config loader", async () => {
     const project = renderCapabilityProject(await loadCapabilityBrief(briefPath));
-    const configPath = await temporaryFile(fileContent(project, "skillpress.yaml"));
+    const configPath = await temporaryFile(fileContent(project, "skill-press.yaml"));
     const config = await loadProjectConfig(configPath);
 
     expect(config.project.version).toBe("0.1.0");
+    expect(config.registry.namespace).toBe("example");
     expect(config.skill.path).toBe("skills/incident-summary");
     expect(config.tests.commands[0]?.argv).toEqual(["node", "--test"]);
     expect(config.evaluation.network).toBe("none");
@@ -189,14 +190,18 @@ describe("capability brief rendering", () => {
     expect(skill).not.toContain("\n<script>");
   });
 
-  it("does not confuse a real task-management identifier or executable with a placeholder", async () => {
+  it("does not confuse a real identifier or executable with a placeholder", async () => {
     const value = parse(briefText) as SkillPressCapabilityBrief;
     value.name = "todo";
+    value.namespace = "tbd";
     value.title = "Todo Manager";
     value.tests.commands[0].argv = ["todo", "check"];
     const path = await temporaryFile(stringify(value));
 
-    await expect(loadCapabilityBrief(path)).resolves.toMatchObject({ name: "todo" });
+    await expect(loadCapabilityBrief(path)).resolves.toMatchObject({
+      name: "todo",
+      namespace: "tbd",
+    });
   });
 
   it("accepts high-confidence placeholder near misses in prose", async () => {

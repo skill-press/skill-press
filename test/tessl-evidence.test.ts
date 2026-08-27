@@ -278,7 +278,7 @@ describe("Tessl official evidence bridge", () => {
       "skill",
       "lint",
       expect.stringMatching(
-        /^\.skillpress\/tessl\/[a-f0-9]{64}\/lint-plugin\/\.tessl-plugin\/plugin\.json$/u,
+        /^\.skill-press\/tessl\/[a-f0-9]{64}\/lint-plugin\/\.tessl-plugin\/plugin\.json$/u,
       ),
     ]);
     expect(observed[2]).toEqual([
@@ -491,8 +491,8 @@ describe("Tessl official evidence bridge", () => {
     ).rejects.toBeInstanceOf(TesslEvidenceError);
 
     const storageFixture = await project();
-    await mkdir(join(storageFixture.root, ".skillpress"));
-    await symlink(storageFixture.evalSource, join(storageFixture.root, ".skillpress", "tessl"));
+    await mkdir(join(storageFixture.root, ".skill-press"));
+    await symlink(storageFixture.evalSource, join(storageFixture.root, ".skill-press", "tessl"));
     await expect(
       captureTesslReviewEvidence(storageFixture.root, {
         executable: storageFixture.executable,
@@ -503,7 +503,7 @@ describe("Tessl official evidence bridge", () => {
     const rootLinkFixture = await project();
     const outsideStorage = join(rootLinkFixture.root, "outside-storage");
     await mkdir(outsideStorage);
-    await symlink(outsideStorage, join(rootLinkFixture.root, ".skillpress"));
+    await symlink(outsideStorage, join(rootLinkFixture.root, ".skill-press"));
     await expect(
       captureTesslReviewEvidence(rootLinkFixture.root, {
         executable: rootLinkFixture.executable,
@@ -590,7 +590,7 @@ describe("Tessl official evidence bridge", () => {
       "--json",
       "--force",
       "--context",
-      expect.stringMatching(/^\.skillpress\/tessl\/[a-f0-9]{64}\/eval-plugin-[a-f0-9]{64}$/u),
+      expect.stringMatching(/^\.skill-press\/tessl\/[a-f0-9]{64}\/eval-plugin-[a-f0-9]{64}$/u),
       "--skill",
       "incident-summary",
       "--agent",
@@ -734,10 +734,10 @@ describe("Tessl official evidence bridge", () => {
     const executor: TesslCommandExecutor = async (command) => {
       const args = command.argv.slice(1);
       if (args[0] === "--version") {
-        const storageIds = await readdir(join(fixture.root, ".skillpress", "tessl"));
+        const storageIds = await readdir(join(fixture.root, ".skill-press", "tessl"));
         const boundary = join(
           fixture.root,
-          ".skillpress",
+          ".skill-press",
           "tessl",
           storageIds[0] as string,
           ".git",
@@ -1008,7 +1008,7 @@ describe("Tessl official evidence bridge", () => {
         "--json",
         "--force",
         "--context",
-        expect.stringMatching(/^\.skillpress\/tessl\/[a-f0-9]{64}\/eval-plugin-[a-f0-9]{64}$/u),
+        expect.stringMatching(/^\.skill-press\/tessl\/[a-f0-9]{64}\/eval-plugin-[a-f0-9]{64}$/u),
         "--skill",
         "incident-summary",
         ...value.flags,
@@ -1124,7 +1124,7 @@ describe("Tessl official evidence bridge", () => {
     ).rejects.toBeInstanceOf(TesslEvidenceError);
     const start = observed.find((args) => args[0] === "eval" && args[1] === "run");
     const contextPath = start?.[start.indexOf("--context") + 1];
-    expect(contextPath).toMatch(/^\.skillpress\/tessl\/[a-f0-9]{64}\/eval-plugin-[a-f0-9]{64}$/u);
+    expect(contextPath).toMatch(/^\.skill-press\/tessl\/[a-f0-9]{64}\/eval-plugin-[a-f0-9]{64}$/u);
     const storagePath = (contextPath as string).split("/").slice(0, -1).join("/");
     await expect(access(join(fixture.root, storagePath, ".git"))).rejects.toMatchObject({
       code: "ENOENT",

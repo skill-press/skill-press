@@ -38,7 +38,7 @@ export interface ImprovementEvaluationBinding {
   readonly minimumImpactDelta: number;
 }
 
-const EVIDENCE_PATH = /^\.skillpress\/runs\/([a-f0-9]{64})\/evidence[.]json$/u;
+const EVIDENCE_PATH = /^\.skill-press\/runs\/([a-f0-9]{64})\/evidence[.]json$/u;
 const MAX_EVIDENCE_BYTES = 1024 * 1024;
 const MAX_FILES = 64;
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
@@ -87,14 +87,14 @@ async function loadEvidence(
       issue(
         "improve.evidence.path",
         `/${suite}EvidencePath`,
-        "evidence must use .skillpress/runs/<run-id>/evidence.json",
+        "evidence must use .skill-press/runs/<run-id>/evidence.json",
       ),
     ]);
   }
   for (const parent of [
-    join(root, ".skillpress"),
-    join(root, ".skillpress", "runs"),
-    join(root, ".skillpress", "runs", match[1] as string),
+    join(root, ".skill-press"),
+    join(root, ".skill-press", "runs"),
+    join(root, ".skill-press", "runs", match[1] as string),
   ]) {
     const metadata = await lstat(parent);
     if (

@@ -62,11 +62,11 @@ describe("rendered project manifest snapshots", () => {
       rendered.files.map((file) => file.path).sort(),
     );
     expect(snapshot.directories).toEqual(["evals", "skills", "skills/incident-summary"]);
-    expect(snapshot.expectedFiles.get("skillpress.yaml")).toEqual({
+    expect(snapshot.expectedFiles.get("skill-press.yaml")).toEqual({
       bytes: Buffer.byteLength(
-        rendered.files.find((file) => file.path === "skillpress.yaml")?.content ?? "",
+        rendered.files.find((file) => file.path === "skill-press.yaml")?.content ?? "",
       ),
-      sha256: rendered.files.find((file) => file.path === "skillpress.yaml")?.sha256,
+      sha256: rendered.files.find((file) => file.path === "skill-press.yaml")?.sha256,
     });
     expect(Object.isFrozen(snapshot)).toBe(true);
     expect(Object.isFrozen(snapshot.files)).toBe(true);
@@ -167,12 +167,12 @@ describe("rendered project manifest snapshots", () => {
       },
       {
         name: "reserved transaction path",
-        project: withExtraFile(emptyFile(".skillpress-incomplete/child")),
+        project: withExtraFile(emptyFile(".skill-press-incomplete/child")),
         code: "create.manifest_path",
       },
       {
         name: "case-folded transaction path",
-        project: withExtraFile(emptyFile(".SKILLPRESS-INCOMPLETE/child")),
+        project: withExtraFile(emptyFile(".SKILL-PRESS-INCOMPLETE/child")),
         code: "create.manifest_path",
       },
       {

@@ -88,7 +88,7 @@ describe("tracked-only canonical staging", () => {
     } else {
       await writeFile(
         join(root, ".gitignore"),
-        ".skillpress/\nskills/incident-summary/ignored.txt\n",
+        ".skill-press/\nskills/incident-summary/ignored.txt\n",
       );
       await execFileAsync("git", ["add", ".gitignore"], { cwd: root });
       await execFileAsync(
@@ -114,8 +114,8 @@ describe("tracked-only canonical staging", () => {
   it("rejects a dirty project configuration", async () => {
     const root = await project();
     await writeFile(
-      join(root, "skillpress.yaml"),
-      `${await readFile(join(root, "skillpress.yaml"), "utf8")}\n`,
+      join(root, "skill-press.yaml"),
+      `${await readFile(join(root, "skill-press.yaml"), "utf8")}\n`,
     );
     await expect(stageCanonicalSkill(root)).rejects.toBeInstanceOf(SkillStagingError);
   });
@@ -150,7 +150,7 @@ describe("tracked-only canonical staging", () => {
     const unsafe = await project();
     const outside = join(unsafe, "outside");
     await mkdir(outside);
-    await symlink(outside, join(unsafe, ".skillpress"));
+    await symlink(outside, join(unsafe, ".skill-press"));
     await expect(stageCanonicalSkill(unsafe)).rejects.toBeInstanceOf(SkillStagingError);
   });
 

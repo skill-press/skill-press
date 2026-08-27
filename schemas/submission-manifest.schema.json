@@ -1,0 +1,195 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/skill-press/skill-press/main/schemas/submission-manifest.schema.json",
+  "title": "SkillPressSubmissionManifest",
+  "description": "The deterministic client manifest for one canonical Skill Press submission.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "manifestType",
+    "configSchemaVersion",
+    "project",
+    "registry",
+    "skill",
+    "source",
+    "package",
+    "evidence",
+    "serverValidationRequired",
+    "tool"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "manifestType": { "const": "skillpress.submission-manifest" },
+    "configSchemaVersion": { "const": 2 },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "repository", "license", "author"],
+      "properties": {
+        "name": { "$ref": "#/definitions/name" },
+        "version": { "$ref": "#/definitions/semver" },
+        "repository": { "$ref": "#/definitions/repository" },
+        "license": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "author": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "github"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+            "github": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 39,
+              "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$"
+            }
+          }
+        }
+      }
+    },
+    "registry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["namespace"],
+      "properties": {
+        "namespace": { "$ref": "#/definitions/name" }
+      }
+    },
+    "skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "path", "risk"],
+      "properties": {
+        "name": { "$ref": "#/definitions/name" },
+        "path": { "$ref": "#/definitions/relativePath" },
+        "risk": { "type": "string", "enum": ["low", "moderate", "high"] }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "projectConfigSha256", "skillSha256"],
+      "properties": {
+        "commit": { "$ref": "#/definitions/commit" },
+        "projectConfigSha256": { "$ref": "#/definitions/digest" },
+        "skillSha256": { "$ref": "#/definitions/digest" }
+      }
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact", "provenance", "checksums"],
+      "properties": {
+        "artifact": { "$ref": "#/definitions/artifactPayload" },
+        "provenance": { "$ref": "#/definitions/provenancePayload" },
+        "checksums": { "$ref": "#/definitions/checksumsPayload" }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["advisory", "review", "evaluation", "evalSourceSha256"],
+      "properties": {
+        "advisory": { "const": true },
+        "review": { "$ref": "#/definitions/reviewEvidencePayload" },
+        "evaluation": { "$ref": "#/definitions/evalEvidencePayload" },
+        "evalSourceSha256": { "$ref": "#/definitions/digest" }
+      }
+    },
+    "serverValidationRequired": { "const": true },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "const": "@skill-press/cli" }
+      }
+    }
+  },
+  "definitions": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "semver": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$"
+    },
+    "repository": {
+      "type": "string",
+      "maxLength": 240,
+      "pattern": "^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\\.git)?$"
+    },
+    "commit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "artifactPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sha256", "bytes", "mediaType"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*-(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?[.]skill$"
+        },
+        "sha256": { "$ref": "#/definitions/digest" },
+        "bytes": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "mediaType": { "const": "application/zip" }
+      }
+    },
+    "provenancePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sha256", "bytes", "mediaType"],
+      "properties": {
+        "name": { "const": "provenance.json" },
+        "sha256": { "$ref": "#/definitions/digest" },
+        "bytes": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "mediaType": { "const": "application/json" }
+      }
+    },
+    "checksumsPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sha256", "bytes", "mediaType"],
+      "properties": {
+        "name": { "const": "SHA256SUMS" },
+        "sha256": { "$ref": "#/definitions/digest" },
+        "bytes": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "mediaType": { "const": "text/plain" }
+      }
+    },
+    "reviewEvidencePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sha256", "bytes", "mediaType"],
+      "properties": {
+        "name": { "const": "review-evidence.json" },
+        "sha256": { "$ref": "#/definitions/digest" },
+        "bytes": { "type": "integer", "minimum": 1, "maximum": 1048576 },
+        "mediaType": { "const": "application/json" }
+      }
+    },
+    "evalEvidencePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sha256", "bytes", "mediaType"],
+      "properties": {
+        "name": { "const": "eval-evidence.json" },
+        "sha256": { "$ref": "#/definitions/digest" },
+        "bytes": { "type": "integer", "minimum": 1, "maximum": 1048576 },
+        "mediaType": { "const": "application/json" }
+      }
+    }
+  }
+}

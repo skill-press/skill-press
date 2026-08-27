@@ -130,6 +130,7 @@ function classifyPlaceholder(value: string): PlaceholderClassification {
 
 const NON_PROSE_EXACT_PATHS = new Set([
   "/name",
+  "/namespace",
   "/version",
   "/repository",
   "/author/github",
@@ -149,7 +150,6 @@ function isNonProsePath(path: string): boolean {
     ((applySnapshot(stringStartsWithSnapshot, path, ["/tests/commands/"]) as boolean) &&
       ((applySnapshot(stringIncludesSnapshot, path, ["/argv/"]) as boolean) ||
         (applySnapshot(stringEndsWithSnapshot, path, ["/cwd"]) as boolean))) ||
-    (applySnapshot(stringStartsWithSnapshot, path, ["/publish/targets/"]) as boolean) ||
     ((applySnapshot(stringStartsWithSnapshot, path, ["/scenarios/"]) as boolean) &&
       (applySnapshot(stringEndsWithSnapshot, path, ["/id"]) as boolean))
   );
@@ -419,7 +419,7 @@ export async function loadCapabilityBrief(path: string): Promise<ResolvedCapabil
 
   if (!validate(value)) {
     throw new CapabilityBriefError(
-      "Capability brief does not match schema version 1.",
+      "Capability brief does not match schema version 2.",
       schemaIssues(validate.errors as ErrorObject[]),
     );
   }

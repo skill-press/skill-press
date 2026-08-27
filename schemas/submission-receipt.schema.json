@@ -1,0 +1,230 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/skill-press/skill-press/main/schemas/submission-receipt.schema.json",
+  "title": "SkillPressSubmissionReceipt",
+  "description": "A private retry journal for one canonical Skill Press submission.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "receiptType",
+    "runId",
+    "idempotencyKey",
+    "registry",
+    "bindings",
+    "dryRun",
+    "operationStatus",
+    "request",
+    "remote",
+    "createdAt",
+    "updatedAt",
+    "storagePath"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "receiptType": { "const": "skillpress.submission" },
+    "runId": { "$ref": "#/definitions/digest" },
+    "idempotencyKey": { "$ref": "#/definitions/digest" },
+    "registry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin", "protocolVersion", "namespace"],
+      "properties": {
+        "origin": { "const": "https://skill-press.com" },
+        "protocolVersion": { "const": 1 },
+        "namespace": { "$ref": "#/definitions/namespace" }
+      }
+    },
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceCommit",
+        "projectVersion",
+        "skillName",
+        "projectConfigSha256",
+        "skillSha256",
+        "artifactSha256",
+        "provenanceSha256",
+        "checksumsSha256",
+        "manifestSha256",
+        "reviewEvidenceSha256",
+        "evalEvidenceSha256",
+        "evalSourceSha256"
+      ],
+      "properties": {
+        "sourceCommit": { "$ref": "#/definitions/commit" },
+        "projectVersion": { "$ref": "#/definitions/semver" },
+        "skillName": { "$ref": "#/definitions/name" },
+        "projectConfigSha256": { "$ref": "#/definitions/digest" },
+        "skillSha256": { "$ref": "#/definitions/digest" },
+        "artifactSha256": { "$ref": "#/definitions/digest" },
+        "provenanceSha256": { "$ref": "#/definitions/digest" },
+        "checksumsSha256": { "$ref": "#/definitions/digest" },
+        "manifestSha256": { "$ref": "#/definitions/digest" },
+        "reviewEvidenceSha256": { "$ref": "#/definitions/digest" },
+        "evalEvidenceSha256": { "$ref": "#/definitions/digest" },
+        "evalSourceSha256": { "$ref": "#/definitions/digest" }
+      }
+    },
+    "dryRun": { "type": "boolean" },
+    "operationStatus": {
+      "type": "string",
+      "enum": ["prepared", "submitting", "failed", "submitted"]
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "attempts"],
+      "properties": {
+        "status": { "type": "string", "enum": ["pending", "completed"] },
+        "attempts": { "type": "integer", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "remote": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/definitions/remote" }]
+    },
+    "errorCode": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:_[a-z0-9]+)*$"
+    },
+    "createdAt": { "$ref": "#/definitions/timestamp" },
+    "updatedAt": { "$ref": "#/definitions/timestamp" },
+    "storagePath": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "string",
+          "pattern": "^\\.skill-press/submissions/[a-f0-9]{64}/receipt[.]json$"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "commit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "namespace": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "semver": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$"
+    },
+    "url": {
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^https://skill-press[.]com/[A-Za-z0-9._~!$&'()*+,;=:@%/?-]*$"
+    },
+    "reviewStatus": {
+      "type": "string",
+      "enum": [
+        "received",
+        "automated-review",
+        "curator-review",
+        "changes-requested",
+        "accepted",
+        "published",
+        "rejected"
+      ]
+    },
+    "trustStatus": {
+      "type": "string",
+      "enum": ["trusted", "quarantined", "revoked"]
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "locator",
+        "version",
+        "artifactSha256",
+        "canonicalUrl",
+        "attestationUrl",
+        "trust"
+      ],
+      "properties": {
+        "locator": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 240,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:-[a-z0-9]+)*@(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+        },
+        "version": { "$ref": "#/definitions/semver" },
+        "artifactSha256": { "$ref": "#/definitions/digest" },
+        "canonicalUrl": { "$ref": "#/definitions/url" },
+        "attestationUrl": { "$ref": "#/definitions/url" },
+        "trust": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "sequence", "updatedAt"],
+          "properties": {
+            "status": { "$ref": "#/definitions/trustStatus" },
+            "sequence": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "updatedAt": { "$ref": "#/definitions/timestamp" },
+            "reasonCode": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z0-9]+(?:_[a-z0-9]+)*$"
+            }
+          }
+        }
+      }
+    },
+    "remote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "namespace", "url", "status", "statusVersion", "observedAt"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+        },
+        "namespace": { "$ref": "#/definitions/namespace" },
+        "url": { "$ref": "#/definitions/url" },
+        "status": { "$ref": "#/definitions/reviewStatus" },
+        "statusVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "observedAt": { "$ref": "#/definitions/timestamp" },
+        "release": { "$ref": "#/definitions/release" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["status"],
+            "properties": { "status": { "const": "published" } }
+          },
+          "then": { "properties": { "release": {} }, "required": ["release"] },
+          "else": {
+            "not": { "properties": { "release": {} }, "required": ["release"] }
+          }
+        }
+      ]
+    }
+  }
+}

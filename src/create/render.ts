@@ -155,7 +155,7 @@ function renderScenarios(brief: ResolvedCapabilityBrief, suite: "training" | "ho
 
 function renderProjectConfig(brief: ResolvedCapabilityBrief): string {
   return renderYaml({
-    schemaVersion: 1,
+    schemaVersion: 2,
     project: {
       name: brief.name,
       version: brief.version,
@@ -163,6 +163,9 @@ function renderProjectConfig(brief: ResolvedCapabilityBrief): string {
       license: brief.license.id,
       repository: brief.repository,
       author: brief.author,
+    },
+    registry: {
+      namespace: brief.namespace,
     },
     skill: {
       name: brief.name,
@@ -190,7 +193,6 @@ function renderProjectConfig(brief: ResolvedCapabilityBrief): string {
       maxCostUsd: 100,
       maxWallMinutes: 240,
     },
-    publish: brief.publish,
   });
 }
 
@@ -237,7 +239,7 @@ export function renderCapabilityProject(brief: ResolvedCapabilityBrief): Rendere
   const files = [
     projectFile(
       ".gitignore",
-      ".skillpress/runs/\n.skillpress/tessl/\n.skillpress/tessl-evals/\n.skillpress/publications/\n.skillpress/projections/\n.skillpress/staging/\n.skillpress/tmp/\n",
+      ".skill-press/runs/\n.skill-press/tessl/\n.skill-press/tessl-evals/\n.skill-press/submissions/\n.skill-press/staging/\n.skill-press/tmp/\n.skillpress/\n",
     ),
     projectFile("LICENSE", license),
     projectFile("evals/holdout.yaml", renderScenarios(brief, "holdout")),
@@ -245,7 +247,7 @@ export function renderCapabilityProject(brief: ResolvedCapabilityBrief): Rendere
     projectFile("evals/training.yaml", renderScenarios(brief, "training")),
     projectFile(`${skillPath}/LICENSE`, license),
     projectFile(`${skillPath}/SKILL.md`, renderSkill(brief)),
-    projectFile("skillpress.yaml", renderProjectConfig(brief)),
+    projectFile("skill-press.yaml", renderProjectConfig(brief)),
   ].sort((left, right) => compareAscii(left.path, right.path));
 
   return { skillPath, files };

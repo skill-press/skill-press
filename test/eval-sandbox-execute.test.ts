@@ -53,7 +53,7 @@ if (command === "pass") {
   setInterval(() => {}, 1000);
 } else if (command === "environment") {
   process.stdout.write(JSON.stringify({
-    skillpress: process.env.SKILLPRESS,
+    skillPress: process.env.SKILL_PRESS,
     secret: process.env.SKILLPRESS_EXECUTOR_TEST_SECRET,
     nodeOptions: process.env.NODE_OPTIONS
   }));
@@ -102,7 +102,7 @@ describe("sandbox executor", () => {
     process.env.NODE_OPTIONS = "--trace-warnings";
     try {
       const result = await executeSandboxInvocation(invocation("environment"));
-      expect(JSON.parse(result.stdoutText)).toEqual({ skillpress: "1" });
+      expect(JSON.parse(result.stdoutText)).toEqual({ skillPress: "1" });
     } finally {
       delete process.env.SKILLPRESS_EXECUTOR_TEST_SECRET;
       delete process.env.NODE_OPTIONS;
@@ -120,7 +120,7 @@ describe("sandbox executor", () => {
     expect(result.status).toBe("output_limit");
     expect(result.cleanupAttempted).toBe(true);
     expect(result.cleanupOk).toBe(true);
-    expect(await readFile(cleanupLog, "utf8")).toContain("rm --force skillpress-0123456789abcdef");
+    expect(await readFile(cleanupLog, "utf8")).toContain("rm --force skill-press-0123456789abcdef");
   });
 
   it("kills and cleans up after the wall-time limit", async () => {

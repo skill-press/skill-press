@@ -25,7 +25,7 @@ function result(success: boolean): CommandImprovementResult {
     schemaVersion: 1,
     resultType: "skillpress.improve-command",
     changed: success,
-    storagePath: `.skillpress/improvements/${"1".repeat(64)}/report.json`,
+    storagePath: `.skill-press/improvements/${"1".repeat(64)}/report.json`,
     report: {
       schemaVersion: 1,
       reportType: "skillpress.improve",
@@ -49,8 +49,8 @@ function operations() {
   } satisfies NonNullable<Parameters<typeof runImproveCommand>[2]>;
 }
 
-const training = `.skillpress/runs/${"6".repeat(64)}/evidence.json`;
-const holdout = `.skillpress/runs/${"7".repeat(64)}/evidence.json`;
+const training = `.skill-press/runs/${"6".repeat(64)}/evidence.json`;
+const holdout = `.skill-press/runs/${"7".repeat(64)}/evidence.json`;
 const required = [
   "--training-evidence",
   training,

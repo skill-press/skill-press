@@ -10,6 +10,7 @@ import { Lexer } from "yaml";
 
 import {
   CONFIG_FILE_NAME,
+  LEGACY_CONFIG_FILE_NAME,
   loadProjectConfig,
   loadStrictYamlDocument,
   MAX_CONFIG_BYTES,
@@ -87,22 +88,31 @@ describe("project configuration", () => {
   it("loads a valid configuration file", async () => {
     const config = await loadProjectConfig(fixturePath);
 
-    expect(config.schemaVersion).toBe(1);
+    expect(config.schemaVersion).toBe(2);
     expect(config.skill).toEqual({
       name: "example-skill",
       path: "skills/example-skill",
       risk: "moderate",
     });
     expect(config.quality.tesslImpactMinimum).toBe(90);
-    expect(config.publish.targets).toContain("clawhub");
   });
 
-  it("finds skillpress.yaml when given a directory", async () => {
+  it("finds skill-press.yaml when given a directory", async () => {
     const fixture = await temporaryConfig(validConfig);
 
     await expect(loadProjectConfig(fixture.directory)).resolves.toEqual(
       await loadProjectConfig(fixture.path),
     );
+  });
+
+  it("rejects the legacy filename with an explicit migration diagnostic", async () => {
+    const directory = await mkdtemp(join(temporaryRoot, "skill-press-legacy-config-test-"));
+    temporaryDirectories.push(directory);
+    const legacyPath = join(directory, LEGACY_CONFIG_FILE_NAME);
+    await writeFile(legacyPath, validConfig, { mode: 0o600 });
+
+    await expectIssue(directory, "config.legacy_filename");
+    await expectIssue(legacyPath, "config.legacy_filename");
   });
 
   it("reports every schema violation with stable codes", async () => {
@@ -124,21 +134,33 @@ describe("project configuration", () => {
     await expectIssue(fixture.path, "config.schema.pattern");
   });
 
+  it("requires one canonical lowercase registry namespace", async () => {
+    const missing = await temporaryConfig(
+      validConfig.replace("registry:\n  namespace: example\n", ""),
+    );
+    const noncanonical = await temporaryConfig(
+      validConfig.replace("namespace: example", "namespace: Example_Org"),
+    );
+
+    await expectIssue(missing.path, "config.schema.required");
+    await expectIssue(noncanonical.path, "config.schema.pattern");
+  });
+
   it("rejects duplicate YAML keys", async () => {
-    const fixture = await temporaryConfig(`${validConfig}\nschemaVersion: 1\n`);
+    const fixture = await temporaryConfig(`${validConfig}\nschemaVersion: 2\n`);
 
     await expectIssue(fixture.path, "config.yaml");
   });
 
   it("rejects multiple YAML documents", async () => {
-    const fixture = await temporaryConfig(`${validConfig}\n---\nschemaVersion: 1\n`);
+    const fixture = await temporaryConfig(`${validConfig}\n---\nschemaVersion: 2\n`);
 
     await expectIssue(fixture.path, "config.yaml_documents");
   });
 
   it("rejects YAML aliases", async () => {
     const fixture = await temporaryConfig(
-      validConfig.replace("schemaVersion: 1", "schemaVersion: &version 1\nalias: *version"),
+      validConfig.replace("schemaVersion: 2", "schemaVersion: &version 2\nalias: *version"),
     );
 
     await expectIssue(fixture.path, "config.yaml_alias");
@@ -253,7 +275,7 @@ describe("project configuration", () => {
       expect(failure).toBeInstanceOf(ProjectConfigError);
       const configError = failure as ProjectConfigError;
       expect(configError.message).toBe(
-        "SkillPress configuration exceeds the YAML complexity budget.",
+        "Skill Press configuration exceeds the YAML complexity budget.",
       );
       expect(configError.issues).toEqual([
         {
@@ -356,7 +378,7 @@ describe("project configuration", () => {
     const text = `root:\n${" ".repeat(65)}private: true\n`;
     const fixture = await temporaryConfig(text);
     const actualFs = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
-    const schemaHref = new URL("../schemas/skillpress.schema.json", import.meta.url).href;
+    const schemaHref = new URL("../schemas/skill-press.schema.json", import.meta.url).href;
     const nativeApply = Reflect.apply;
     const nativeCharCodeAt = String.prototype.charCodeAt;
     const applyDescriptor = Object.getOwnPropertyDescriptor(Reflect, "apply");
@@ -441,7 +463,7 @@ describe("project configuration", () => {
       expect(poisonCalls).toBe(0);
       expect(failure).toMatchObject({
         name: "ProjectConfigError",
-        message: "SkillPress configuration exceeds the YAML complexity budget.",
+        message: "Skill Press configuration exceeds the YAML complexity budget.",
         issues: [
           {
             code: "config.complexity",
@@ -569,6 +591,64 @@ describe("project configuration", () => {
       readConfigText(inspected, async () => open(replacement.path, "r")),
       "config.changed",
     );
+  });
+
+  it("fails closed when an inspected config cannot be opened", async () => {
+    const fixture = await temporaryConfig(validConfig);
+    const inspected = { path: fixture.path, metadata: await lstat(fixture.path) };
+
+    await expectIssueFrom(
+      readConfigText(inspected, async () => {
+        throw new Error("simulated open failure");
+      }),
+      "config.read",
+    );
+  });
+
+  it("rejects a non-file or oversized object after opening and still closes it", async () => {
+    const fixture = await temporaryConfig(validConfig);
+    const metadata = await lstat(fixture.path);
+    const inspected = { path: fixture.path, metadata };
+
+    for (const [openedMetadata, expectedCode] of [
+      [Object.assign(Object.create(metadata), { isFile: () => false }), "config.file_type"],
+      [Object.assign(Object.create(metadata), { size: MAX_CONFIG_BYTES + 1 }), "config.too_large"],
+    ] as const) {
+      let closed = false;
+      await expectIssueFrom(
+        readConfigText(inspected, async () => ({
+          stat: async () => openedMetadata,
+          read: async () => ({ bytesRead: 0 }),
+          close: async () => {
+            closed = true;
+          },
+        })),
+        expectedCode,
+      );
+      expect(closed).toBe(true);
+    }
+  });
+
+  it("rejects a configuration that grows past the byte limit while being read", async () => {
+    const fixture = await temporaryConfig(validConfig);
+    const metadata = await lstat(fixture.path);
+    const inspected = { path: fixture.path, metadata };
+    let closed = false;
+
+    await expectIssueFrom(
+      readConfigText(inspected, async () => ({
+        stat: async () => metadata,
+        read: async (buffer, offset, length) => {
+          buffer.fill(0x61, offset, offset + length);
+          return { bytesRead: length };
+        },
+        close: async () => {
+          closed = true;
+        },
+      })),
+      "config.too_large",
+    );
+    expect(closed).toBe(true);
   });
 });
 

@@ -1,177 +1,205 @@
-# SkillPress
+# Skill Press
 
-SkillPress builds, evaluates, packages, and publishes production-grade Agent Skills. It combines
-an installable skill with a typed CLI so open-ended authoring stays agent-friendly while quality,
-testing, provenance, and publication gates remain deterministic and auditable.
+Skill Press is a developer platform for building, verifying, curating, and distributing trusted
+Agent Skills. The CLI turns one canonical skill into a reproducible candidate, measures behavior,
+captures external evidence, and submits that exact candidate to the Skill Press review pipeline.
 
-The project is under active development. The npm package identity is `@mushanyoung/skillpress`;
-the unscoped `skillpress` name belongs to a different project and will not be used.
+The product boundary is deliberate: authors submit once to Skill Press. Skill Press performs
+automated validation and curator review, then publishes immutable releases through its canonical
+registry. It does not ask authors to publish separate copies to multiple Agent Skill platforms.
+
+> [!IMPORTANT]
+> The CLI and submission protocol are under active development. The registry backend, account and
+> token issuance, and `skpress add` / `skpress install` are not live yet. `skpress submit --dry-run`
+> can prepare and verify a candidate locally; a non-dry-run submission cannot succeed until the
+> canonical service is deployed.
+
+## Canonical identities
+
+| Surface | Identity |
+| --- | --- |
+| Brand | Skill Press |
+| Website and registry authority | `https://skill-press.com` |
+| Registry API | `https://skill-press.com/api/v1` |
+| GitHub organization | `skill-press` |
+| Main repository | `skill-press/skill-press` |
+| npm package | `@skill-press/cli` |
+| Executable | `skpress` |
+| Project configuration | `skill-press.yaml` |
+| Private project state | `.skill-press/` |
+
+`SkillPress*` remains the prefix for programmatic types and serialized protocol identifiers. In
+product prose, the brand is always written as **Skill Press**.
+
+Each project also declares a lowercase `registry.namespace` in `skill-press.yaml`. It is the
+requested canonical Skill Press identity, independent of `author.github` and the GitHub repository
+owner; the future service must verify that the authenticated submitter controls it.
+
+## Current development setup
+
+Use Node.js 22 or newer. Until the first formal `@skill-press/cli` release, build the executable
+from this repository:
 
 ```bash
-npm install
+npm ci --ignore-scripts
 npm run build
 node dist/bin.js --help
 ```
 
-Create accepts a complete, strictly validated capability brief and refuses partial TODO-style
-scaffolds:
+After the package is formally released, the intended installation is:
 
 ```bash
-skillpress create --brief capability-brief.yaml --output ./my-skill
-skillpress create --brief capability-brief.yaml --output ./my-skill --json
+npm install --global @skill-press/cli
+skpress --help
 ```
 
-The brief contract is defined by
-[`schemas/capability-brief.schema.json`](schemas/capability-brief.schema.json). All command exit
-codes, including the `create`-only unsafe-output code, are documented in the
-[operating runbook](docs/OPERATIONS.md#exit-codes).
+The package name is fixed, but this README does not claim that a production npm release is already
+available.
 
-The project writer accepts only a bounded, snapshotted rendered manifest. The destination must not
-exist: SkillPress claims it atomically, never overwrites an existing path, and keeps an incomplete
-marker if unknown concurrent data prevents safe rollback.
-The output parent and other processes running as the same operating-system account are a trust
-boundary during creation; portable Node.js does not expose the directory-relative filesystem
-primitives needed to sandbox a malicious same-account process. Run untrusted work in the isolated
-runner introduced by the evaluation workflow, not alongside `create` in the same account.
+## Workflow
 
-Run the deterministic local gates from a project root:
+Create a project from a complete, strictly validated capability brief:
 
 ```bash
-skillpress check --project .
-skillpress test --project .
-skillpress eval --project . --image <image@sha256:digest> --model <model> -- <adapter-argv...>
-skillpress tessl review --project . --workspace <workspace> \
-  --executable <absolute-versioned-tessl-binary>
-skillpress tessl eval --project . --source .skillpress/tessl-evals/<set> \
-  --executable <absolute-versioned-tessl-binary>
+skpress init --brief capability-brief.yaml --output ./my-skill
 ```
 
-The CLI also exposes the complete gated workflow:
+The brief must contain a registry namespace plus real outcomes, boundaries, tests, and evaluation
+scenarios. `init` refuses partial TODO-style scaffolds and never overwrites an existing destination.
+
+Run the deterministic and behavioral gates from the project root:
 
 ```bash
-skillpress improve --training-evidence <training-evidence.json> \
+skpress check --project .
+skpress test --project .
+skpress eval --project . --image <image@sha256:digest> --model <model> -- <adapter-argv...>
+```
+
+- `check` validates the canonical skill, project identity, scenarios, rubric, references, safety,
+  and local readiness. It never reports an external Quality or Impact score.
+- `test` runs project-declared argv without a shell. These are trusted host tests, not a sandbox
+  for an unknown repository.
+- `eval` compares the same task without and with the exact skill in separate Docker or Podman
+  sandboxes. Raw results remain under ignored, private `.skill-press/runs/` storage.
+
+The bounded improvement loop accepts explicit author, reviewer, and evaluator processes while
+keeping holdouts outside the author context:
+
+```bash
+skpress improve --training-evidence <training-evidence.json> \
   --holdout-evidence <holdout-evidence.json> \
-  --author-command <author> --reviewer-command <reviewer> --evaluator-command <evaluator>
-skillpress package --review-evidence <review-evidence.json> \
-  --eval-evidence <eval-evidence.json> --eval-source .skillpress/tessl-evals/<set>
-skillpress status --review-evidence <review-evidence.json> \
-  --eval-evidence <eval-evidence.json> --eval-source .skillpress/tessl-evals/<set> \
-  --artifacts <private-artifacts-directory>
-skillpress doctor --review-evidence <review-evidence.json> \
-  --eval-evidence <eval-evidence.json> --eval-source .skillpress/tessl-evals/<set>
-skillpress publish --artifacts <private-artifacts-directory> \
-  --review-evidence <review-evidence.json> --eval-evidence <eval-evidence.json> \
-  --eval-source .skillpress/tessl-evals/<set>
+  --author-command <author> --reviewer-command <reviewer> \
+  --evaluator-command <evaluator>
 ```
 
-Keep generated or holdout Tessl scenarios under the ignored private
-`.skillpress/tessl-evals/` tree. Add `--agent` and/or `--model` only when the workspace plan permits
-explicit selection; omitting them uses the provider defaults. Each eval source must be a Tessl
-plugin whose manifest explicitly declares only `skills/<configured-name>`, exactly matching the
-canonical skill. Capture evaluates a private digest-verified snapshot with an explicit skill
-selector. A temporary nested Git boundary prevents Tessl 0.101.0 from applying the outer private
-storage ignore rule while packing that snapshot; it must be removed before evidence is persisted.
-The release gate rejects residual boundary metadata and independently enforces the
-original/snapshot/canonical binding.
+Capture current official Tessl evidence with a pinned binary:
 
-`publish` is a non-mutating dry run unless `--execute` is supplied. Resume an executed partial run
-with `--execute --resume <private-receipt.json>`. Run each command with `--help` for provider
-identity and executable options. A project that configures ClawHub additionally requires explicit
-`--accept-clawhub-mit0`.
-The configured local saga publishes six skill-registry targets; npm is deliberately released by
-the separate protected GitHub Actions trusted-publishing workflow after the GitHub target succeeds.
+```bash
+skpress tessl review --project . --workspace <workspace> \
+  --executable <absolute-versioned-tessl-binary>
+skpress tessl eval --project . --source .skill-press/tessl-evals/<set> \
+  --executable <absolute-versioned-tessl-binary>
+```
 
-`check` reports a local readiness score and fails closed on invalid canonical skills, missing or
-invalid scenario/rubric inputs, and project identity mismatches. Scenario suites reject duplicate
-or leaked holdout cases after Unicode-aware normalization; rubric weights must total exactly 100.
-It never reports a Tessl score.
-`test` explicitly runs the configured argv without a shell, confines configured working
-directories to the project tree, bounds output and time, and retains only byte counts and digests.
-It is a local project-test runner, not the sandbox for untrusted behavioral evaluation.
+Skill Press currently trusts official Tessl CLI 0.101.0 by executable digest. Tessl is an evidence
+provider, not a publication destination. See the [Tessl evidence contract](docs/TESSL.md).
 
-`eval` runs the same selected scenario without and with the staged canonical skill in separate
-Docker or Podman containers. It requires a digest-pinned adapter image by default, disables
-networking, applies explicit CPU/memory/PID/filesystem/output/time limits, and verifies that the
-adapter consumed the exact request digest and loaded the staged skill digest. Raw baseline and
-with-skill results remain under ignored, private `.skillpress/runs/` storage; the returned evidence
-contains hashes and redacted excerpts. Local behavioral evidence remains distinct from Tessl
-Quality and Impact evidence.
+Package an exact candidate only after the release gate passes:
 
-`tessl review` invokes the official `tessl skill lint` and
-`tessl review run quality --json --force` commands. `tessl eval` invokes the official paired
-`tessl eval run --json --force` workflow, polls its run
-identifier with `tessl eval view --json`, and derives Impact only from the returned scenario
-assessments. Omit `--agent` and `--model` to use Tessl's provider defaults when a workspace plan
-does not permit explicit model selection. The resolved provider identities remain bound in the
-evidence. Quality and Impact capture always force fresh provider results, so cached output from an
-older skill cannot satisfy the release gate. There is no flag or API for entering scores by hand.
-For Impact, the linked eval source preserves Tessl project identity while a digest-verified private
-content-addressed snapshot is supplied as explicit `--context` and narrowed to the configured skill
-with `--skill`; provider JSON must echo that exact context and invocation.
-Raw bounded provider output is stored with private permissions under ignored
-`.skillpress/tessl/` directories;
-public evidence retains command/output digests, source bindings, scores, and eligibility reasons.
+```bash
+skpress package --project . \
+  --review-evidence <review-evidence.json> \
+  --eval-evidence <eval-evidence.json> \
+  --eval-source .skill-press/tessl-evals/<set>
+```
 
-Evidence is release-ineligible when relevant Git inputs are dirty or change during a run, when a
-scenario baseline is absent or regresses, when a test executor is injected, or when the Tessl
-executable does not match a digest from the signed pinned release. SkillPress currently trusts
-official Tessl CLI 0.101.0. Authenticate it with `tessl auth login`, then confirm the identity with
-`tessl auth whoami --json`. See [the Tessl evidence contract](docs/TESSL.md) for the exact commands,
-pin update procedure, and failure boundaries.
+Prepare the canonical submission locally:
 
-Before packaging, the operator must call `checkTesslReleaseGate`, which reopens the private evidence
-and raw streams, reparses provider results, and rebinds them to current clean Git inputs and
-configured thresholds. See [the release-gate contract](docs/RELEASE_GATES.md). The staging,
-packaging, and publication APIs do not accept score flags, and remote mutation must not begin
-unless the returned gate report passed.
+```bash
+skpress submit --project . --artifacts <artifacts-directory> \
+  --review-evidence <review-evidence.json> \
+  --eval-evidence <eval-evidence.json> \
+  --eval-source .skill-press/tessl-evals/<set> \
+  --dry-run
+```
 
-The `improve` command and library export `runBoundedImprovement` coordinate the improvement
-lifecycle. Three explicit role commands receive schema-versioned request/response files in fresh
-private temporary directories and run without a shell. The author receives only the current
-candidate, frozen training scenarios, measured training failures, and remaining budgets; holdout
-inputs are delivered only to the evaluator. A proposal is a complete canonical-skill snapshot
-limited to `SKILL.md`, `LICENSE`, `assets/`, `references/`, and `scripts/`; SkillPress then enforces
-review, deterministic validation, measurable training improvement, and only afterward holdout
-non-regression. Accepted candidates replace the canonical tree with a private rollback backup.
-The loop stops on repeated non-improvement or iteration, token, cost, and wall-time limits. Its
-schema-validated report records digests and metrics, never candidate contents or holdout prompts.
+`submit` has exactly one production origin: `https://skill-press.com/api/v1`. Project input cannot
+redirect credentials to another host. When the service is live, authenticated submission will use
+`SKILL_PRESS_TOKEN`; do not put that value in configuration, fixtures, receipts, logs, or chat.
 
-The package also exposes the strict canonical-skill validator used by later readiness and release
-gates:
+A successful HTTP submission means only that the immutable candidate entered review. It does not
+mean the skill is published or trusted.
+
+## Submission and trust are different state machines
+
+Submission review records progress through:
+
+```text
+received -> automated-review -> curator-review -> accepted -> published
+                                      |               |
+                                      +-> changes-requested
+                                      +-> rejected
+```
+
+A published release separately has a mutable safety disposition:
+
+- `trusted`: approved for normal installation;
+- `quarantined`: temporarily withheld while an issue is investigated;
+- `revoked`: no longer trusted for installation.
+
+Review status answers what happened to a candidate. Trust status answers whether an immutable
+release remains safe to install now. A local receipt is a retry journal, not a trust attestation.
+
+The future `skpress add` and `skpress install` commands will resolve only canonical Skill Press
+release records by default and verify version, digest, attestation, and current trust state. They
+are not implemented or live today.
+
+## Distribution model
+
+- GitHub is the canonical open-source and source-transparency surface. It is not the Agent Skill
+  registry.
+- npm distributes the `@skill-press/cli` developer tool. Agent Skills are not npm packages.
+- Skill Press owns admission, curator decisions, immutable skill versions, attestations, and
+  trust-state changes.
+- External catalogs may later index or mirror an already published release for discovery. Any
+  mirror must preserve the exact digest and canonical URL, and its failure must not change the
+  Skill Press release state.
+
+Skill Press does not provide author-facing multi-publish. Future syndication, if added, will be a
+platform-operated downstream process after canonical publication rather than a set of provider
+credentials and target adapters in each author's project.
+
+## Library API
+
+The package exports the strict canonical-skill validator and the typed local workflow APIs:
 
 ```js
-import { validateAgentSkill } from "@mushanyoung/skillpress";
+import { validateAgentSkill } from "@skill-press/cli";
 
-const report = await validateAgentSkill("./skills/my-skill", { expectedName: "my-skill" });
+const report = await validateAgentSkill("./skills/my-skill", {
+  expectedName: "my-skill",
+});
 ```
 
-Validation creates a bounded resource-tree observation and rechecks it before publishing a result,
-without executing the skill. It also checks every retained regular resource-file basename for conventional environment- or credential-like names without reading unlinked contents. It recursively analyzes only local Markdown files reached by
-CommonMark links; local images and non-Markdown links are existence-checked, while code spans, bare
-paths, and raw HTML are not followed. External URLs are not fetched, and fragment anchors are not
-validated. Within already-read Markdown bodies, validation also rejects placeholders found in
-analyzer-authorized visible text; code spans and blocks, raw HTML, link or image destinations,
-and machine identifiers are excluded. Strictly parsed, decoded `description` and `compatibility`
-string values are also checked as complete semantic fields; raw YAML syntax, field names, and
-`name`, `license`, `allowed-tools`, and `metadata` values remain excluded. Missing, unsafe,
-ambiguous, unreadable, or over-budget resources produce deterministic errors. An `ok: true` report
-may still contain portability or target-specific warnings; it is not a readiness score, an
-evaluation result, or a publication receipt.
+Validation reads a bounded resource tree without executing the skill. It checks strict
+frontmatter, local Markdown references, placeholders, portability, path aliases, suspicious
+resource names, and concurrent changes. An `ok: true` validation result is not by itself a
+readiness score, behavioral evaluation, curator decision, published release, or trust attestation.
 
-SkillPress distinguishes local readiness from Tessl's official Quality and Impact scores. It will
-only report the latter when current Tessl evidence exists, and the release profile defaults to a
-minimum of 90 for both.
+This repository self-hosts the same contract through `skill-press.yaml`,
+`skills/skill-press/`, `evals/training.yaml`, `evals/holdout.yaml`, and `evals/rubric.yaml`.
 
-This repository self-hosts the same contract through `skillpress.yaml`, `skills/skillpress`, the
-paired `evals/training.yaml` and private-authoring-boundary `evals/holdout.yaml` inputs, and
-`evals/rubric.yaml`.
+## Documentation
 
-Operational references:
+- [Product and implementation plan](docs/PLAN.md)
+- [Operating and recovery runbook](docs/OPERATIONS.md)
+- [Security and trust-boundary model](docs/SECURITY.md)
+- [Canonical registry and distribution contract](docs/REGISTRIES.md)
+- [Tessl evidence contract](docs/TESSL.md)
+- [Release-gate contract](docs/RELEASE_GATES.md)
 
-- [operating and recovery runbook](docs/OPERATIONS.md);
-- [security and trust-boundary model](docs/SECURITY.md);
-- [registry capability and rollback guide](docs/REGISTRIES.md);
-- [reviewed implementation plan](docs/PLAN.md).
+Historical implementation reviews remain under `docs/reviews/`; they describe the code at the
+time of each review and are not the current product contract.
 
 ## License
 

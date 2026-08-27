@@ -29,7 +29,7 @@ function childEnvironment(): NodeJS.ProcessEnv {
     ["SystemRoot", systemRootSnapshot],
     ["PATHEXT", pathExtSnapshot],
     ["ComSpec", comSpecSnapshot],
-    ["SKILLPRESS", "1"],
+    ["SKILL_PRESS", "1"],
     ["", undefined],
   ];
   return Object.assign(

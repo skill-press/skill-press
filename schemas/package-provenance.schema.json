@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/mushanyoung/skillpress/main/schemas/package-provenance.schema.json",
+  "$id": "https://raw.githubusercontent.com/skill-press/skill-press/main/schemas/package-provenance.schema.json",
   "title": "SkillPressPackageProvenance",
   "type": "object",
   "additionalProperties": false,
@@ -36,7 +36,7 @@
       "additionalProperties": false,
       "required": ["name", "version"],
       "properties": {
-        "name": { "const": "@mushanyoung/skillpress" },
+        "name": { "const": "@skill-press/cli" },
         "version": { "type": "string", "minLength": 1, "maxLength": 128 }
       }
     },

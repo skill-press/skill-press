@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/mushanyoung/skillpress/main/schemas/improve-report.schema.json",
+  "$id": "https://raw.githubusercontent.com/skill-press/skill-press/main/schemas/improve-report.schema.json",
   "title": "SkillPressImprovementReport",
   "description": "A bounded improvement-loop report without candidate file contents or holdout prompts.",
   "type": "object",

@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import { type CapabilityBriefIssue, ProjectCreationError } from "./errors.js";
 import type { RenderedCapabilityProject, RenderedProjectFile } from "./render.js";
 
-export const INCOMPLETE_MARKER = ".skillpress-incomplete";
+export const INCOMPLETE_MARKER = ".skill-press-incomplete";
 export const MAX_RENDERED_BYTES = 2 * 1024 * 1024;
 export const MAX_RENDERED_FILES = 1024;
 export const MAX_RENDERED_PATH_BYTES = 512;

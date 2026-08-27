@@ -1,16 +1,16 @@
 {
-  "name": "@mushanyoung/skillpress",
+  "name": "@skill-press/cli",
   "version": "0.1.0",
-  "description": "Build, evaluate, package, and publish production-grade Agent Skills.",
+  "description": "Build, verify, submit, and install trusted agent skills.",
   "license": "MIT",
   "author": "Mushan Yang <mushanyoung@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mushanyoung/skillpress.git"
+    "url": "git+https://github.com/skill-press/skill-press.git"
   },
-  "homepage": "https://github.com/mushanyoung/skillpress#readme",
+  "homepage": "https://skill-press.com",
   "bugs": {
-    "url": "https://github.com/mushanyoung/skillpress/issues"
+    "url": "https://github.com/skill-press/skill-press/issues"
   },
   "keywords": [
     "agent-skills",
@@ -21,7 +21,7 @@
   ],
   "type": "module",
   "bin": {
-    "skillpress": "./dist/bin.js"
+    "skpress": "./dist/bin.js"
   },
   "exports": {
     ".": {

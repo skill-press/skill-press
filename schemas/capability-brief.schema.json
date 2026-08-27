@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/mushanyoung/skillpress/main/schemas/capability-brief.schema.json",
+  "$id": "https://raw.githubusercontent.com/skill-press/skill-press/main/schemas/capability-brief.schema.json",
   "title": "SkillPressCapabilityBrief",
-  "description": "A complete, testable capability brief from which SkillPress renders one canonical Agent Skill.",
+  "description": "A complete, testable capability brief from which Skill Press renders one canonical Agent Skill.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -10,6 +10,7 @@
     "name",
     "title",
     "summary",
+    "namespace",
     "repository",
     "author",
     "license",
@@ -17,12 +18,11 @@
     "execution",
     "capability",
     "tests",
-    "publish",
     "scenarios"
   ],
   "properties": {
     "schemaVersion": {
-      "const": 1
+      "const": 2
     },
     "name": {
       "$ref": "#/definitions/name"
@@ -31,7 +31,7 @@
       "$ref": "#/definitions/shortLine"
     },
     "version": {
-      "description": "Project version used when rendering skillpress.yaml; defaults to 0.1.0 without mutating the input document.",
+      "description": "Project version used when rendering skill-press.yaml; defaults to 0.1.0 without mutating the input document.",
       "default": "0.1.0",
       "allOf": [{ "$ref": "#/definitions/semver" }]
     },
@@ -40,6 +40,10 @@
       "minLength": 20,
       "maxLength": 280,
       "pattern": "^[^<>\\u0000-\\u001F\\u007F-\\u009F]+$"
+    },
+    "namespace": {
+      "description": "The canonical Skill Press registry namespace requested by the generated project.",
+      "$ref": "#/definitions/name"
     },
     "repository": {
       "type": "string",
@@ -64,9 +68,6 @@
     },
     "tests": {
       "$ref": "#/definitions/tests"
-    },
-    "publish": {
-      "$ref": "#/definitions/publish"
     },
     "scenarios": {
       "$ref": "#/definitions/scenarios"
@@ -315,31 +316,6 @@
           "maxItems": 32,
           "items": {
             "$ref": "#/definitions/testCommand"
-          }
-        }
-      }
-    },
-    "publish": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["targets"],
-      "properties": {
-        "targets": {
-          "type": "array",
-          "minItems": 1,
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "enum": [
-              "github",
-              "npm",
-              "tessl",
-              "skills-sh",
-              "askill-sh",
-              "agentskillhub-dev",
-              "agent-skills-hub-catalog",
-              "clawhub"
-            ]
           }
         }
       }

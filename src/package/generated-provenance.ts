@@ -18,7 +18,7 @@ export interface SkillPressPackageProvenance {
   projectConfigSha256: Digest;
   skillSha256: Digest;
   tool: {
-    name: "@mushanyoung/skillpress";
+    name: "@skill-press/cli";
     version: string;
   };
   archive: {

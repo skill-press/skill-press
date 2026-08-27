@@ -236,7 +236,7 @@ export async function writeRenderedProject(
   let stage = "";
   let marker = "";
   try {
-    stage = await mkdtemp(join(parent, `.${outputName}.skillpress-stage-`));
+    stage = await mkdtemp(join(parent, `.${outputName}.skill-press-stage-`));
     stageOwned.push(await recordOwned(stage, "directory"));
     await populateStage(stage, files, directories, stageOwned);
     await emit(writeOptions, "stage-populated", stage);

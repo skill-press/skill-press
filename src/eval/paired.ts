@@ -138,7 +138,7 @@ async function bestEffortPrivateMode(path: string, mode: number): Promise<void> 
 }
 
 async function createRunStorage(projectRoot: string, runId: string): Promise<string> {
-  const skillpressDirectory = join(projectRoot, ".skillpress");
+  const skillpressDirectory = join(projectRoot, ".skill-press");
   const runsDirectory = join(skillpressDirectory, "runs");
   try {
     await mkdir(skillpressDirectory, { mode: 0o700 });
@@ -147,7 +147,7 @@ async function createRunStorage(projectRoot: string, runId: string): Promise<str
     if (metadata === undefined || !metadata.isDirectory() || metadata.isSymbolicLink()) {
       throw new EvaluationRunError(
         "Evaluation storage is unavailable.",
-        [issue("eval.run.storage", "/storage", "the .skillpress path must be a real directory")],
+        [issue("eval.run.storage", "/storage", "the .skill-press path must be a real directory")],
         error,
       );
     }
@@ -720,7 +720,7 @@ export async function runPairedEvaluation(
     },
     evidenceEligible: ineligibilityReasons.size === 0,
     ineligibilityReasons: [...ineligibilityReasons].sort(),
-    storagePath: `.skillpress/runs/${runId}`,
+    storagePath: `.skill-press/runs/${runId}`,
   };
   if (!validateEvidence(evidence)) {
     throw new EvaluationRunError("Paired evaluation evidence violated its schema.", [

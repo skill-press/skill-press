@@ -95,7 +95,7 @@ async function trackedFiles(root: string, skillPath: string): Promise<string[]> 
     "-z",
     "--untracked-files=all",
     "--",
-    "skillpress.yaml",
+    "skill-press.yaml",
     skillPath,
   ]);
   if (status.byteLength !== 0) {
@@ -142,9 +142,9 @@ export async function stageCanonicalSkill(projectDirectory: string): Promise<Sta
   }
   const sourceCommit = (await git(root, ["rev-parse", "--verify", "HEAD"])).toString("utf8").trim();
   const files = await trackedFiles(root, skillPath);
-  const configBytes = await readFile(join(root, "skillpress.yaml"));
+  const configBytes = await readFile(join(root, "skill-press.yaml"));
   const beforeSha256 = await digestBoundedTree(skillRoot);
-  const privateRoot = join(root, ".skillpress");
+  const privateRoot = join(root, ".skill-press");
   const stagingRoot = join(privateRoot, "staging");
   await mkdir(privateRoot, { mode: 0o700 }).catch((error: unknown) => {
     if (!(error instanceof Error) || !("code" in error) || error.code !== "EEXIST") throw error;
@@ -188,7 +188,7 @@ export async function stageCanonicalSkill(projectDirectory: string): Promise<Sta
   if (
     beforeSha256 !== afterSourceSha256 ||
     beforeSha256 !== stagedSha256 ||
-    !(await readFile(join(root, "skillpress.yaml"))).equals(configBytes)
+    !(await readFile(join(root, "skill-press.yaml"))).equals(configBytes)
   ) {
     throw new SkillStagingError("Canonical skill changed during staging.", [
       issue("stage.source.changed", "/skill", "source and staged tree digests must remain equal"),
@@ -204,7 +204,7 @@ export async function stageCanonicalSkill(projectDirectory: string): Promise<Sta
     sourceCommit,
     projectConfigSha256: digest(configBytes),
     skillSha256: beforeSha256,
-    stagingPath: `.skillpress/staging/${id}`,
+    stagingPath: `.skill-press/staging/${id}`,
     skillPath: `canonical/${config.skill.name}`,
     files: stagedFiles,
   });

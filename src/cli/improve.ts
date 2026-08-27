@@ -14,7 +14,7 @@ import type { CliExitCode, CliIo } from "../cli.js";
 export const IMPROVE_HELP = `Run a bounded author/reviewer/evaluator loop from measured paired-eval failures.
 
 Usage:
-  skillpress improve --training-evidence <file> --holdout-evidence <file>
+  skpress improve --training-evidence <file> --holdout-evidence <file>
     --author-command <executable> --reviewer-command <executable>
     --evaluator-command <executable> [options]
 
@@ -35,8 +35,8 @@ Options:
   --json                      Emit one stable JSON object
   -h, --help                  Show this help
 
-Each role is executed without a shell in a fresh private temporary directory. SkillPress appends
---skillpress-operation, --request, and --response arguments. The adapter must overwrite the
+Each role is executed without a shell in a fresh private temporary directory. Skill Press appends
+--skill-press-operation, --request, and --response arguments. The adapter must overwrite the
 pre-created response file with schemas/improve-adapter-response.schema.json. Author requests carry
 the current candidate and training context only; holdout suites are sent only to the evaluator.
 Accepted candidates replace the canonical skill with a private rollback backup after validation.

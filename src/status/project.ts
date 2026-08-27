@@ -2,15 +2,12 @@ import { checkProject } from "../check/project.js";
 import { loadProjectConfig } from "../config/load.js";
 import { loadPackagedSkill, type LoadedSkillPackageArtifacts } from "../package/archive.js";
 import {
-  readPublicationReceipt,
-  type PublicationReceipt,
-  type PublicationTargetStatus,
-} from "../publish/saga.js";
-import {
   checkTesslReleaseGate,
   type TesslReleaseGateOptions,
   type TesslReleaseGateReport,
 } from "../release/tessl-gate.js";
+import { readSubmissionReceipt, type SubmissionReceipt } from "../submission/journal.js";
+import { prepareSkillSubmission, type PreparedSubmissionPayload } from "../submission/manifest.js";
 
 export interface ProjectStatusIssue {
   readonly code: string;
@@ -21,7 +18,7 @@ export interface ProjectStatusIssue {
 export interface ProjectStatusOptions {
   readonly evidence?: TesslReleaseGateOptions;
   readonly artifactsPath?: string;
-  readonly receiptPath?: string;
+  readonly submissionReceiptPath?: string;
   readonly now?: () => Date;
 }
 
@@ -30,7 +27,8 @@ interface ProjectStatusOperations {
   readonly checkLocal: typeof checkProject;
   readonly checkGate: typeof checkTesslReleaseGate;
   readonly loadPackage: typeof loadPackagedSkill;
-  readonly readReceipt: typeof readPublicationReceipt;
+  readonly readReceipt: typeof readSubmissionReceipt;
+  readonly prepareSubmission: typeof prepareSkillSubmission;
 }
 
 const defaultOperations: ProjectStatusOperations = Object.freeze({
@@ -38,13 +36,16 @@ const defaultOperations: ProjectStatusOperations = Object.freeze({
   checkLocal: checkProject,
   checkGate: checkTesslReleaseGate,
   loadPackage: loadPackagedSkill,
-  readReceipt: readPublicationReceipt,
+  readReceipt: readSubmissionReceipt,
+  prepareSubmission: prepareSkillSubmission,
 });
 
 export interface ProjectStatusReport {
   readonly schemaVersion: 1;
   readonly statusType: "skillpress.status";
   readonly evaluatedAt: string;
+  /** Always false: status is an offline observation and never refreshes canonical trust. */
+  readonly currentTrustVerified: false;
   readonly ready: boolean;
   readonly local: {
     readonly eligible: boolean;
@@ -57,17 +58,13 @@ export interface ProjectStatusReport {
     readonly sourceCommit: string;
     readonly artifactSha256: string;
   };
-  readonly publication: null | {
+  readonly submission: null | {
     readonly receiptPath: string;
-    readonly status: PublicationReceipt["status"];
+    readonly namespace: string;
+    readonly operationStatus: SubmissionReceipt["operationStatus"];
     readonly sourceCommit: string;
     readonly artifactSha256: string;
-    readonly targets: readonly {
-      readonly id: string;
-      readonly status: PublicationTargetStatus;
-      readonly preflightOk: boolean;
-      readonly url?: string;
-    }[];
+    readonly remote: SubmissionReceipt["remote"];
   };
   readonly issues: readonly ProjectStatusIssue[];
 }
@@ -92,22 +89,18 @@ function packageSummary(value: LoadedSkillPackageArtifacts) {
   };
 }
 
-function publicationSummary(path: string, value: PublicationReceipt) {
+function submissionSummary(path: string, value: SubmissionReceipt) {
   return {
     receiptPath: path,
-    status: value.status,
-    sourceCommit: value.sourceCommit,
-    artifactSha256: value.artifactSha256,
-    targets: value.targets.map((target) => ({
-      id: target.id,
-      status: target.status,
-      preflightOk: target.preflight.ok,
-      ...(target.url === undefined ? {} : { url: target.url }),
-    })),
+    namespace: value.registry.namespace,
+    operationStatus: value.operationStatus,
+    sourceCommit: value.bindings.sourceCommit,
+    artifactSha256: value.bindings.artifactSha256,
+    remote: value.remote,
   };
 }
 
-/** Summarize local, external-evidence, package, and receipt bindings without provider mutations. */
+/** Summarize local, evidence, package, and canonical submission bindings without mutation. */
 export async function inspectProjectStatus(
   projectDirectory: string,
   options: ProjectStatusOptions = {},
@@ -130,10 +123,18 @@ export async function inspectProjectStatus(
     options.artifactsPath === undefined
       ? null
       : await dependencies.loadPackage(projectDirectory, options.artifactsPath);
-  const publication =
-    options.receiptPath === undefined
+  const submission =
+    options.submissionReceiptPath === undefined
       ? null
-      : await dependencies.readReceipt(projectDirectory, options.receiptPath);
+      : await dependencies.readReceipt(projectDirectory, options.submissionReceiptPath);
+  const prepared: PreparedSubmissionPayload | null =
+    submission === null || packaged === null || options.evidence === undefined
+      ? null
+      : await dependencies.prepareSubmission(projectDirectory, packaged, {
+          reviewEvidencePath: options.evidence.reviewEvidencePath,
+          evalEvidencePath: options.evidence.evalEvidencePath,
+          evalSource: options.evidence.evalSource,
+        });
   const issues: ProjectStatusIssue[] = [];
   if (!local.eligible) {
     issues.push(issue("status.local.blocked", "/local", "local project readiness is blocked"));
@@ -158,43 +159,89 @@ export async function inspectProjectStatus(
       ),
     );
   }
-  if (publication !== null) {
+  if (submission !== null) {
+    if (submission.registry.namespace !== config.registry.namespace) {
+      issues.push(
+        issue(
+          "status.submission.namespace",
+          "/submission/registry/namespace",
+          "submission receipt targets a different canonical registry namespace",
+        ),
+      );
+    }
     if (packaged === null) {
       issues.push(
         issue(
-          "status.publication.package_missing",
-          "/publication",
-          "an artifact path is required to verify a publication receipt",
+          "status.submission.package_missing",
+          "/submission",
+          "an artifact path is required to verify a submission receipt",
         ),
       );
     } else if (
-      publication.sourceCommit !== packaged.sourceCommit ||
-      publication.artifactSha256 !== packaged.artifactSha256 ||
-      publication.projectVersion !== config.project.version
+      submission.bindings.sourceCommit !== packaged.sourceCommit ||
+      submission.bindings.skillName !== config.skill.name ||
+      submission.bindings.artifactSha256 !== packaged.artifactSha256 ||
+      submission.bindings.projectConfigSha256 !== packaged.projectConfigSha256 ||
+      submission.bindings.skillSha256 !== packaged.skillSha256 ||
+      submission.bindings.provenanceSha256 !== packaged.provenanceSha256 ||
+      submission.bindings.checksumsSha256 !== packaged.checksumsSha256 ||
+      submission.bindings.projectVersion !== config.project.version
     ) {
       issues.push(
         issue(
-          "status.publication.binding",
-          "/publication",
-          "publication receipt does not match the current package and project version",
+          "status.submission.binding",
+          "/submission",
+          "submission receipt does not match the current package and project version",
         ),
       );
     }
-    if (["blocked", "failed", "running"].includes(publication.status)) {
+    if (
+      prepared !== null &&
+      (submission.idempotencyKey !== prepared.idempotencyKey ||
+        submission.bindings.skillName !== prepared.manifest.skill.name ||
+        submission.bindings.manifestSha256 !== prepared.manifestSha256 ||
+        submission.bindings.reviewEvidenceSha256 !== prepared.manifest.evidence.review.sha256 ||
+        submission.bindings.evalEvidenceSha256 !== prepared.manifest.evidence.evaluation.sha256 ||
+        submission.bindings.evalSourceSha256 !== prepared.manifest.evidence.evalSourceSha256)
+    ) {
       issues.push(
         issue(
-          "status.publication.incomplete",
-          "/publication/status",
-          "publication requires recovery or completion",
+          "status.submission.manifest_binding",
+          "/submission/bindings",
+          "submission receipt does not match the current manifest and evidence",
         ),
       );
     }
-    if (publication.targets.some((target) => !target.preflight.ok)) {
+    if (submission.operationStatus === "failed" || submission.operationStatus === "submitting") {
       issues.push(
         issue(
-          "status.publication.preflight",
-          "/publication/targets",
-          "one or more publication preflights are blocked",
+          "status.submission.incomplete",
+          "/submission/operationStatus",
+          "submission requires an exact retry or recovery",
+        ),
+      );
+    }
+    if (
+      submission.remote?.status === "changes-requested" ||
+      submission.remote?.status === "rejected"
+    ) {
+      issues.push(
+        issue(
+          "status.submission.review_blocked",
+          "/submission/remote/status",
+          "canonical review requires changes or rejected this candidate",
+        ),
+      );
+    }
+    if (
+      submission.remote?.release !== undefined &&
+      submission.remote.release.trust.status !== "trusted"
+    ) {
+      issues.push(
+        issue(
+          "status.release.trust_blocked",
+          "/submission/remote/release/trust/status",
+          `last observed published-release trust was ${submission.remote.release.trust.status}`,
         ),
       );
     }
@@ -203,18 +250,15 @@ export async function inspectProjectStatus(
     schemaVersion: 1,
     statusType: "skillpress.status",
     evaluatedAt: evaluatedAt.toISOString(),
+    currentTrustVerified: false,
     ready: issues.length === 0,
-    local: {
-      eligible: local.eligible,
-      score: local.score,
-      minimum: local.minimum,
-    },
+    local: { eligible: local.eligible, score: local.score, minimum: local.minimum },
     gate,
     package: packaged === null ? null : packageSummary(packaged),
-    publication:
-      publication === null || options.receiptPath === undefined
+    submission:
+      submission === null || options.submissionReceiptPath === undefined
         ? null
-        : publicationSummary(options.receiptPath, publication),
+        : submissionSummary(options.submissionReceiptPath, submission),
     issues,
   });
 }

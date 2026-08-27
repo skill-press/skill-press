@@ -1,13 +1,15 @@
-schemaVersion: 1
+schemaVersion: 2
 project:
   name: example-skill
   version: 1.2.3
-  description: A complete example project used to verify SkillPress configuration loading.
+  description: A complete example project used to verify Skill Press configuration loading.
   license: MIT
   repository: https://github.com/example/example-skill
   author:
     name: Example Author
     github: example
+registry:
+  namespace: example
 skill:
   name: example-skill
   path: skills/example-skill
@@ -34,13 +36,3 @@ improve:
   maxTokens: 200000
   maxCostUsd: 100
   maxWallMinutes: 240
-publish:
-  targets:
-    - github
-    - npm
-    - tessl
-    - skills-sh
-    - askill-sh
-    - agentskillhub-dev
-    - agent-skills-hub-catalog
-    - clawhub

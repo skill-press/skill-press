@@ -1,4 +1,4 @@
-/* Generated from schemas/skillpress.schema.json. Do not edit by hand. */
+/* Generated from schemas/skill-press.schema.json. Do not edit by hand. */
 
 /**
  * This interface was referenced by `SkillPressProject`'s JSON-Schema
@@ -17,20 +17,20 @@ export type Semver = string;
 export type RelativePath = string;
 
 /**
- * The versioned project contract for a SkillPress-managed Agent Skill.
+ * The versioned project contract for a Skill Press-managed Agent Skill.
  */
 export interface SkillPressProject {
   /**
-   * The SkillPress configuration schema version.
+   * The Skill Press configuration schema version.
    */
-  schemaVersion: 1;
+  schemaVersion: 2;
   project: Project;
+  registry: Registry;
   skill: Skill;
   quality: Quality;
   tests: Tests;
   evaluation: Evaluation;
   improve: Improve;
-  publish: Publish;
 }
 /**
  * This interface was referenced by `SkillPressProject`'s JSON-Schema
@@ -46,6 +46,13 @@ export interface Project {
     name: string;
     github: string;
   };
+}
+/**
+ * This interface was referenced by `SkillPressProject`'s JSON-Schema
+ * via the `definition` "registry".
+ */
+export interface Registry {
+  namespace: SkillName;
 }
 /**
  * This interface was referenced by `SkillPressProject`'s JSON-Schema
@@ -119,35 +126,4 @@ export interface Improve {
   maxTokens: number;
   maxCostUsd: number;
   maxWallMinutes: number;
-}
-/**
- * This interface was referenced by `SkillPressProject`'s JSON-Schema
- * via the `definition` "publish".
- */
-export interface Publish {
-  /**
-   * @minItems 1
-   */
-  targets: [
-    (
-      | "github"
-      | "npm"
-      | "tessl"
-      | "skills-sh"
-      | "askill-sh"
-      | "agentskillhub-dev"
-      | "agent-skills-hub-catalog"
-      | "clawhub"
-    ),
-    ...(
-      | "github"
-      | "npm"
-      | "tessl"
-      | "skills-sh"
-      | "askill-sh"
-      | "agentskillhub-dev"
-      | "agent-skills-hub-catalog"
-      | "clawhub"
-    )[],
-  ];
 }

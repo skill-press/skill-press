@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/mushanyoung/skillpress/main/schemas/eval-suite.schema.json",
+  "$id": "https://raw.githubusercontent.com/skill-press/skill-press/main/schemas/eval-suite.schema.json",
   "title": "SkillPressEvaluationSuite",
   "description": "A versioned collection of behavioral evaluation scenarios.",
   "type": "object",

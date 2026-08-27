@@ -4,7 +4,8 @@ import { checkProject } from "./check/project.js";
 import type { SkillPressCheckReport } from "./check/types.js";
 import { DOCTOR_HELP, runDoctorCommand, runStatusCommand, STATUS_HELP } from "./cli/inspect.js";
 import { IMPROVE_HELP, runImproveCommand } from "./cli/improve.js";
-import { PACKAGE_HELP, PUBLISH_HELP, runPackageCommand, runPublishCommand } from "./cli/release.js";
+import { PACKAGE_HELP, runPackageCommand } from "./cli/package.js";
+import { runSubmitCommand, SUBMIT_HELP } from "./cli/submission.js";
 import { ProjectConfigError } from "./config/errors.js";
 import { CapabilityBriefError, ProjectCreationError } from "./create/errors.js";
 import { loadCapabilityBrief } from "./create/load.js";
@@ -33,27 +34,27 @@ export interface CliIo {
 export type CliExitCode = 0 | 1 | 2 | 3 | 4;
 const MAX_CLI_ARGUMENTS = 64;
 const MAX_CLI_ARGUMENT_BYTES = 64 * 1024;
-const HELP = `SkillPress ${VERSION}
+const HELP = `Skill Press CLI ${VERSION}
 
-Build, evaluate, package, and publish production-grade Agent Skills.
+Build, verify, submit, and install trusted agent skills.
 
 Usage:
-  skillpress [options]
-  skillpress <command> [options]
+  skpress [options]
+  skpress <command> [options]
 
 Options:
   -h, --help       Show this help
   -v, --version    Show the installed version
 
 Commands:
-  create             Create a complete canonical skill project from a strict brief
+  init               Create a complete canonical skill project from a strict brief
   check              Validate a project and report local readiness
   test               Run deterministic project test commands without a shell
   eval               Run paired baseline/with-skill evaluation in a sandbox
   tessl              Capture official Tessl Quality and Impact evidence
   package            Create reproducible, provenance-bound release artifacts
-  publish            Plan, execute, and resume verified publication
-  status             Summarize gates, evidence, and publication state
+  submit             Submit one verified candidate to the canonical Skill Press review pipeline
+  status             Summarize gates, evidence, package, and submission state
   doctor             Diagnose environment and release prerequisites
   improve            Run the bounded author/review/evaluation loop
 `;
@@ -61,8 +62,8 @@ Commands:
 const TESSL_HELP = `Capture release evidence using the official Tessl CLI.
 
 Usage:
-  skillpress tessl review [options]
-  skillpress tessl eval --source <directory> [options]
+  skpress tessl review [options]
+  skpress tessl eval --source <directory> [options]
 
 Common options:
   --project <directory>     Project root; defaults to the current directory
@@ -86,10 +87,10 @@ release gate. Quality and Impact capture force fresh provider results instead of
 Provider authentication and scores are never inferred or entered manually.
 `;
 
-const CREATE_HELP = `Create a canonical SkillPress project from a complete capability brief.
+const INIT_HELP = `Create a canonical Skill Press project from a complete capability brief.
 
 Usage:
-  skillpress create --brief <file> --output <new-directory> [--json]
+  skpress init --brief <file> --output <new-directory> [--json]
 
 Options:
   --brief <file>             Read the strict capability brief from this regular YAML file
@@ -98,24 +99,24 @@ Options:
   -h, --help                 Show this help
 `;
 
-const CHECK_HELP = `Validate a SkillPress project and report local readiness.
+const CHECK_HELP = `Validate a Skill Press project and report local readiness.
 
 Usage:
-  skillpress check [--project <directory>] [--json]
+  skpress check [--project <directory>] [--json]
 
 Options:
-  --project <directory>  Project root containing skillpress.yaml; defaults to the current directory
+  --project <directory>  Project root containing skill-press.yaml; defaults to the current directory
   --json                 Emit one stable JSON object
   -h, --help             Show this help
 `;
 
-const TEST_HELP = `Run deterministic SkillPress project test commands without a shell.
+const TEST_HELP = `Run deterministic Skill Press project test commands without a shell.
 
 Usage:
-  skillpress test [--project <directory>] [--json]
+  skpress test [--project <directory>] [--json]
 
 Options:
-  --project <directory>  Project root containing skillpress.yaml; defaults to the current directory
+  --project <directory>  Project root containing skill-press.yaml; defaults to the current directory
   --json                 Emit one stable JSON object
   -h, --help             Show this help
 `;
@@ -123,7 +124,7 @@ Options:
 const EVAL_HELP = `Run paired baseline and with-skill scenarios in Docker or Podman.
 
 Usage:
-  skillpress eval --image <digest-pinned-image> --model <model> [options] -- <adapter-argv...>
+  skpress eval --image <digest-pinned-image> --model <model> [options] -- <adapter-argv...>
 
 Options:
   --project <directory>      Project root; defaults to the current directory
@@ -133,7 +134,7 @@ Options:
   --json                     Emit one stable JSON object
   -h, --help                 Show this help
 
-The adapter must implement the SkillPress request/result protocol. Publication credentials and
+The adapter must implement the SkillPress request/result protocol. Submission credentials and
 host execution are never implied by this command.
 `;
 
@@ -216,8 +217,8 @@ export function renderHelp(): string {
   return HELP;
 }
 
-export function renderCreateHelp(): string {
-  return CREATE_HELP;
+export function renderInitHelp(): string {
+  return INIT_HELP;
 }
 
 export function renderCheckHelp(): string {
@@ -240,8 +241,8 @@ export function renderPackageHelp(): string {
   return PACKAGE_HELP;
 }
 
-export function renderPublishHelp(): string {
-  return PUBLISH_HELP;
+export function renderSubmitHelp(): string {
+  return SUBMIT_HELP;
 }
 
 export function renderStatusHelp(): string {
@@ -291,12 +292,12 @@ function parseCreateArguments(args: readonly string[]): CreateArguments {
       output = assertPathArgument("--output", args[index + 1]);
       index += 1;
     } else {
-      throw new CliUsageError("Unknown create argument.");
+      throw new CliUsageError("Unknown init argument.");
     }
   }
 
   if (brief === undefined || output === undefined) {
-    throw new CliUsageError("create requires both --brief and --output.");
+    throw new CliUsageError("init requires both --brief and --output.");
   }
   return { brief, output, json };
 }
@@ -621,7 +622,7 @@ function snapshotIo(value: unknown): CliIo | undefined {
   }
 }
 
-async function runCreate(args: readonly string[], io: CliIo): Promise<CliExitCode> {
+async function runInit(args: readonly string[], io: CliIo): Promise<CliExitCode> {
   const json = wantsJson(args);
   let parsed: CreateArguments;
   try {
@@ -630,7 +631,7 @@ async function runCreate(args: readonly string[], io: CliIo): Promise<CliExitCod
     const result = await writeRenderedProject(renderCapabilityProject(brief), parsed.output);
     if (parsed.json) {
       if (
-        !(await writeStdout(io, `${JSON.stringify({ ok: true, command: "create", ...result })}\n`))
+        !(await writeStdout(io, `${JSON.stringify({ ok: true, command: "init", ...result })}\n`))
       ) {
         return 1;
       }
@@ -659,13 +660,13 @@ async function runCreate(args: readonly string[], io: CliIo): Promise<CliExitCod
       await writeError(
         io,
         json,
-        unsafe ? "create.unsafe_output" : "create.io",
+        unsafe ? "init.unsafe_output" : "init.io",
         error.message,
         error.issues,
       );
       return unsafe ? 4 : 1;
     }
-    return writeInternalFailure(io, json, "create");
+    return writeInternalFailure(io, json, "init");
   }
 }
 
@@ -912,11 +913,11 @@ export async function runCli(args: readonly string[], io: CliIo = defaultIo): Pr
     return (await writeStdout(capturedIo, `${VERSION}\n`)) ? 0 : 1;
   }
 
-  if (capturedArgs[0] === "create") {
+  if (capturedArgs[0] === "init") {
     if ((capturedArgs[1] === "--help" || capturedArgs[1] === "-h") && capturedArgs.length === 2) {
-      return (await writeStdout(capturedIo, renderCreateHelp())) ? 0 : 1;
+      return (await writeStdout(capturedIo, renderInitHelp())) ? 0 : 1;
     }
-    return runCreate(capturedArgs.slice(1), capturedIo);
+    return runInit(capturedArgs.slice(1), capturedIo);
   }
 
   if (capturedArgs[0] === "check") {
@@ -954,11 +955,11 @@ export async function runCli(args: readonly string[], io: CliIo = defaultIo): Pr
     return runPackageCommand(capturedArgs.slice(1), capturedIo);
   }
 
-  if (capturedArgs[0] === "publish") {
+  if (capturedArgs[0] === "submit") {
     if ((capturedArgs[1] === "--help" || capturedArgs[1] === "-h") && capturedArgs.length === 2) {
-      return (await writeStdout(capturedIo, renderPublishHelp())) ? 0 : 1;
+      return (await writeStdout(capturedIo, renderSubmitHelp())) ? 0 : 1;
     }
-    return runPublishCommand(capturedArgs.slice(1), capturedIo);
+    return runSubmitCommand(capturedArgs.slice(1), capturedIo);
   }
 
   if (capturedArgs[0] === "status") {
@@ -982,9 +983,5 @@ export async function runCli(args: readonly string[], io: CliIo = defaultIo): Pr
     return runImproveCommand(capturedArgs.slice(1), capturedIo);
   }
 
-  return usageFailure(
-    capturedArgs,
-    capturedIo,
-    "Unknown command. Run 'skillpress --help' for usage.",
-  );
+  return usageFailure(capturedArgs, capturedIo, "Unknown command. Run 'skpress --help' for usage.");
 }

@@ -292,9 +292,10 @@ describe("create semantic-stage retention boundary", () => {
 
   it("keeps every declared non-prose path outside placeholder classification", async () => {
     const isolated = await importIsolatedLoader();
-    const source = (await readFile(fixturePath, "utf8"))
-      .replace("schemaVersion: 1\n", "schemaVersion: 1\nversion: 0.1.0\n")
-      .replace("      timeoutSeconds: 300", "      cwd: TODO\n      timeoutSeconds: 300");
+    const source = (await readFile(fixturePath, "utf8")).replace(
+      "      timeoutSeconds: 300",
+      "      cwd: TODO\n      timeoutSeconds: 300",
+    );
     const path = await temporaryBrief(source);
     const exemptValues = new Set([
       "incident-summary",

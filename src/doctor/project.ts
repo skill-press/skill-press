@@ -24,8 +24,6 @@ export interface DoctorCheck {
 export interface DoctorOptions {
   readonly evidence?: TesslReleaseGateOptions;
   readonly tesslExecutable?: string;
-  readonly askillExecutable?: string;
-  readonly clawHubExecutable?: string;
   readonly environment?: Readonly<Record<string, string | undefined>>;
   readonly executor?: (command: CapturedCommand) => Promise<CapturedCommandResult>;
   readonly homeDirectory?: string;
@@ -77,49 +75,21 @@ function supportedNode(version: string): boolean {
 
 function commandProbes(
   sandbox: "docker" | "podman",
-  targets: readonly string[],
   options: DoctorOptions,
 ): readonly CommandProbe[] {
-  const probes: CommandProbe[] = [
+  return Object.freeze([
     { id: "command.git", argv: ["git", "--version"], message: "Git executable is available" },
     {
       id: `command.${sandbox}`,
       argv: [sandbox, "--version"],
       message: `${sandbox} sandbox executable is available`,
     },
-  ];
-  if (targets.includes("github") || targets.includes("agent-skills-hub-catalog")) {
-    probes.push({
-      id: "command.gh",
-      argv: ["gh", "--version"],
-      message: "GitHub CLI is available",
-    });
-  }
-  if (targets.includes("npm")) {
-    probes.push({ id: "command.npm", argv: ["npm", "--version"], message: "npm CLI is available" });
-  }
-  if (targets.includes("tessl")) {
-    probes.push({
+    {
       id: "command.tessl",
       argv: [options.tesslExecutable ?? "tessl", "--version"],
       message: "Tessl CLI is available; trust is rechecked by the release gate",
-    });
-  }
-  if (targets.includes("askill-sh")) {
-    probes.push({
-      id: "command.askill",
-      argv: [options.askillExecutable ?? "askill", "--version"],
-      message: "askill CLI is available",
-    });
-  }
-  if (targets.includes("clawhub")) {
-    probes.push({
-      id: "command.clawhub",
-      argv: [options.clawHubExecutable ?? "clawhub", "--no-input", "--cli-version"],
-      message: "ClawHub CLI is available",
-    });
-  }
-  return probes;
+    },
+  ] satisfies readonly CommandProbe[]);
 }
 
 async function runProbe(
@@ -147,50 +117,32 @@ async function runProbe(
 }
 
 function credentialChecks(
-  targets: readonly string[],
   environment: Readonly<Record<string, string | undefined>>,
 ): DoctorCheck[] {
-  const result: DoctorCheck[] = [];
-  const available = (...names: string[]) =>
-    names.some((name) => {
-      const value = environment[name];
-      return value !== undefined && value.length > 0 && value.trim() === value;
-    });
-  const credential = (id: string, names: readonly string[], target: string) => {
-    result.push(
-      available(...names)
-        ? check(id, "pass", `${target} non-interactive credential context is present`)
-        : check(
-            id,
-            "warning",
-            `${target} environment credential is absent; a provider login store may still satisfy dry-run preflight`,
-          ),
-    );
+  const available = (name: string) => {
+    const value = environment[name];
+    return value !== undefined && value.length > 0 && value.trim() === value;
   };
-  if (targets.includes("github") || targets.includes("agent-skills-hub-catalog")) {
-    credential("credential.github", ["GH_TOKEN", "GITHUB_TOKEN"], "GitHub");
-  }
-  if (targets.includes("npm")) {
-    const oidc =
-      available("ACTIONS_ID_TOKEN_REQUEST_URL") && available("ACTIONS_ID_TOKEN_REQUEST_TOKEN");
-    result.push(
-      oidc
-        ? check("credential.npm", "pass", "npm trusted-publisher OIDC context is present")
-        : check(
-            "credential.npm",
-            "warning",
-            "npm trusted-publisher OIDC is available only in the protected release workflow",
-          ),
-    );
-  }
-  if (targets.includes("tessl")) credential("credential.tessl", ["TESSL_TOKEN"], "Tessl");
-  if (targets.includes("askill-sh")) {
-    credential("credential.askill", ["ASKILL_LOGIN"], "askill");
-  }
-  if (targets.includes("clawhub")) {
-    credential("credential.clawhub", ["CLAWHUB_CONFIG_PATH", "CLAWDHUB_CONFIG_PATH"], "ClawHub");
-  }
-  return result;
+  return [
+    available("TESSL_TOKEN")
+      ? check("credential.tessl", "pass", "Tessl non-interactive credential context is present")
+      : check(
+          "credential.tessl",
+          "warning",
+          "Tessl environment credential is absent; the official CLI login store may still work",
+        ),
+    available("SKILL_PRESS_TOKEN")
+      ? check(
+          "credential.skill_press",
+          "pass",
+          "Skill Press submission credential context is present",
+        )
+      : check(
+          "credential.skill_press",
+          "warning",
+          "SKILL_PRESS_TOKEN is absent; local dry-runs still work but submit cannot authenticate",
+        ),
+  ];
 }
 
 async function collisionChecks(
@@ -247,12 +199,12 @@ export async function diagnoseProject(
   const local = await dependencies.checkLocal(root);
   const executor = options.executor ?? runCapturedCommand;
   const temporaryParent = await realpath(tmpdir());
-  const probeHome = await mkdtemp(join(temporaryParent, "skillpress-doctor-"));
+  const probeHome = await mkdtemp(join(temporaryParent, "skill-press-doctor-"));
   await chmod(probeHome, 0o700);
   let probes: readonly DoctorCheck[];
   try {
     probes = await Promise.all(
-      commandProbes(config.evaluation.sandbox, config.publish.targets, options).map((probe) =>
+      commandProbes(config.evaluation.sandbox, options).map((probe) =>
         runProbe(root, probe, probeHome, executor),
       ),
     );
@@ -273,18 +225,8 @@ export async function diagnoseProject(
       config.skill.name,
       options.homeDirectory ?? homedir(),
     )),
-    ...credentialChecks(config.publish.targets, options.environment ?? process.env),
+    ...credentialChecks(options.environment ?? process.env),
   ];
-  const mutatingTargets = config.publish.targets.filter((target) => target !== "skills-sh");
-  if (mutatingTargets.length > 0) {
-    checks.push(
-      check(
-        "collision.remote",
-        "warning",
-        "remote version and ownership collisions are resolved only by the read-only publish dry run",
-      ),
-    );
-  }
   const gate =
     options.evidence === undefined ? null : await dependencies.checkGate(root, options.evidence);
   checks.push(

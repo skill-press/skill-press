@@ -1,14 +1,14 @@
 export {
   renderCheckHelp,
-  renderCreateHelp,
   renderDoctorHelp,
   renderEvalHelp,
   renderHelp,
   renderHumanTesslReport,
   renderImproveHelp,
+  renderInitHelp,
   renderPackageHelp,
-  renderPublishHelp,
   renderStatusHelp,
+  renderSubmitHelp,
   renderTesslHelp,
   renderTestHelp,
   runCli,
@@ -54,10 +54,39 @@ export type {
 } from "./package/archive.js";
 export type { SkillPressPackageProvenance } from "./package/generated-provenance.js";
 export {
-  PublicationSagaError,
-  readPublicationReceipt,
-  runPublicationSaga,
-} from "./publish/saga.js";
+  createCanonicalSubmissionClient,
+  SKILL_PRESS_API_BASE,
+  SKILL_PRESS_ORIGIN,
+  SKILL_PRESS_TOKEN_ENV,
+  SubmissionClientError,
+} from "./submission/client.js";
+export type {
+  CanonicalSubmissionClientOptions,
+  SkillPressSession,
+  SkillPressSubmissionClient,
+} from "./submission/client.js";
+export {
+  readSubmissionReceipt,
+  SubmissionJournalError,
+} from "./submission/journal.js";
+export type {
+  SubmissionJournalIssue,
+  SubmissionReceipt,
+} from "./submission/journal.js";
+export {
+  prepareSkillSubmission,
+  SubmissionManifestError,
+} from "./submission/manifest.js";
+export type {
+  PreparedSubmissionPayload,
+  SubmissionEvidencePaths,
+  SubmissionManifestIssue,
+} from "./submission/manifest.js";
+export { runSkillSubmission, SubmissionRunError } from "./submission/run.js";
+export type { SkillSubmissionOptions, SubmissionRunIssue } from "./submission/run.js";
+export type { SkillPressSubmissionManifest } from "./submission/generated-manifest.js";
+export type { SkillPressSubmissionResource } from "./submission/generated-resource.js";
+export type { SkillPressSubmissionReceipt } from "./submission/generated-receipt.js";
 export { inspectProjectStatus } from "./status/project.js";
 export type {
   ProjectStatusIssue,
@@ -66,42 +95,6 @@ export type {
 } from "./status/project.js";
 export { diagnoseProject } from "./doctor/project.js";
 export type { DoctorCheck, DoctorOptions, DoctorReport } from "./doctor/project.js";
-export type {
-  PublicationAdapter,
-  PublicationArtifact,
-  PublicationCapability,
-  PublicationContext,
-  PublicationPreflight,
-  PublicationReceipt,
-  PublicationSagaIssue,
-  PublicationSagaOptions,
-  PublicationStepReceipt,
-  PublicationStepResult,
-  PublicationTargetReceipt,
-  PublicationTargetStatus,
-  PublicationVerification,
-} from "./publish/saga.js";
-export { createGitHubPublicationAdapter } from "./publish/adapters/github.js";
-export { createNpmPublicationAdapter } from "./publish/adapters/npm.js";
-export { createAskillPublicationAdapter } from "./publish/adapters/askill.js";
-export type { AskillPublicationAdapterOptions } from "./publish/adapters/askill.js";
-export { createAgentSkillHubPublicationAdapter } from "./publish/adapters/agentskillhub.js";
-export type { AgentSkillHubPublicationAdapterOptions } from "./publish/adapters/agentskillhub.js";
-export { createAgentSkillsHubCatalogAdapter } from "./publish/adapters/agent-skills-hub-catalog.js";
-export type { AgentSkillsHubCatalogAdapterOptions } from "./publish/adapters/agent-skills-hub-catalog.js";
-export { createClawHubPublicationAdapter } from "./publish/adapters/clawhub.js";
-export type { ClawHubPublicationAdapterOptions } from "./publish/adapters/clawhub.js";
-export { createSkillsShDerivedAdapter } from "./publish/adapters/skills-sh.js";
-export type { SkillsShDerivedAdapterOptions } from "./publish/adapters/skills-sh.js";
-export { createTesslPublicationAdapter } from "./publish/adapters/tessl.js";
-export type { TesslPublicationAdapterOptions } from "./publish/adapters/tessl.js";
-export type {
-  PublicationAdapterRuntime,
-  PublicationCommandExecutor,
-  PublicationHttpClient,
-  PublicationHttpRequest,
-  PublicationHttpResult,
-} from "./publish/adapters/command.js";
 export { checkProject } from "./check/project.js";
 export type {
   ProjectCheckDiagnostic,
@@ -117,6 +110,7 @@ export type {
 } from "./test/types.js";
 export {
   CONFIG_FILE_NAME,
+  LEGACY_CONFIG_FILE_NAME,
   loadProjectConfig,
   MAX_CONFIG_BYTES,
 } from "./config/load.js";

@@ -2,19 +2,20 @@ import { ProjectConfigError } from "../config/errors.js";
 import { diagnoseProject, type DoctorOptions, type DoctorReport } from "../doctor/project.js";
 import { SkillPackageError } from "../package/archive.js";
 import { isSafePathInput } from "../path-safety.js";
-import { PublicationSagaError } from "../publish/saga.js";
 import { TesslReleaseGateError, type TesslReleaseGateOptions } from "../release/tessl-gate.js";
 import {
   inspectProjectStatus,
   type ProjectStatusOptions,
   type ProjectStatusReport,
 } from "../status/project.js";
+import { SubmissionJournalError } from "../submission/journal.js";
+import { SubmissionManifestError } from "../submission/manifest.js";
 import type { CliExitCode, CliIo } from "../cli.js";
 
-export const STATUS_HELP = `Summarize local readiness, Tessl evidence, package, and publication state.
+export const STATUS_HELP = `Summarize local readiness, Tessl evidence, package, and submission state.
 
 Usage:
-  skillpress status [options]
+  skpress status [options]
 
 Options:
   --project <directory>       Project root; defaults to the current directory
@@ -22,18 +23,18 @@ Options:
   --eval-evidence <file>      Private Tessl Impact evidence file
   --eval-source <directory>   Evaluated scenario source inside the project
   --artifacts <directory>     Optional private packaged-artifacts directory
-  --receipt <file>            Optional persisted publication receipt; requires --artifacts to bind
+  --submission <file>         Optional private submission journal; requires --artifacts to bind
   --json                      Emit one stable JSON object
   -h, --help                  Show this help
 
 The three evidence options are all-or-none. Status is read-only and returns exit 3 when current
-release inputs or an explicitly supplied publication receipt are blocked.
+release inputs or an explicitly supplied submission journal are blocked.
 `;
 
 export const DOCTOR_HELP = `Diagnose release tools, evidence, local collisions, and credential context.
 
 Usage:
-  skillpress doctor [options]
+  skpress doctor [options]
 
 Options:
   --project <directory>       Project root; defaults to the current directory
@@ -41,13 +42,11 @@ Options:
   --eval-evidence <file>      Private Tessl Impact evidence file
   --eval-source <directory>   Evaluated scenario source inside the project
   --tessl-executable <path>   Tessl CLI; defaults to tessl on PATH
-  --askill-executable <path>  askill CLI; defaults to askill on PATH
-  --clawhub-executable <path> ClawHub CLI; defaults to clawhub on PATH
   --json                      Emit one stable JSON object
   -h, --help                  Show this help
 
-Doctor never prints credential values and does not contact registries. Provider authentication,
-remote collisions, and capabilities remain authoritative only in a publish dry run.
+Doctor never prints credential values or mutates remote state. Canonical Skill Press session
+validation remains authoritative only when submit connects to the service.
 `;
 
 interface InspectIssue {
@@ -64,13 +63,11 @@ interface CommonArguments {
 
 interface StatusArguments extends CommonArguments {
   readonly artifactsPath?: string;
-  readonly receiptPath?: string;
+  readonly submissionReceiptPath?: string;
 }
 
 interface DoctorArguments extends CommonArguments {
   readonly tesslExecutable?: string;
-  readonly askillExecutable?: string;
-  readonly clawHubExecutable?: string;
 }
 
 interface InspectCommandOperations {
@@ -114,9 +111,7 @@ function parse(args: readonly string[], doctor: boolean): StatusArguments | Doct
     "--review-evidence",
     "--eval-evidence",
     "--eval-source",
-    ...(doctor
-      ? ["--tessl-executable", "--askill-executable", "--clawhub-executable"]
-      : ["--artifacts", "--receipt"]),
+    ...(doctor ? ["--tessl-executable"] : ["--artifacts", "--submission"]),
   ]);
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index] as string;
@@ -152,17 +147,17 @@ function parse(args: readonly string[], doctor: boolean): StatusArguments | Doct
     json,
   };
   if (!doctor) {
-    if (values.has("--receipt") && !values.has("--artifacts")) {
-      throw new InspectUsageError("--receipt requires --artifacts for binding verification.");
+    if (values.has("--submission") && !values.has("--artifacts")) {
+      throw new InspectUsageError("--submission requires --artifacts for binding verification.");
     }
     return {
       ...common,
       ...(values.get("--artifacts") === undefined
         ? {}
         : { artifactsPath: values.get("--artifacts") as string }),
-      ...(values.get("--receipt") === undefined
+      ...(values.get("--submission") === undefined
         ? {}
-        : { receiptPath: values.get("--receipt") as string }),
+        : { submissionReceiptPath: values.get("--submission") as string }),
     };
   }
   return {
@@ -170,12 +165,6 @@ function parse(args: readonly string[], doctor: boolean): StatusArguments | Doct
     ...(values.get("--tessl-executable") === undefined
       ? {}
       : { tesslExecutable: values.get("--tessl-executable") as string }),
-    ...(values.get("--askill-executable") === undefined
-      ? {}
-      : { askillExecutable: values.get("--askill-executable") as string }),
-    ...(values.get("--clawhub-executable") === undefined
-      ? {}
-      : { clawHubExecutable: values.get("--clawhub-executable") as string }),
   };
 }
 
@@ -215,7 +204,8 @@ function knownIssues(error: unknown): readonly InspectIssue[] | undefined {
     error instanceof ProjectConfigError ||
     error instanceof TesslReleaseGateError ||
     error instanceof SkillPackageError ||
-    error instanceof PublicationSagaError ||
+    error instanceof SubmissionJournalError ||
+    error instanceof SubmissionManifestError ||
     error instanceof InspectUsageError
   ) {
     return error.issues;
@@ -240,9 +230,10 @@ function knownIssues(error: unknown): readonly InspectIssue[] | undefined {
 function statusHuman(report: ProjectStatusReport): string {
   const gate = report.gate === null ? "missing" : report.gate.passed ? "passed" : "blocked";
   const packaged = report.package?.artifactsPath ?? "not supplied";
-  const publication = report.publication?.status ?? "not supplied";
+  const submission = report.submission?.operationStatus ?? "not supplied";
+  const trust = report.submission?.remote?.release?.trust.status ?? "not released";
   const issues = report.issues.map((entry) => `- ${entry.message} [${entry.code}]`).join("\n");
-  return `Release readiness: ${report.ready ? "ready" : "blocked"}\nLocal: ${report.local.score}/${report.local.minimum}\nTessl gate: ${gate}\nPackage: ${packaged}\nPublication: ${publication}\n${issues === "" ? "" : `${issues}\n`}`;
+  return `Local release-input readiness: ${report.ready ? "ready" : "blocked"}\nLocal: ${report.local.score}/${report.local.minimum}\nTessl gate: ${gate}\nPackage: ${packaged}\nSubmission: ${submission}\nSubmission namespace: ${report.submission?.namespace ?? "not supplied"}\nCurrent trust verified: no\nLast observed release trust: ${trust} (cached, not authoritative)\n${issues === "" ? "" : `${issues}\n`}`;
 }
 
 function doctorHuman(report: DoctorReport): string {
@@ -270,7 +261,9 @@ export async function runStatusCommand(
     const report = await operations.status(parsed.project, {
       ...(parsed.evidence === undefined ? {} : { evidence: parsed.evidence }),
       ...(parsed.artifactsPath === undefined ? {} : { artifactsPath: parsed.artifactsPath }),
-      ...(parsed.receiptPath === undefined ? {} : { receiptPath: parsed.receiptPath }),
+      ...(parsed.submissionReceiptPath === undefined
+        ? {}
+        : { submissionReceiptPath: parsed.submissionReceiptPath }),
     });
     const value = { command: "status", ok: report.ready, ...report };
     return (await output(io, parsed.json, value, statusHuman(report))) ? (report.ready ? 0 : 3) : 1;
@@ -304,12 +297,6 @@ export async function runDoctorCommand(
     const report = await operations.doctor(parsed.project, {
       ...(parsed.evidence === undefined ? {} : { evidence: parsed.evidence }),
       ...(parsed.tesslExecutable === undefined ? {} : { tesslExecutable: parsed.tesslExecutable }),
-      ...(parsed.askillExecutable === undefined
-        ? {}
-        : { askillExecutable: parsed.askillExecutable }),
-      ...(parsed.clawHubExecutable === undefined
-        ? {}
-        : { clawHubExecutable: parsed.clawHubExecutable }),
     });
     const value = { command: "doctor", ok: report.ready, ...report };
     return (await output(io, parsed.json, value, doctorHuman(report))) ? (report.ready ? 0 : 3) : 1;

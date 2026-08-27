@@ -47,7 +47,7 @@ describe("sandbox invocation policy", () => {
 
       expect(invocation).toMatchObject({
         executable: backend,
-        containerName: "skillpress-0123456789abcdef",
+        containerName: "skill-press-0123456789abcdef",
         releaseEligible: true,
         ineligibilityReasons: [],
         policy: DEFAULT_SANDBOX_RESOURCE_POLICY,
@@ -56,7 +56,7 @@ describe("sandbox invocation policy", () => {
         "run",
         "--rm",
         "--pull=never",
-        "--name=skillpress-0123456789abcdef",
+        "--name=skill-press-0123456789abcdef",
       ]);
       expect(invocation.argv).toEqual(
         expect.arrayContaining([

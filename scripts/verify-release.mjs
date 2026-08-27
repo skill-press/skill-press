@@ -28,8 +28,8 @@ if (tag !== `v${packageJson.version}` || !/^v\d+\.\d+\.\d+$/u.test(tag)) {
   fail("release tag must exactly match the package version");
 }
 if (
-  packageJson.name !== "@mushanyoung/skillpress" ||
-  packageJson.repository?.url !== "git+https://github.com/mushanyoung/skillpress.git" ||
+  packageJson.name !== "@skill-press/cli" ||
+  packageJson.repository?.url !== "git+https://github.com/skill-press/skill-press.git" ||
   packageJson.publishConfig?.access !== "public" ||
   packageJson.publishConfig?.provenance !== true
 ) {
@@ -37,7 +37,7 @@ if (
 }
 if (
   process.env.GITHUB_ACTIONS !== "true" ||
-  process.env.GITHUB_REPOSITORY !== "mushanyoung/skillpress" ||
+  process.env.GITHUB_REPOSITORY !== "skill-press/skill-press" ||
   process.env.GITHUB_REF_TYPE !== "tag" ||
   process.env.GITHUB_REF_NAME !== tag
 ) {

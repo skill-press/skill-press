@@ -1,4 +1,4 @@
-import { stat, readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,6 +10,8 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const documents = [
   "README.md",
   "docs/OPERATIONS.md",
+  "docs/PLAN.md",
+  "docs/RELEASE_GATES.md",
   "docs/SECURITY.md",
   "docs/REGISTRIES.md",
   "docs/TESSL.md",
@@ -34,7 +36,7 @@ describe("operating documentation contracts", () => {
     }
   });
 
-  it("documents the actual interface, targets, credentials, and release boundary", async () => {
+  it("documents the canonical submission, trust, and release boundaries", async () => {
     const readme = await source("README.md");
     const operations = await source("docs/OPERATIONS.md");
     const security = await source("docs/SECURITY.md");
@@ -46,20 +48,27 @@ describe("operating documentation contracts", () => {
     expect(readme).toContain("docs/SECURITY.md");
     expect(readme).toContain("docs/REGISTRIES.md");
     for (const command of [
-      "create",
+      "init",
       "improve",
       "check",
       "test",
       "eval",
       "tessl",
       "package",
-      "publish",
+      "submit",
       "status",
       "doctor",
     ]) {
       expect(operations).toContain(`\`${command}\``);
     }
-    expect(operations).toContain("Publication is a dry run unless `--execute` is explicit");
+    expect(config.schemaVersion).toBe(2);
+    expect(config).not.toHaveProperty("publish");
+    expect(readme).toContain("@skill-press/cli");
+    expect(readme).toContain("skpress init");
+    expect(readme).toContain("skpress submit");
+    expect(operations).toContain("https://skill-press.com/api/v1");
+    expect(operations).toContain("SKILL_PRESS_TOKEN");
+    expect(operations).toContain("--dry-run");
     expect(operations).toContain("--training-evidence");
     expect(operations).toContain("checkTesslReleaseGate");
     expect(operations).toContain("resumeReceiptPath");
@@ -72,19 +81,38 @@ describe("operating documentation contracts", () => {
     expect(tessl).toContain("--executable <absolute-versioned-binary>");
     expect(tessl).toContain("fresh private temporary HOME");
     expect(operations).not.toContain("tessl auth token");
-    for (const target of config.publish.targets) expect(registries).toContain(`\`${target}\``);
+    expect(registries).toContain("Skill Press does not provide author-facing multi-publish.");
+    expect(readme).toContain("`skpress add` / `skpress install` are not live yet.");
+    expect(registries).toMatch(/Tessl[\s\S]*external evidence/iu);
+    expect(registries).toContain("Skill Press does not publish the canonical skill to Tessl");
+    for (const status of [
+      "received",
+      "automated-review",
+      "curator-review",
+      "changes-requested",
+      "accepted",
+      "published",
+      "rejected",
+    ]) {
+      expect(registries).toContain(`\`${status}\``);
+    }
+    for (const trust of ["trusted", "quarantined", "revoked"]) {
+      expect(registries).toContain(`\`${trust}\``);
+    }
     for (const descriptor of [
-      "GH_TOKEN",
       "ACTIONS_ID_TOKEN_REQUEST_URL",
       "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
       "TESSL_TOKEN",
-      "ASKILL_LOGIN",
-      "CLAWHUB_LOGIN",
-      "CLAWHUB_MIT0_CONSENT",
+      "SKILL_PRESS_TOKEN",
     ]) {
       expect(security).toContain(descriptor);
     }
-    expect(registries).toContain("open PR is `pr_review_required`, not publication");
-    expect(registries).toContain("receipt remains `derived`");
+    const activeDocs = `${readme}\n${operations}\n${security}\n${registries}`;
+    expect(activeDocs).not.toContain("publish.targets");
+    expect(activeDocs).not.toContain("runPublicationSaga");
+    expect(activeDocs).not.toContain("ASKILL_LOGIN");
+    expect(activeDocs).not.toContain("CLAWHUB_LOGIN");
+    expect(activeDocs).not.toContain("CLAWHUB_MIT0_CONSENT");
+    expect(activeDocs).not.toMatch(/\bskillpress (?:create|check|test|eval|publish)\b/u);
   });
 });

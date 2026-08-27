@@ -282,10 +282,10 @@ describe("paired evaluation hardening", () => {
     async (component) => {
       const root = await generatedProject();
       if (component === "skillpress") {
-        await writeFile(join(root, ".skillpress"), "not a directory");
+        await writeFile(join(root, ".skill-press"), "not a directory");
       } else {
-        await mkdir(join(root, ".skillpress"));
-        await writeFile(join(root, ".skillpress/runs"), "not a directory");
+        await mkdir(join(root, ".skill-press"));
+        await writeFile(join(root, ".skill-press/runs"), "not a directory");
       }
 
       const promise = runPairedEvaluation(root, {

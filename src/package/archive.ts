@@ -27,6 +27,8 @@ export interface SkillPackageArtifacts {
 
 export interface LoadedSkillPackageArtifacts extends SkillPackageArtifacts {
   readonly sourceCommit: string;
+  readonly projectConfigSha256: string;
+  readonly skillSha256: string;
 }
 
 export interface SkillPackageIssue {
@@ -60,7 +62,7 @@ const validateProvenance = new Ajv({ allErrors: true, strict: true }).compile(
   provenanceSchema,
 ) as ValidateFunction<SkillPressPackageProvenance>;
 const CRC_TABLE = new Uint32Array(256);
-const ARTIFACTS_PATH = /^\.skillpress\/staging\/[a-f0-9]{64}\/artifacts$/u;
+const ARTIFACTS_PATH = /^\.skill-press\/staging\/[a-f0-9]{64}\/artifacts$/u;
 const MAX_LOADED_ARTIFACT_BYTES = 64 * 1024 * 1024;
 for (let index = 0; index < CRC_TABLE.length; index += 1) {
   let value = index;
@@ -312,7 +314,7 @@ export async function packageStagedSkill(
 ): Promise<SkillPackageArtifacts> {
   const root = await realpath(projectDirectory);
   const config = await loadProjectConfig(root);
-  const configBytes = await readFile(join(root, "skillpress.yaml"));
+  const configBytes = await readFile(join(root, "skill-press.yaml"));
   if (sha256(configBytes) !== staged.projectConfigSha256) {
     throw new SkillPackageError("Project configuration changed after staging.", [
       issue("package.config.changed", "/project", "configuration must match staging provenance"),
@@ -356,7 +358,7 @@ export async function packageStagedSkill(
     sourceCommit: staged.sourceCommit,
     projectConfigSha256: staged.projectConfigSha256,
     skillSha256: staged.skillSha256,
-    tool: { name: "@mushanyoung/skillpress", version: VERSION },
+    tool: { name: "@skill-press/cli", version: VERSION },
     archive: {
       format: "zip",
       compression: "store",
@@ -506,7 +508,7 @@ export async function loadPackagedSkill(
     ]);
   }
   const loadedProvenance = parsed;
-  const configBytes = await readFile(join(root, "skillpress.yaml"));
+  const configBytes = await readFile(join(root, "skill-press.yaml"));
   const artifactSha256 = sha256(skillBytes);
   const provenanceSha256 = sha256(provenanceBytes);
   const stagedCanonicalPath = join(
@@ -589,5 +591,7 @@ export async function loadPackagedSkill(
     artifactSha256,
     artifactBytes: skillBytes.byteLength,
     sourceCommit: loadedProvenance.sourceCommit,
+    projectConfigSha256: loadedProvenance.projectConfigSha256,
+    skillSha256: loadedProvenance.skillSha256,
   });
 }
