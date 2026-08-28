@@ -1,6 +1,17 @@
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  link,
+  lstat,
+  mkdir,
+  mkdtemp,
+  open,
+  readFile,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -341,6 +352,115 @@ describe("canonical submission manifest", () => {
       prepareSkillSubmission(value.root, value.artifacts, value.evidence),
     ).rejects.toMatchObject({
       issues: [expect.objectContaining({ code: "submission.path.symlink" })],
+    });
+  });
+
+  it("fails closed when a payload path is swapped and restored during descriptor reads", async () => {
+    const value = await fixture();
+    const reviewPath = join(value.root, value.evidence.reviewEvidencePath);
+    const originalPath = `${reviewPath}.original`;
+    const attackerPath = join(value.root, "attacker-evidence.json");
+    await writeFile(attackerPath, '{"secret":"must-not-be-read"}\n', { mode: 0o600 });
+    const expected = await lstat(reviewPath, { bigint: true });
+    const probe = await open(reviewPath, "r");
+    const prototype = Object.getPrototypeOf(probe) as {
+      read: typeof probe.read;
+    };
+    const originalRead = prototype.read;
+    await probe.close();
+    let raceTriggered = false;
+
+    prototype.read = async function patchedRead(
+      this: typeof probe,
+      ...arguments_: Parameters<typeof originalRead>
+    ) {
+      const opened = await this.stat({ bigint: true });
+      if (!raceTriggered && opened.dev === expected.dev && opened.ino === expected.ino) {
+        raceTriggered = true;
+        await rename(reviewPath, originalPath);
+        await symlink(attackerPath, reviewPath);
+        return originalRead.apply(this, arguments_);
+      }
+      return originalRead.apply(this, arguments_);
+    };
+
+    let rejection: unknown;
+    try {
+      await prepareSkillSubmission(value.root, value.artifacts, value.evidence);
+    } catch (error) {
+      rejection = error;
+    } finally {
+      prototype.read = originalRead;
+      if (raceTriggered) {
+        await rm(reviewPath);
+        await rename(originalPath, reviewPath);
+      }
+    }
+    expect(raceTriggered).toBe(true);
+    expect(rejection).toMatchObject({
+      issues: [expect.objectContaining({ code: "submission.payload.changed" })],
+    });
+  });
+
+  it("fails closed when a payload parent is replaced after canonical validation", async () => {
+    const value = await fixture();
+    const reviewPath = join(value.root, value.evidence.reviewEvidencePath);
+    const reviewDirectory = join(reviewPath, "..");
+    const originalDirectory = `${reviewDirectory}.original`;
+    const attackerDirectory = join(value.root, "attacker-review");
+    await mkdir(attackerDirectory, { mode: 0o700 });
+    await writeFile(join(attackerDirectory, "evidence.json"), '{"secret":"outside"}\n', {
+      mode: 0o600,
+    });
+    const expected = await lstat(reviewPath, { bigint: true });
+    const probe = await open(reviewPath, "r");
+    const prototype = Object.getPrototypeOf(probe) as {
+      stat: typeof probe.stat;
+    };
+    const originalStat = prototype.stat;
+    await probe.close();
+    let raceTriggered = false;
+
+    prototype.stat = async function patchedStat(
+      this: typeof probe,
+      ...arguments_: Parameters<typeof originalStat>
+    ) {
+      const opened = await originalStat.apply(this, arguments_);
+      if (!raceTriggered && opened.dev === expected.dev && opened.ino === expected.ino) {
+        raceTriggered = true;
+        await rename(reviewDirectory, originalDirectory);
+        await symlink(attackerDirectory, reviewDirectory, "dir");
+      }
+      return opened;
+    };
+
+    let rejection: unknown;
+    try {
+      await prepareSkillSubmission(value.root, value.artifacts, value.evidence);
+    } catch (error) {
+      rejection = error;
+    } finally {
+      prototype.stat = originalStat;
+      if (raceTriggered) {
+        await rm(reviewDirectory);
+        await rename(originalDirectory, reviewDirectory);
+      }
+    }
+    expect(raceTriggered).toBe(true);
+    expect(rejection).toMatchObject({
+      issues: [expect.objectContaining({ code: "submission.payload.changed" })],
+    });
+  });
+
+  it("rejects payload files with hard-link aliases", async () => {
+    const value = await fixture();
+    const reviewPath = join(value.root, value.evidence.reviewEvidencePath);
+    await link(reviewPath, `${reviewPath}.alias`);
+
+    await expect(
+      prepareSkillSubmission(value.root, value.artifacts, value.evidence),
+    ).rejects.toMatchObject({
+      issues: [expect.objectContaining({ code: "submission.payload.unsafe" })],
     });
   });
 });
