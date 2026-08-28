@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { lstat, readFile, realpath } from "node:fs/promises";
+import { type BigIntStats, constants } from "node:fs";
+import { type FileHandle, lstat, open, readFile, realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
 import { Ajv, type ValidateFunction } from "ajv";
@@ -64,43 +65,117 @@ function sha256(value: string | Buffer): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function sameMetadata(
-  before: Awaited<ReturnType<typeof lstat>>,
-  after: Awaited<ReturnType<typeof lstat>>,
-): boolean {
+function sameMetadata(before: BigIntStats, after: BigIntStats): boolean {
   return (
     before.dev === after.dev &&
     before.ino === after.ino &&
     before.mode === after.mode &&
+    before.nlink === after.nlink &&
+    before.uid === after.uid &&
+    before.gid === after.gid &&
     before.size === after.size &&
-    before.mtimeMs === after.mtimeMs &&
-    before.ctimeMs === after.ctimeMs
+    before.mtimeNs === after.mtimeNs &&
+    before.ctimeNs === after.ctimeNs
   );
 }
 
-async function readStableFile(path: string, label: string, maximum = MAX_PAYLOAD_BYTES) {
-  const before = await lstat(path);
-  if (!before.isFile() || before.isSymbolicLink() || before.size < 1 || before.size > maximum) {
-    throw new SubmissionManifestError("Submission payload is unsafe.", [
+async function readStableProjectFile(
+  root: string,
+  input: string,
+  pathLabel: string,
+  payloadLabel: string,
+  maximum = MAX_PAYLOAD_BYTES,
+) {
+  const unsafe = () =>
+    new SubmissionManifestError("Submission payload is unsafe.", [
       issue(
         "submission.payload.unsafe",
-        `/payload/${label}`,
+        `/payload/${payloadLabel}`,
         "payload must be a bounded regular file",
       ),
     ]);
-  }
-  const bytes = await readFile(path);
-  const after = await lstat(path);
-  if (bytes.byteLength !== before.size || !sameMetadata(before, after)) {
-    throw new SubmissionManifestError("Submission payload changed while it was read.", [
+  const changed = () =>
+    new SubmissionManifestError("Submission payload changed while it was read.", [
       issue(
         "submission.payload.changed",
-        `/payload/${label}`,
+        `/payload/${payloadLabel}`,
         "payload must remain stable while read",
       ),
     ]);
+  const symlink = () =>
+    new SubmissionManifestError("Submission path traverses a symbolic link.", [
+      issue("submission.path.symlink", pathLabel, "path must not traverse symbolic links"),
+    ]);
+
+  const path = confinedPath(root, input, pathLabel);
+  const maximumBytes = BigInt(maximum);
+  const pathBefore = await lstat(path, { bigint: true });
+  if ((await realpath(path)) !== path) {
+    throw symlink();
   }
-  return bytes;
+  if (
+    !pathBefore.isFile() ||
+    pathBefore.isSymbolicLink() ||
+    pathBefore.nlink !== 1n ||
+    pathBefore.size < 1n ||
+    pathBefore.size > maximumBytes
+  ) {
+    throw unsafe();
+  }
+
+  let handle: FileHandle;
+  try {
+    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  } catch {
+    throw changed();
+  }
+
+  try {
+    const openedBefore = await handle.stat({ bigint: true });
+    if (
+      !openedBefore.isFile() ||
+      openedBefore.nlink !== 1n ||
+      openedBefore.size < 1n ||
+      openedBefore.size > maximumBytes ||
+      !sameMetadata(pathBefore, openedBefore)
+    ) {
+      throw changed();
+    }
+
+    const [pathOpened, realPathOpened] = await Promise.all([
+      lstat(path, { bigint: true }),
+      realpath(path),
+    ]);
+    if (realPathOpened !== path || !sameMetadata(openedBefore, pathOpened)) {
+      throw changed();
+    }
+
+    const bytes = Buffer.allocUnsafe(Number(openedBefore.size));
+    let offset = 0;
+    while (offset < bytes.byteLength) {
+      const { bytesRead } = await handle.read(bytes, offset, bytes.byteLength - offset, offset);
+      if (bytesRead < 1) {
+        throw changed();
+      }
+      offset += bytesRead;
+    }
+    const [openedAfter, pathAfter, realPathAfter] = await Promise.all([
+      handle.stat({ bigint: true }),
+      lstat(path, { bigint: true }),
+      realpath(path),
+    ]);
+    if (
+      BigInt(bytes.byteLength) !== openedBefore.size ||
+      realPathAfter !== path ||
+      !sameMetadata(openedBefore, openedAfter) ||
+      !sameMetadata(openedAfter, pathAfter)
+    ) {
+      throw changed();
+    }
+    return bytes;
+  } finally {
+    await handle.close();
+  }
 }
 
 function confinedPath(root: string, input: string, label: string): string {
@@ -207,38 +282,42 @@ export async function prepareSkillSubmission(
     ]);
   }
   await canonicalProjectPath(root, artifacts.artifactsPath, "/package");
-  const artifactPath = await canonicalProjectPath(
-    root,
-    `${artifacts.artifactsPath}/${artifacts.skillArchive}`,
-    "/package/artifact",
-  );
-  const provenancePath = await canonicalProjectPath(
-    root,
-    `${artifacts.artifactsPath}/${artifacts.provenance}`,
-    "/package/provenance",
-  );
-  const checksumsPath = await canonicalProjectPath(
-    root,
-    `${artifacts.artifactsPath}/${artifacts.checksums}`,
-    "/package/checksums",
-  );
-  const reviewEvidencePath = await canonicalProjectPath(
-    root,
-    evidence.reviewEvidencePath,
-    "/evidence/review",
-  );
-  const evalEvidencePath = await canonicalProjectPath(
-    root,
-    evidence.evalEvidencePath,
-    "/evidence/evaluation",
-  );
   const [artifactBytes, provenanceBytes, checksumsBytes, reviewEvidenceBytes, evalEvidenceBytes] =
     await Promise.all([
-      readStableFile(artifactPath, "artifact"),
-      readStableFile(provenancePath, "provenance", MAX_PROVENANCE_BYTES),
-      readStableFile(checksumsPath, "checksums", MAX_CHECKSUMS_BYTES),
-      readStableFile(reviewEvidencePath, "review-evidence", 1024 * 1024),
-      readStableFile(evalEvidencePath, "eval-evidence", 1024 * 1024),
+      readStableProjectFile(
+        root,
+        `${artifacts.artifactsPath}/${artifacts.skillArchive}`,
+        "/package/artifact",
+        "artifact",
+      ),
+      readStableProjectFile(
+        root,
+        `${artifacts.artifactsPath}/${artifacts.provenance}`,
+        "/package/provenance",
+        "provenance",
+        MAX_PROVENANCE_BYTES,
+      ),
+      readStableProjectFile(
+        root,
+        `${artifacts.artifactsPath}/${artifacts.checksums}`,
+        "/package/checksums",
+        "checksums",
+        MAX_CHECKSUMS_BYTES,
+      ),
+      readStableProjectFile(
+        root,
+        evidence.reviewEvidencePath,
+        "/evidence/review",
+        "review-evidence",
+        1024 * 1024,
+      ),
+      readStableProjectFile(
+        root,
+        evidence.evalEvidencePath,
+        "/evidence/evaluation",
+        "eval-evidence",
+        1024 * 1024,
+      ),
     ]);
   const evalSource = await canonicalProjectPath(root, evidence.evalSource, "/evidence/evalSource");
   const evalSourceSha256 = await digestBoundedTree(evalSource);
