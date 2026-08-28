@@ -5,9 +5,10 @@ submits an exact candidate only to the fixed API at `https://skill-press.com/api
 publish author-maintained copies across multiple Agent Skill platforms.
 
 > [!IMPORTANT]
-> This document defines the client protocol and intended service contract. The production registry
-> backend, account/token issuance, immutable download service, and install commands are not live
-> yet. Today, `skpress submit --dry-run` can prepare and validate the exact candidate locally.
+> This document defines the client protocol and intended service contract. The registry and
+> account/token issuance are not deployed yet. The submission, discovery, and trusted-install
+> clients are implemented and locally tested; today, `skpress submit --dry-run` is the only
+> end-user workflow that does not depend on the unavailable production service.
 
 ## Authority matrix
 
@@ -49,12 +50,20 @@ The production client compiles in these endpoints:
 GET  https://skill-press.com/api/v1/session
 POST https://skill-press.com/api/v1/submissions
 GET  https://skill-press.com/api/v1/submissions/{id}
+PUT  https://skill-press.com/api/v1/submissions/{id}/objects/{role}
+POST https://skill-press.com/api/v1/submissions/{id}/finalize
+GET  https://skill-press.com/api/v1/discovery?limit={n}[&cursor={opaque-token}]
+GET  https://skill-press.com/api/v1/releases/{namespace}/{skill}/{version}
+GET  https://skill-press.com/artifacts/{namespace}/{skill}/{version}
+GET  https://skill-press.com/attestations/{namespace}/{skill}/{version}
+GET  https://skill-press.com/trust/{namespace}/{skill}/{version}
+GET  https://skill-press.com/checkpoints/{namespace}/{skill}/{version}
 ```
 
 Project files cannot override the scheme, origin, base path, or redirects. This is a credential
 boundary: `SKILL_PRESS_TOKEN` must never be sent to an origin selected by untrusted project input.
 
-Every request uses:
+Authenticated submission requests use:
 
 - `Authorization: Bearer <SKILL_PRESS_TOKEN>`;
 - `Skill-Press-Protocol-Version: 1`;
@@ -62,26 +71,43 @@ Every request uses:
 - redirect rejection;
 - a bounded timeout.
 
-The submission request is multipart and includes exactly:
+Discovery is public and read-only. It sends no bearer token, author credential, or provider
+credential, but retains the fixed-origin, redirect, protocol, schema, response-size, and timeout
+checks.
+
+Submission is a bounded, resumable three-stage protocol:
+
+1. `POST /submissions` sends only the deterministic canonical manifest. The service authenticates
+   the principal, authorizes the namespace, checks the idempotency binding, and atomically reserves
+   the exact namespace, skill, and version before retaining candidate bytes.
+2. The client uploads each declared object to its fixed `objects/{role}` endpoint. Each request
+   carries the exact declared media type and byte length; the service streams it to private
+   candidate storage and accepts it only when its digest and size match the reserved manifest.
+3. `POST /finalize` verifies that all six roles are committed, then atomically advances the
+   candidate and its durable validation outbox record. Queue delivery may be retried, but it cannot
+   create a second logical validation job.
+
+The six roles are exactly:
 
 - `manifest`: deterministic `skillpress.submission-manifest` JSON;
 - `artifact`: the canonical deterministic skill archive;
 - `provenance`: source, tree, runtime, and package bindings;
 - `checksums`: exact release payload digests;
-- `reviewEvidence`: current Tessl Quality evidence;
-- `evalEvidence`: current Tessl Impact evidence.
+- `review-evidence`: current Tessl Quality evidence;
+- `eval-evidence`: current Tessl Impact evidence.
 
-The manifest binds the explicitly requested lowercase registry namespace, project version, Git
+The manifest is the object committed during reservation; the other five roles are uploaded
+separately. It binds the explicitly requested lowercase registry namespace, project version, Git
 source commit, project-config digest, complete skill-tree digest, artifact digest, evidence digests,
 and eval-source digest. The namespace is neither `author.github` nor a value silently inferred from
 the repository owner; the service must authorize the authenticated submitter for it. The manifest
 says `serverValidationRequired: true` and marks client evidence advisory. The service must not
 convert a client upload directly into a trusted release.
 
-`GET /session` confirms authentication only. The `POST /submissions` transaction must verify that
-the authenticated principal controls the manifest namespace before creating a candidate, reserving
-the idempotency key or version, or retaining the upload. Authorization failure must leave no
-namespace, candidate, idempotency, version, or artifact record behind.
+`GET /session` confirms authentication only. The initial `POST /submissions` transaction must
+verify that the authenticated principal controls the manifest namespace before creating a
+candidate, reserving the idempotency key or version, or retaining the upload. Authorization
+failure must leave no namespace, candidate, idempotency, version, or artifact record behind.
 
 ## Idempotency and recovery
 
@@ -124,12 +150,18 @@ The canonical service resource exposes one candidate review status:
 | `curator-review` | Automated policy permits human review to proceed |
 | `changes-requested` | The candidate cannot advance without an updated, newly identified submission |
 | `accepted` | Automated and curator review approved the candidate; release creation is pending |
+| `publication-blocked` | The accepted candidate is held by a platform capacity gate; an audited curator retry is required after capacity expands |
 | `published` | An immutable release record exists and matches the submitted artifact |
 | `rejected` | The candidate will not be published |
+| `withdrawn` | The author stopped a pre-acceptance candidate; its version and audit records remain reserved |
 
-`received`, `automated-review`, `curator-review`, `changes-requested`, and `accepted` must never be
-displayed as “published.” A local `operationStatus: submitted` means only that the client verified
-the remote candidate record.
+`received`, `automated-review`, `curator-review`, `changes-requested`, `accepted`,
+`publication-blocked`, and `withdrawn` must never be displayed as “published.” A local
+`operationStatus: submitted` means only that the client verified the remote candidate record.
+
+An authenticated owner may call `POST /api/v1/submissions/{id}/withdraw` while a candidate is
+`received`, `automated-review`, or `curator-review`. The append-only transition releases pending
+quota without deleting candidate bytes, review history, or the permanent version reservation.
 
 Published resources additionally expose a release record with:
 
@@ -148,16 +180,37 @@ Trust is separate from candidate review:
 | --- | --- |
 | `trusted` | Normal installation may proceed after digest and attestation verification |
 | `quarantined` | Block new installation by default while an incident is investigated |
-| `revoked` | Refuse new installation and surface remediation for existing locks |
+| `revoked` | Refuse new installation; require operator remediation for an existing local copy |
 
 The bytes, version, locator, and original attestation of a published release are immutable. Trust
 changes append a newer authenticated state with a monotonically increasing sequence; quarantine or
 revocation never rewrites history to pretend the version did not exist.
 
-A cached artifact is not enough to install safely when current trust cannot be established. The
-future installation design must document its offline policy and fail closed for a release whose
-trust state is unavailable, quarantined, revoked, mismatched, or older than the lock's observed
-sequence.
+The three ES256 signing roles are disjoint: `release-attestation`, `trust-event`, and
+`current-trust`. After verifying the immutable artifact and attestation plus the latest signed
+trust event, the installer obtains a separately signed current-trust checkpoint. That checkpoint
+binds the exact locator, artifact and attestation digests, trust-envelope digest, status, sequence,
+and update time, and is issued for ten minutes. Clients accept a checkpoint lifetime of at most 15
+minutes, require at least 30 seconds to remain at activation, and reject cached dynamic responses.
+
+A cached artifact or historically valid `trusted` event is therefore not enough to install. The
+installer persists the highest observed trust sequence in `skill-lock.json` before exposing
+`SKILL.md`, and fails closed if live trust is unavailable, quarantined, revoked, mismatched, stale,
+or below that floor. Offline installation and force bypasses are intentionally unsupported.
+
+Installed bytes under `.agents/skills/` are derived local state, not distributable source. They
+must remain ignored by Git; only `skill-lock.json` is committed. A Git checkout containing a
+tracked or unignored install target cannot use trusted installation, because cloning such bytes
+would bypass the current-trust check.
+
+Trust refresh is deliberately non-destructive. An error cannot safely prove that a pre-existing
+directory is installer-owned, and an unavailable or ambiguous response is not a signed revocation,
+so `skpress install` never silently removes an already visible local copy. After a **confirmed**
+quarantine or revocation, stop agents that may already have loaded the skill, preserve the directory
+if incident analysis needs it, then move `.agents/skills/<skill>/` completely outside every agent
+discovery root. Keep `skill-lock.json` and its highest trust sequence; do not lower or delete that
+floor to reinstall the old release. Restore only after the same release becomes trusted at a higher
+signed sequence or a reviewed replacement version is added.
 
 ## GitHub role
 
@@ -181,26 +234,55 @@ Press registry.
 ## Tessl role
 
 Tessl provides external evidence used by the client release gate.
-Skill Press does not publish the canonical skill to Tessl, and a Tessl result does not itself
-create a Skill Press submission, curator approval, release, or trust record. The server may
-independently re-run or corroborate external evidence under its current policy.
+Skill Press does not publish the canonical skill to Tessl, and a Tessl result does not itself create a Skill Press submission,
+curator approval, release, or trust record. The server applies a pinned self-consistency policy to
+the advisory document, while a curator independently corroborates it and records an immutable
+workpaper digest. This is human review authority, not a provider-signed execution receipt.
 
-## Future catalogs, mirrors, and feeds
+## Controlled discovery, mirrors, and feeds
 
-External discovery is a later platform feature, not an author command. A future Skill Press feed
-or syndication worker may expose a release to a catalog only after canonical publication. It must:
+External discovery is a platform feature, not an author command. `GET /api/v1/discovery` returns
+pages with `snapshot`, `generatedAt`, `totalEntries`, normalized published releases, and an opaque
+`nextCursor`. A full client collection always starts at the origin. The server cursor is an
+authenticated token bound to the same snapshot, the last emitted position, and an expiry; clients
+never decode it or use a caller cursor to claim a complete snapshot.
 
-1. use the exact canonical artifact digest and version;
-2. link to the canonical Skill Press release and attestation;
-3. distinguish a mirror from the publication authority;
-4. propagate current `trusted`, `quarantined`, or `revoked` state where the target supports it;
-5. avoid provider-specific source mutations or silent license changes;
-6. record failure independently without blocking or rolling back canonical publication;
-7. never fabricate installation activity, rankings, acceptance, or verification.
+The canonical snapshot is:
 
-If a catalog cannot preserve those boundaries, Skill Press may provide a discovery link rather
-than a mirrored package. Organic indexing of public GitHub source is an external fact and is not a
-Skill Press publication receipt.
+```text
+SHA-256("skillpress.discovery-snapshot.v1\n" || UTF8(JSON.stringify(normalized releases)))
+```
+
+Release records are sorted by locator, object fields have fixed canonical order, and each release's
+mirror array is sorted by globally unique mirror ID. The client collects exactly `totalEntries`,
+recomputes the digest, and rejects changed snapshots, early termination, excess records, cursor
+cycles, no-progress pages, or conflicting release and mirror provenance.
+
+Canonical field order is part of snapshot version 1:
+
+```text
+release: releaseState, locator, namespace, skill, version, artifactSha256, canonicalUrl,
+         attestationUrl, publishedAt, trust, mirrors
+trust:   status, sequence, updatedAt, [reasonCode]
+mirror:  projectionType, id, operator, provider, mirrorKind, url, verifiedAt,
+         [artifactSha256], source
+source:  locator, artifactSha256, canonicalUrl, attestationUrl
+```
+
+The initial mirror policy accepts only `provider: github` URLs at the exact `github.com` origin and
+under `/skill-press/`, with a launch maximum of 384 characters. Userinfo, ports, queries,
+fragments, IP addresses, encoded/ambiguous paths, and other owners or subdomains are rejected.
+The 384-character bound keeps the proven 256-release × 8-mirror worst case inside the 4 MiB
+canonical snapshot budget. Every projection includes its canonical source
+locator, artifact digest, release URL, and attestation URL:
+
+- `mirrorKind: listing` is a read-only catalog projection;
+- `mirrorKind: artifact` must additionally carry `artifactSha256` equal to the immutable release.
+
+Mirror IDs are globally unique. Reusing a mirror URL is allowed only for identical canonical source
+provenance. Mirrors propagate current `trusted`, `quarantined`, or `revoked` state but do not create
+or alter it. Their failure is independent of canonical publication, and they never fabricate
+installation activity, rankings, acceptance, or verification.
 
 ## Rollback and incident boundary
 

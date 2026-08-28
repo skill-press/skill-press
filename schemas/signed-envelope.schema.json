@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/skill-press/skill-press/main/schemas/signed-envelope.schema.json",
+  "title": "SkillPressSignedEnvelope",
+  "description": "Canonical ES256 envelope used for release attestations, trust events, and current-trust checkpoints.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "envelopeType", "keyId", "algorithm", "payload", "signature"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "envelopeType": {
+      "type": "string",
+      "enum": [
+        "skillpress.signed-attestation",
+        "skillpress.signed-trust",
+        "skillpress.signed-current-trust"
+      ]
+    },
+    "keyId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+    },
+    "algorithm": { "const": "ES256" },
+    "payload": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 16384,
+      "pattern": "^[A-Za-z0-9_-]{2,}$"
+    },
+    "signature": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9_-]{2,}$"
+    }
+  }
+}

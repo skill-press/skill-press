@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
-import { chmod, mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -54,6 +54,25 @@ async function project(): Promise<string> {
     { cwd: root },
   );
   return root;
+}
+
+async function commitProject(root: string): Promise<void> {
+  await execFileAsync("git", ["add", "."], { cwd: root });
+  await execFileAsync(
+    "git",
+    [
+      "-c",
+      "user.name=SkillPress Test",
+      "-c",
+      "user.email=test@example.invalid",
+      "-c",
+      "commit.gpgsign=false",
+      "commit",
+      "-qm",
+      "fixture update",
+    ],
+    { cwd: root },
+  );
 }
 
 describe("deterministic package archives", () => {
@@ -131,6 +150,116 @@ describe("deterministic package archives", () => {
     const staged = structuredClone(await stageCanonicalSkill(root));
     staged.files[0].sha256 = "0".repeat(64);
     await expect(packageStagedSkill(root, staged)).rejects.toBeInstanceOf(SkillPackageError);
+  });
+
+  it("rejects installer-reserved portable names and paths deeper than the registry contract", async () => {
+    const reservedRoot = await project();
+    await writeFile(
+      join(reservedRoot, "skills/incident-summary/.skill-press-installing-skill.md"),
+      "reserved\n",
+    );
+    await commitProject(reservedRoot);
+    await expect(
+      packageStagedSkill(reservedRoot, await stageCanonicalSkill(reservedRoot)),
+    ).rejects.toMatchObject({
+      issues: [expect.objectContaining({ code: "package.archive.invalid" })],
+    });
+
+    const deepRoot = await project();
+    const components = Array.from(
+      { length: 31 },
+      (_, index) => `d${String(index).padStart(2, "0")}`,
+    );
+    const directory = join(deepRoot, "skills/incident-summary", ...components);
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, "deep.txt"), "deep\n");
+    await commitProject(deepRoot);
+    await expect(
+      packageStagedSkill(deepRoot, await stageCanonicalSkill(deepRoot)),
+    ).rejects.toMatchObject({
+      issues: [expect.objectContaining({ code: "package.archive.path" })],
+    });
+  });
+
+  it("rejects forged staged paths before resolving them on disk", async () => {
+    const root = await project();
+    const staged = structuredClone(await stageCanonicalSkill(root));
+    const license = staged.files.find((file) => file.path === "LICENSE");
+    if (license === undefined) throw new Error("missing fixture LICENSE");
+    license.path = "nested/../LICENSE";
+
+    await expect(packageStagedSkill(root, staged)).rejects.toMatchObject({
+      issues: [expect.objectContaining({ code: "package.archive.path" })],
+    });
+  });
+
+  it("rejects forged staged inventory and file-size claims", async () => {
+    const root = await project();
+    const empty = structuredClone(await stageCanonicalSkill(root));
+    empty.files = [];
+    await expect(packageStagedSkill(root, empty)).rejects.toMatchObject({
+      issues: [expect.objectContaining({ code: "package.stage.inventory" })],
+    });
+
+    for (const bytes of [Number.NaN, -1, 32 * 1024 * 1024 + 1]) {
+      const staged = structuredClone(await stageCanonicalSkill(root));
+      const first = staged.files[0];
+      if (first === undefined) throw new Error("missing staged fixture file");
+      first.bytes = bytes;
+      await expect(packageStagedSkill(root, staged)).rejects.toMatchObject({
+        issues: [expect.objectContaining({ code: "package.stage.file" })],
+      });
+    }
+  });
+
+  it("enforces the server-portable Markdown inventory before submission", async () => {
+    const oversizedRoot = await project();
+    await writeFile(
+      join(oversizedRoot, "skills/incident-summary/unreachable.md"),
+      "x".repeat(512 * 1024 + 1),
+    );
+    await commitProject(oversizedRoot);
+    await expect(
+      packageStagedSkill(oversizedRoot, await stageCanonicalSkill(oversizedRoot)),
+    ).rejects.toMatchObject({
+      issues: [expect.objectContaining({ code: "package.archive.markdown" })],
+    });
+
+    const countRoot = await project();
+    for (let index = 0; index < 256; index += 1) {
+      await writeFile(
+        join(
+          countRoot,
+          "skills/incident-summary",
+          `unreachable-${String(index).padStart(3, "0")}.md`,
+        ),
+        "bounded\n",
+      );
+    }
+    await commitProject(countRoot);
+    await expect(
+      packageStagedSkill(countRoot, await stageCanonicalSkill(countRoot)),
+    ).rejects.toMatchObject({
+      issues: [expect.objectContaining({ code: "package.archive.markdown" })],
+    });
+
+    const totalRoot = await project();
+    for (let index = 0; index < 17; index += 1) {
+      await writeFile(
+        join(
+          totalRoot,
+          "skills/incident-summary",
+          `unreachable-${String(index).padStart(2, "0")}.md`,
+        ),
+        "x".repeat(512 * 1024),
+      );
+    }
+    await commitProject(totalRoot);
+    await expect(
+      packageStagedSkill(totalRoot, await stageCanonicalSkill(totalRoot)),
+    ).rejects.toMatchObject({
+      issues: [expect.objectContaining({ code: "package.archive.markdown" })],
+    });
   });
 
   it("reloads an exact private package for resumable submission", async () => {

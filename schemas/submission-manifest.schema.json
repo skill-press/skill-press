@@ -88,11 +88,12 @@
     "evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["advisory", "review", "evaluation", "evalSourceSha256"],
+      "required": ["advisory", "review", "evaluation", "evalSource", "evalSourceSha256"],
       "properties": {
         "advisory": { "const": true },
         "review": { "$ref": "#/definitions/reviewEvidencePayload" },
         "evaluation": { "$ref": "#/definitions/evalEvidencePayload" },
+        "evalSource": { "$ref": "#/definitions/relativePath" },
         "evalSourceSha256": { "$ref": "#/definitions/digest" }
       }
     },
@@ -116,7 +117,7 @@
     "semver": {
       "type": "string",
       "maxLength": 128,
-      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
     },
     "relativePath": {
       "type": "string",
@@ -139,8 +140,8 @@
         "name": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 160,
-          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*-(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?[.]skill$"
+          "maxLength": 199,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*-(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?[.]skill$"
         },
         "sha256": { "$ref": "#/definitions/digest" },
         "bytes": { "type": "integer", "minimum": 1, "maximum": 67108864 },
@@ -154,7 +155,7 @@
       "properties": {
         "name": { "const": "provenance.json" },
         "sha256": { "$ref": "#/definitions/digest" },
-        "bytes": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "bytes": { "type": "integer", "minimum": 1, "maximum": 65536 },
         "mediaType": { "const": "application/json" }
       }
     },
@@ -165,7 +166,7 @@
       "properties": {
         "name": { "const": "SHA256SUMS" },
         "sha256": { "$ref": "#/definitions/digest" },
-        "bytes": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "bytes": { "type": "integer", "minimum": 1, "maximum": 1024 },
         "mediaType": { "const": "text/plain" }
       }
     },

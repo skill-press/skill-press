@@ -66,6 +66,14 @@ const targets = [
     schema: "schemas/submission-receipt.schema.json",
     output: "src/submission/generated-receipt.ts",
   },
+  {
+    schema: "schemas/discovery-feed.schema.json",
+    output: "src/discovery/generated-feed.ts",
+  },
+  {
+    schema: "schemas/skill-lock.schema.json",
+    output: "src/install/generated-lock.ts",
+  },
 ];
 
 let stale = false;

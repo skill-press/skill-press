@@ -55,8 +55,10 @@ export type ReviewStatus =
   | "curator-review"
   | "changes-requested"
   | "accepted"
+  | "publication-blocked"
   | "published"
-  | "rejected";
+  | "rejected"
+  | "withdrawn";
 /**
  * This interface was referenced by `SkillPressSubmissionReceipt`'s JSON-Schema
  * via the `definition` "timestamp".

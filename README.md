@@ -9,10 +9,11 @@ automated validation and curator review, then publishes immutable releases throu
 registry. It does not ask authors to publish separate copies to multiple Agent Skill platforms.
 
 > [!IMPORTANT]
-> The CLI and submission protocol are under active development. The registry backend, account and
-> token issuance, and `skpress add` / `skpress install` are not live yet. `skpress submit --dry-run`
-> can prepare and verify a candidate locally; a non-dry-run submission cannot succeed until the
-> canonical service is deployed.
+> The CLI, registry, and trust protocol are under active development. `skpress add` and
+> `skpress install` are implemented and hermetically tested, but the production registry, account
+> and token issuance, immutable downloads, and discovery service are not deployed yet.
+> `skpress submit --dry-run` can prepare and verify a candidate locally; network submission and
+> installation cannot succeed until the canonical service is live.
 
 ## Canonical identities
 
@@ -33,7 +34,7 @@ product prose, the brand is always written as **Skill Press**.
 
 Each project also declares a lowercase `registry.namespace` in `skill-press.yaml`. It is the
 requested canonical Skill Press identity, independent of `author.github` and the GitHub repository
-owner; the future service must verify that the authenticated submitter controls it.
+owner; the production service verifies that the authenticated submitter controls it.
 
 ## Current development setup
 
@@ -138,7 +139,8 @@ Submission review records progress through:
 received -> automated-review -> curator-review -> accepted -> published
                                       |               |
                                       +-> changes-requested
-                                      +-> rejected
+                                      +-> rejected    +-> publication-blocked -> accepted (audited retry)
+                                      +-> withdrawn
 ```
 
 A published release separately has a mutable safety disposition:
@@ -149,10 +151,28 @@ A published release separately has a mutable safety disposition:
 
 Review status answers what happened to a candidate. Trust status answers whether an immutable
 release remains safe to install now. A local receipt is a retry journal, not a trust attestation.
+`publication-blocked` preserves an accepted candidate when the launch discovery capacity is full;
+it is neither a quality rejection nor a published release, and only an audited curator retry may
+resume it after capacity is expanded.
+An authenticated author may move a pre-acceptance candidate to terminal `withdrawn`; its immutable
+version reservation and audit records remain, but it no longer consumes the author's pending quota.
 
-The future `skpress add` and `skpress install` commands will resolve only canonical Skill Press
-release records by default and verify version, digest, attestation, and current trust state. They
-are not implemented or live today.
+Trusted installation uses exact locators and never falls back to a branch or third-party catalog:
+
+```bash
+skpress add <namespace>/<skill>@<exact-version>
+skpress install
+```
+
+`add` records the immutable artifact and the highest observed signed trust sequence in
+`skill-lock.json`, then installs under `.agents/skills/`. `install` restores every exact lock entry.
+Both commands verify the canonical resolver, artifact digest and size, immutable release
+attestation, signed trust event, and a short-lived signed current-trust checkpoint before making
+`SKILL.md` agent-visible. Cached, expired, unavailable, quarantined, revoked, mismatched, or
+rollback state fails closed. Offline installation is intentionally unsupported. The commands are
+implemented in this repository but cannot perform a real install until the registry is deployed.
+Commit `skill-lock.json`, but keep `.agents/skills/` ignored: installed bytes are derived locally
+and every clone must rehydrate them through a fresh current-trust check.
 
 ## Distribution model
 
@@ -161,13 +181,14 @@ are not implemented or live today.
 - npm distributes the `@skill-press/cli` developer tool. Agent Skills are not npm packages.
 - Skill Press owns admission, curator decisions, immutable skill versions, attestations, and
   trust-state changes.
-- External catalogs may later index or mirror an already published release for discovery. Any
-  mirror must preserve the exact digest and canonical URL, and its failure must not change the
-  Skill Press release state.
+- The public, read-only discovery feed exposes only already published immutable releases. Its
+  canonical snapshot digest covers every normalized release and mirror projection.
+- Initial mirrors are Skill Press-operated GitHub projections under `github.com/skill-press/`.
+  They preserve exact release provenance, and their failure cannot change canonical release state.
 
-Skill Press does not provide author-facing multi-publish. Future syndication, if added, will be a
-platform-operated downstream process after canonical publication rather than a set of provider
-credentials and target adapters in each author's project.
+Skill Press does not provide author-facing multi-publish. Discovery and mirroring are
+platform-operated downstream processes after canonical publication, without author provider
+credentials or target adapters in project configuration.
 
 ## Library API
 
@@ -180,6 +201,19 @@ const report = await validateAgentSkill("./skills/my-skill", {
   expectedName: "my-skill",
 });
 ```
+
+The public discovery client is fixed to the canonical origin and verifies the complete snapshot
+before returning a collection:
+
+```js
+import { createCanonicalDiscoveryClient } from "@skill-press/cli";
+
+const discovery = await createCanonicalDiscoveryClient().collect();
+```
+
+`collect()` always starts at the feed origin; caller-supplied cursors are not accepted for a full
+snapshot. Low-level `listPage()` treats cursors as opaque pagination tokens and does not establish
+that a partial page is a complete snapshot.
 
 Validation reads a bounded resource tree without executing the skill. It checks strict
 frontmatter, local Markdown references, placeholders, portability, path aliases, suspicious

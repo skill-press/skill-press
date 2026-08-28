@@ -1,0 +1,219 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/skill-press/skill-press/main/schemas/discovery-feed.schema.json",
+  "title": "SkillPressDiscoveryFeed",
+  "description": "A page from the canonical, platform-controlled Skill Press discovery feed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "feedType",
+    "snapshot",
+    "generatedAt",
+    "totalEntries",
+    "entries",
+    "nextCursor"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "feedType": { "const": "skillpress.discovery-feed" },
+    "snapshot": {
+      "description": "SHA-256 of the version-1 domain string followed by JSON.stringify of the complete normalized release array.",
+      "$ref": "#/definitions/digest"
+    },
+    "generatedAt": { "$ref": "#/definitions/timestamp" },
+    "totalEntries": {
+      "description": "The exact release count in the complete snapshot, repeated unchanged on every page.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 256
+    },
+    "entries": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "$ref": "#/definitions/release" }
+    },
+    "nextCursor": {
+      "description": "An opaque authenticated server token bound to this snapshot, the last position, and an expiry.",
+      "anyOf": [{ "$ref": "#/definitions/cursor" }, { "type": "null" }]
+    }
+  },
+  "definitions": {
+    "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "namespace": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "semver": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "locator": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 258,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:-[a-z0-9]+)*@(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$"
+    },
+    "canonicalUrl": {
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^https://skill-press[.]com/[A-Za-z0-9._~!$&'()*+,;=:@%/?-]*$"
+    },
+    "mirrorUrl": {
+      "type": "string",
+      "minLength": 32,
+      "maxLength": 384,
+      "pattern": "^https://github[.]com/skill-press/[A-Za-z0-9._~!$&'()*+,;=:@/-]+$"
+    },
+    "cursor": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+    },
+    "reasonCode": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:_[a-z0-9]+)*$"
+    },
+    "trust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "sequence", "updatedAt"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["trusted", "quarantined", "revoked"]
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "updatedAt": { "$ref": "#/definitions/timestamp" },
+        "reasonCode": { "$ref": "#/definitions/reasonCode" }
+      }
+    },
+    "mirrorSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["locator", "artifactSha256", "canonicalUrl", "attestationUrl"],
+      "properties": {
+        "locator": { "$ref": "#/definitions/locator" },
+        "artifactSha256": { "$ref": "#/definitions/digest" },
+        "canonicalUrl": { "$ref": "#/definitions/canonicalUrl" },
+        "attestationUrl": { "$ref": "#/definitions/canonicalUrl" }
+      }
+    },
+    "mirror": {
+      "oneOf": [
+        { "$ref": "#/definitions/listingMirror" },
+        { "$ref": "#/definitions/artifactMirror" }
+      ]
+    },
+    "listingMirror": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectionType",
+        "id",
+        "operator",
+        "provider",
+        "mirrorKind",
+        "url",
+        "verifiedAt",
+        "source"
+      ],
+      "properties": {
+        "projectionType": { "const": "skillpress.mirror-projection" },
+        "id": { "$ref": "#/definitions/id" },
+        "operator": { "const": "skill-press" },
+        "provider": { "const": "github" },
+        "mirrorKind": { "const": "listing" },
+        "url": { "$ref": "#/definitions/mirrorUrl" },
+        "verifiedAt": { "$ref": "#/definitions/timestamp" },
+        "source": { "$ref": "#/definitions/mirrorSource" }
+      }
+    },
+    "artifactMirror": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectionType",
+        "id",
+        "operator",
+        "provider",
+        "mirrorKind",
+        "url",
+        "verifiedAt",
+        "artifactSha256",
+        "source"
+      ],
+      "properties": {
+        "projectionType": { "const": "skillpress.mirror-projection" },
+        "id": { "$ref": "#/definitions/id" },
+        "operator": { "const": "skill-press" },
+        "provider": { "const": "github" },
+        "mirrorKind": { "const": "artifact" },
+        "url": { "$ref": "#/definitions/mirrorUrl" },
+        "verifiedAt": { "$ref": "#/definitions/timestamp" },
+        "artifactSha256": { "$ref": "#/definitions/digest" },
+        "source": { "$ref": "#/definitions/mirrorSource" }
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "releaseState",
+        "locator",
+        "namespace",
+        "skill",
+        "version",
+        "artifactSha256",
+        "canonicalUrl",
+        "attestationUrl",
+        "publishedAt",
+        "trust",
+        "mirrors"
+      ],
+      "properties": {
+        "releaseState": { "const": "published" },
+        "locator": { "$ref": "#/definitions/locator" },
+        "namespace": { "$ref": "#/definitions/namespace" },
+        "skill": { "$ref": "#/definitions/name" },
+        "version": { "$ref": "#/definitions/semver" },
+        "artifactSha256": { "$ref": "#/definitions/digest" },
+        "canonicalUrl": { "$ref": "#/definitions/canonicalUrl" },
+        "attestationUrl": { "$ref": "#/definitions/canonicalUrl" },
+        "publishedAt": { "$ref": "#/definitions/timestamp" },
+        "trust": { "$ref": "#/definitions/trust" },
+        "mirrors": {
+          "type": "array",
+          "maxItems": 8,
+          "items": { "$ref": "#/definitions/mirror" }
+        }
+      }
+    }
+  }
+}

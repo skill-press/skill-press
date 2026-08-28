@@ -1,13 +1,13 @@
 import { checkProject } from "../check/project.js";
 import { loadProjectConfig } from "../config/load.js";
-import { loadPackagedSkill, type LoadedSkillPackageArtifacts } from "../package/archive.js";
+import { type LoadedSkillPackageArtifacts, loadPackagedSkill } from "../package/archive.js";
 import {
   checkTesslReleaseGate,
   type TesslReleaseGateOptions,
   type TesslReleaseGateReport,
 } from "../release/tessl-gate.js";
 import { readSubmissionReceipt, type SubmissionReceipt } from "../submission/journal.js";
-import { prepareSkillSubmission, type PreparedSubmissionPayload } from "../submission/manifest.js";
+import { type PreparedSubmissionPayload, prepareSkillSubmission } from "../submission/manifest.js";
 
 export interface ProjectStatusIssue {
   readonly code: string;
@@ -223,13 +223,19 @@ export async function inspectProjectStatus(
     }
     if (
       submission.remote?.status === "changes-requested" ||
-      submission.remote?.status === "rejected"
+      submission.remote?.status === "publication-blocked" ||
+      submission.remote?.status === "rejected" ||
+      submission.remote?.status === "withdrawn"
     ) {
       issues.push(
         issue(
           "status.submission.review_blocked",
           "/submission/remote/status",
-          "canonical review requires changes or rejected this candidate",
+          submission.remote.status === "publication-blocked"
+            ? "canonical publication is blocked by a platform capacity gate"
+            : submission.remote.status === "withdrawn"
+              ? "the author withdrew this canonical candidate"
+              : "canonical review requires changes or rejected this candidate",
         ),
       );
     }

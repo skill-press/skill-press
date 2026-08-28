@@ -45,6 +45,8 @@ export class SubmissionManifestError extends Error {
 }
 
 const MAX_PAYLOAD_BYTES = 64 * 1024 * 1024;
+const MAX_PROVENANCE_BYTES = 64 * 1024;
+const MAX_CHECKSUMS_BYTES = 1024;
 const ARTIFACTS_PATH = /^\.skill-press\/staging\/[a-f0-9]{64}\/artifacts$/u;
 const EVIDENCE_PATH = /^\.skill-press\/tessl\/[a-f0-9]{64}\/evidence[.]json$/u;
 const manifestSchema = JSON.parse(
@@ -161,6 +163,15 @@ export async function prepareSkillSubmission(
 ): Promise<PreparedSubmissionPayload> {
   const root = await realpath(resolve(projectDirectory));
   const config = await loadProjectConfig(root);
+  if (config.project.name !== config.skill.name) {
+    throw new SubmissionManifestError("Submission project identity is inconsistent.", [
+      issue(
+        "submission.project.identity",
+        "/skill/name",
+        "project.name and skill.name must identify the same canonical skill",
+      ),
+    ]);
+  }
   if (!ARTIFACTS_PATH.test(artifacts.artifactsPath)) {
     throw new SubmissionManifestError("Submission artifact storage is unsafe.", [
       issue(
@@ -224,8 +235,8 @@ export async function prepareSkillSubmission(
   const [artifactBytes, provenanceBytes, checksumsBytes, reviewEvidenceBytes, evalEvidenceBytes] =
     await Promise.all([
       readStableFile(artifactPath, "artifact"),
-      readStableFile(provenancePath, "provenance"),
-      readStableFile(checksumsPath, "checksums"),
+      readStableFile(provenancePath, "provenance", MAX_PROVENANCE_BYTES),
+      readStableFile(checksumsPath, "checksums", MAX_CHECKSUMS_BYTES),
       readStableFile(reviewEvidencePath, "review-evidence", 1024 * 1024),
       readStableFile(evalEvidencePath, "eval-evidence", 1024 * 1024),
     ]);
@@ -280,6 +291,7 @@ export async function prepareSkillSubmission(
       advisory: true,
       review: payload("review-evidence.json", reviewEvidenceBytes, "application/json"),
       evaluation: payload("eval-evidence.json", evalEvidenceBytes, "application/json"),
+      evalSource: evidence.evalSource,
       evalSourceSha256,
     },
     serverValidationRequired: true,

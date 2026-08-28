@@ -175,6 +175,11 @@ describe("GitHub Actions release contracts", () => {
       "submission-manifest",
       "submission-resource",
       "submission-receipt",
+      "release-resource",
+      "release-attestation",
+      "trust-statement",
+      "current-trust-checkpoint",
+      "signed-envelope",
     ] as const;
     const schemas = await Promise.all(
       schemaNames.map(async (name) => [name, await json(`schemas/${name}.schema.json`)] as const),

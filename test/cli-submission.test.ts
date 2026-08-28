@@ -122,7 +122,7 @@ function submittedReceipt(withRelease = false): SubmissionReceipt {
     remote: {
       id: "submission_12345678",
       namespace: "skill-press",
-      url: "https://skill-press.com/submissions/submission_12345678",
+      url: "https://skill-press.com/api/v1/submissions/submission_12345678",
       status: withRelease ? "published" : "accepted",
       statusVersion: 2,
       observedAt: "2026-08-27T12:01:00.000Z",

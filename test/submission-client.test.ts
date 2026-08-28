@@ -106,7 +106,7 @@ function remote(
     sourceCommit: payload.manifest.source.commit,
     artifactSha256: payload.manifest.package.artifact.sha256,
     projectVersion: payload.manifest.project.version,
-    url: "https://skill-press.com/submissions/submission_12345678",
+    url: "https://skill-press.com/api/v1/submissions/submission_12345678",
     receivedAt: "2026-08-27T12:00:00.000Z",
     updatedAt: "2026-08-27T12:00:00.000Z",
     ...overrides,
@@ -121,12 +121,23 @@ function jsonResponse(value: unknown, status = 200): Response {
 }
 
 describe("canonical submission client", () => {
-  it("uses only fixed canonical endpoints, refuses redirect following, and binds the multipart request", async () => {
+  it("uses only fixed canonical endpoints and binds every staged upload", async () => {
     const payload = prepared();
     const resource = remote(payload);
+    const finalized = remote(payload, {
+      status: "automated-review",
+      statusVersion: 2,
+      updatedAt: "2026-08-27T12:00:01.000Z",
+    });
     const responses = [
       jsonResponse({ schemaVersion: 1, sessionType: "skillpress.session", authenticated: true }),
       jsonResponse(resource, 201),
+      new Response(null, { status: 204 }),
+      new Response(null, { status: 204 }),
+      new Response(null, { status: 204 }),
+      new Response(null, { status: 204 }),
+      new Response(null, { status: 204 }),
+      jsonResponse(finalized, 202),
       jsonResponse(resource),
     ];
     const calls: Array<{ readonly url: string; readonly init: RequestInit }> = [];
@@ -137,17 +148,25 @@ describe("canonical submission client", () => {
     const client = createCanonicalSubmissionClient({ token: "test-token", fetcher });
 
     await expect(client.checkSession()).resolves.toMatchObject({ authenticated: true });
-    await expect(client.submit(payload)).resolves.toEqual(resource);
+    await expect(client.submit(payload)).resolves.toEqual(finalized);
     await expect(client.getSubmission(resource.id)).resolves.toEqual(resource);
 
     expect(calls.map((call) => call.url)).toEqual([
       `${SKILL_PRESS_API_BASE}/session`,
       `${SKILL_PRESS_API_BASE}/submissions`,
+      `${SKILL_PRESS_API_BASE}/submissions/${resource.id}/objects/provenance`,
+      `${SKILL_PRESS_API_BASE}/submissions/${resource.id}/objects/checksums`,
+      `${SKILL_PRESS_API_BASE}/submissions/${resource.id}/objects/review-evidence`,
+      `${SKILL_PRESS_API_BASE}/submissions/${resource.id}/objects/eval-evidence`,
+      `${SKILL_PRESS_API_BASE}/submissions/${resource.id}/objects/artifact`,
+      `${SKILL_PRESS_API_BASE}/submissions/${resource.id}/finalize`,
       `${SKILL_PRESS_API_BASE}/submissions/${resource.id}`,
     ]);
     for (const call of calls) {
       expect(call.url.startsWith(`${SKILL_PRESS_API_BASE}/`)).toBe(true);
       expect(call.init.redirect).toBe("error");
+      expect(call.init.credentials).toBe("omit");
+      expect(call.init.referrerPolicy).toBe("no-referrer");
       expect(call.init.headers).toMatchObject({
         accept: "application/json",
         authorization: "Bearer test-token",
@@ -155,23 +174,25 @@ describe("canonical submission client", () => {
       });
     }
     expect(calls[1]?.init.headers).toMatchObject({
+      "content-length": String(payload.manifestBytes.byteLength),
+      "content-type": "application/json",
       "idempotency-key": payload.idempotencyKey,
     });
-    const form = calls[1]?.init.body;
-    expect(form).toBeInstanceOf(FormData);
-    const manifestPart = (form as FormData).get("manifest");
-    expect(manifestPart).toBeInstanceOf(Blob);
-    await expect((manifestPart as Blob).text()).resolves.toBe(
-      payload.manifestBytes.toString("utf8"),
-    );
-    expect([...(form as FormData).keys()].sort()).toEqual([
-      "artifact",
-      "checksums",
-      "evalEvidence",
-      "manifest",
-      "provenance",
-      "reviewEvidence",
-    ]);
+    expect(Buffer.from(calls[1]?.init.body as Uint8Array)).toEqual(payload.manifestBytes);
+    const uploadBytes = [
+      payload.provenanceBytes,
+      payload.checksumsBytes,
+      payload.reviewEvidenceBytes,
+      payload.evalEvidenceBytes,
+      payload.artifactBytes,
+    ];
+    for (const [index, bytes] of uploadBytes.entries()) {
+      const call = calls[index + 2];
+      expect(call?.init.method).toBe("PUT");
+      expect(call?.init.headers).toMatchObject({ "content-length": String(bytes.byteLength) });
+      expect(Buffer.from(call?.init.body as Uint8Array)).toEqual(bytes);
+    }
+    expect(calls[7]?.init).toMatchObject({ method: "POST" });
   });
 
   it("rejects missing authentication, invalid sessions, redirects, and malformed resources", async () => {
@@ -313,7 +334,7 @@ describe("canonical submission client", () => {
     const payload = prepared();
     const invalidResources: SkillPressSubmissionResource[] = [
       remote(payload, {
-        url: "https://skill-press.com/submissions/a-different-submission",
+        url: "https://skill-press.com/api/v1/submissions/a-different-submission",
       }),
       remote(payload, { namespace: "different-namespace" }),
       remote(payload, {
@@ -413,4 +434,25 @@ describe("canonical submission client", () => {
     expect(Object.isFrozen(result.release)).toBe(true);
     expect(Object.isFrozen(result.release?.trust)).toBe(true);
   });
+
+  it.each(["publication-blocked", "withdrawn"] as const)(
+    "accepts non-publication review state %s without inventing a release",
+    async (status) => {
+      const payload = prepared();
+      const blocked = remote(payload, {
+        status,
+        statusVersion: 9,
+      });
+      const client = createCanonicalSubmissionClient({
+        token: "token",
+        fetcher: (async () => jsonResponse(blocked, 201)) as typeof globalThis.fetch,
+      });
+
+      await expect(client.submit(payload)).resolves.toMatchObject({
+        status,
+        statusVersion: 9,
+      });
+      expect((await client.submit(payload)).release).toBeUndefined();
+    },
+  );
 });

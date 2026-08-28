@@ -98,7 +98,7 @@ function receipt(trust: "trusted" | "quarantined" | "revoked" = "trusted"): Subm
     remote: {
       id: "submission_12345678",
       namespace: "example",
-      url: "https://skill-press.com/submissions/submission_12345678",
+      url: "https://skill-press.com/api/v1/submissions/submission_12345678",
       status: "published",
       statusVersion: 7,
       observedAt: evaluatedAt,
@@ -214,6 +214,44 @@ describe("project status", () => {
       expect(report.ready).toBe(false);
       expect(report.issues).toContainEqual(
         expect.objectContaining({ code: "status.release.trust_blocked" }),
+      );
+    },
+  );
+
+  it.each(["publication-blocked", "withdrawn"] as const)(
+    "reports terminal non-publication state %s as blocked, not published",
+    async (status) => {
+      const root = await project();
+      const local = await checkProject(root);
+      const packageValue = packaged();
+      const canonical = receipt();
+      const { release: _release, ...remote } = canonical.remote as NonNullable<
+        SubmissionReceipt["remote"]
+      >;
+      const submission: SubmissionReceipt = {
+        ...canonical,
+        remote: { ...remote, status },
+      };
+      const report = await inspectProjectStatus(
+        root,
+        {
+          evidence,
+          artifactsPath: packageValue.artifactsPath,
+          submissionReceiptPath: submission.storagePath as string,
+        },
+        {
+          checkLocal: async () => local,
+          checkGate: async () => gate(true),
+          loadPackage: async () => packageValue,
+          readReceipt: async () => submission,
+          prepareSubmission: async () => preparedFor(submission),
+        },
+      );
+
+      expect(report.ready).toBe(false);
+      expect(report.submission?.remote?.release).toBeUndefined();
+      expect(report.issues).toContainEqual(
+        expect.objectContaining({ code: "status.submission.review_blocked" }),
       );
     },
   );

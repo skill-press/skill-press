@@ -73,7 +73,7 @@ function validSemantics(receipt: SubmissionReceipt): boolean {
     receipt.remote !== null &&
     receipt.remote.namespace === receipt.registry.namespace &&
     receipt.remote.url ===
-      `https://skill-press.com/submissions/${encodeURIComponent(receipt.remote.id)}` &&
+      `https://skill-press.com/api/v1/submissions/${encodeURIComponent(receipt.remote.id)}` &&
     (receipt.remote.status === "published") === (receipt.remote.release !== undefined) &&
     releaseValid;
   if (receipt.dryRun) {

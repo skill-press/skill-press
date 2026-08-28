@@ -3,7 +3,11 @@ dist/
 coverage/
 *.tgz
 
-# Skill Press keeps raw evaluation material private and out of source control.
+# Skill Press keeps installed and transient local state out of source control.
+/.agents/skills/
+/.skill-lock.json.lock*
+/.skill-lock.*.tmp
+/.skill-lock.*.previous
 .skill-press/runs/
 .skill-press/tessl/
 .skill-press/tessl-evals/

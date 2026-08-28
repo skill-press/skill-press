@@ -2,26 +2,27 @@ import { randomBytes } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { loadPackagedSkill, type LoadedSkillPackageArtifacts } from "../package/archive.js";
+import { type LoadedSkillPackageArtifacts, loadPackagedSkill } from "../package/archive.js";
 import { checkTesslReleaseGate, type TesslReleaseGateOptions } from "../release/tessl-gate.js";
 import {
   createCanonicalSubmissionClient,
+  SKILL_PRESS_API_BASE,
   SKILL_PRESS_ORIGIN,
-  SubmissionClientError,
   type SkillPressSubmissionClient,
+  SubmissionClientError,
 } from "./client.js";
 import type { SkillPressSubmissionResource } from "./generated-resource.js";
 import {
   createSubmissionStorage,
   persistSubmissionReceipt,
   readMutableSubmissionReceipt,
+  type SubmissionReceipt,
   submissionReceiptExists,
   submissionReceiptPath,
-  type SubmissionReceipt,
 } from "./journal.js";
 import {
-  prepareSkillSubmission,
   type PreparedSubmissionPayload,
+  prepareSkillSubmission,
   type SubmissionEvidencePaths,
 } from "./manifest.js";
 
@@ -127,7 +128,7 @@ function validateRemote(
     !Number.isFinite(receivedAt) ||
     !Number.isFinite(updatedAt) ||
     updatedAt < receivedAt ||
-    remote.url !== `${SKILL_PRESS_ORIGIN}/submissions/${encodeURIComponent(remote.id)}` ||
+    remote.url !== `${SKILL_PRESS_API_BASE}/submissions/${encodeURIComponent(remote.id)}` ||
     (remote.status === "published") !== (release !== undefined) ||
     (release !== undefined &&
       (locator === null ||

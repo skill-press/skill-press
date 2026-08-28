@@ -1,11 +1,21 @@
 import { createHash } from "node:crypto";
-import { chmod, lstat, mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { join, posix } from "node:path";
 
 import { Ajv, type ValidateFunction } from "ajv";
 
 import { loadProjectConfig } from "../config/load.js";
 import { digestBoundedTree } from "../evidence/tree-digest.js";
+import {
+  MAX_ARCHIVE_BYTES,
+  MAX_CENTRAL_DIRECTORY_BYTES,
+  MAX_ENTRIES,
+  MAX_FILE_BYTES,
+  MAX_PATH_BYTES,
+  MAX_PATH_COMPONENTS,
+  parseStoredSkillArchive,
+} from "../install/zip.js";
+import { profileObservedResourceName } from "../validate/resource-name-profile.js";
 import { VERSION } from "../version.js";
 import type { SkillPressPackageProvenance } from "./generated-provenance.js";
 import type { StagedCanonicalSkill } from "./stage.js";
@@ -64,6 +74,9 @@ const validateProvenance = new Ajv({ allErrors: true, strict: true }).compile(
 const CRC_TABLE = new Uint32Array(256);
 const ARTIFACTS_PATH = /^\.skill-press\/staging\/[a-f0-9]{64}\/artifacts$/u;
 const MAX_LOADED_ARTIFACT_BYTES = 64 * 1024 * 1024;
+const MAX_MARKDOWN_FILE_BYTES = 512 * 1024;
+const MAX_MARKDOWN_FILES = 256;
+const MAX_MARKDOWN_BYTES = 8 * 1024 * 1024;
 for (let index = 0; index < CRC_TABLE.length; index += 1) {
   let value = index;
   for (let bit = 0; bit < 8; bit += 1) value = (value >>> 1) ^ (0xedb88320 & -(value & 1));
@@ -191,6 +204,112 @@ function createZip(
   return Buffer.concat([...body, ...central, end]);
 }
 
+function assertArchivePath(path: string, expectedSkill: string): Buffer {
+  const name = Buffer.from(path, "utf8");
+  const components = path.split("/");
+  if (
+    name.byteLength < 1 ||
+    name.byteLength > MAX_PATH_BYTES ||
+    components.length < 2 ||
+    components.length > MAX_PATH_COMPONENTS ||
+    components[0] !== expectedSkill
+  ) {
+    throw new SkillPackageError("The staged skill exceeds the release archive contract.", [
+      issue(
+        "package.archive.path",
+        "/staging",
+        "archive paths must fit the canonical root, byte, and component limits",
+      ),
+    ]);
+  }
+  for (const component of components) {
+    const profile = profileObservedResourceName(component);
+    if (!profile.ok || !profile.isNfc) {
+      throw new SkillPackageError("The staged skill contains a non-portable archive path.", [
+        issue(
+          "package.archive.path",
+          "/staging",
+          "archive path components must be portable NFC names",
+        ),
+      ]);
+    }
+  }
+  return name;
+}
+
+function createValidatedZip(
+  files: readonly { path: string; contents: Buffer; executable: boolean }[],
+  expectedSkill: string,
+): Buffer {
+  if (files.length < 1 || files.length > MAX_ENTRIES) {
+    throw new SkillPackageError("The staged skill exceeds the release archive contract.", [
+      issue("package.archive.entries", "/staging", "archive entry limit exceeded"),
+    ]);
+  }
+  let archiveBytes = 22;
+  let centralBytes = 0;
+  let expandedBytes = 0;
+  let markdownFiles = 0;
+  let markdownBytes = 0;
+  for (const file of files) {
+    const name = assertArchivePath(file.path, expectedSkill);
+    if (file.contents.byteLength > MAX_FILE_BYTES) {
+      throw new SkillPackageError("The staged skill exceeds the release archive contract.", [
+        issue("package.archive.file", "/staging", "archive file size limit exceeded"),
+      ]);
+    }
+    if (/[.]md$/iu.test(file.path)) {
+      markdownFiles += 1;
+      markdownBytes += file.contents.byteLength;
+      if (
+        file.contents.byteLength > MAX_MARKDOWN_FILE_BYTES ||
+        markdownFiles > MAX_MARKDOWN_FILES ||
+        markdownBytes > MAX_MARKDOWN_BYTES
+      ) {
+        throw new SkillPackageError(
+          "The staged Markdown inventory exceeds the release archive contract.",
+          [
+            issue(
+              "package.archive.markdown",
+              "/staging",
+              "Markdown inventory must contain at most 256 files, 524288 bytes per file, and 8388608 bytes total",
+            ),
+          ],
+        );
+      }
+    }
+    expandedBytes += file.contents.byteLength;
+    centralBytes += 46 + name.byteLength;
+    archiveBytes += 30 + name.byteLength + file.contents.byteLength + 46 + name.byteLength;
+    if (
+      expandedBytes > MAX_ARCHIVE_BYTES ||
+      centralBytes > MAX_CENTRAL_DIRECTORY_BYTES ||
+      archiveBytes > MAX_ARCHIVE_BYTES
+    ) {
+      throw new SkillPackageError("The staged skill exceeds the release archive contract.", [
+        issue(
+          "package.archive.size",
+          "/staging",
+          "archive content, metadata, or encoded size limit exceeded",
+        ),
+      ]);
+    }
+  }
+  const archive = createZip(files);
+  try {
+    parseStoredSkillArchive(archive, expectedSkill);
+  } catch (error: unknown) {
+    throw new SkillPackageError("The staged skill cannot form a canonical release archive.", [
+      issue(
+        "package.archive.invalid",
+        "/staging",
+        error instanceof Error ? error.message : "archive validation failed",
+      ),
+    ]);
+  }
+  return archive;
+}
+
 async function archiveFromCanonicalTree(
   root: string,
   skillName: string,
@@ -202,12 +321,6 @@ async function archiveFromCanonicalTree(
     const names = await readdir(directory);
     names.sort((left, right) => Buffer.compare(Buffer.from(left), Buffer.from(right)));
     for (const name of names) {
-      entries += 1;
-      if (entries > 2048) {
-        throw new SkillPackageError("Staged canonical inventory is too large.", [
-          issue("package.load.canonical", "/artifacts", "canonical entry limit exceeded"),
-        ]);
-      }
       const absolute = join(directory, name);
       const relativePath = relativeDirectory === "" ? name : `${relativeDirectory}/${name}`;
       const before = await lstat(absolute);
@@ -220,7 +333,13 @@ async function archiveFromCanonicalTree(
         await visit(absolute, relativePath);
         continue;
       }
-      if (!before.isFile() || before.size > 32 * 1024 * 1024) {
+      entries += 1;
+      if (entries > MAX_ENTRIES) {
+        throw new SkillPackageError("Staged canonical inventory is too large.", [
+          issue("package.load.canonical", "/artifacts", "canonical entry limit exceeded"),
+        ]);
+      }
+      if (!before.isFile() || before.size > MAX_FILE_BYTES) {
         throw new SkillPackageError("Staged canonical tree is unsafe.", [
           issue(
             "package.load.canonical",
@@ -233,7 +352,7 @@ async function archiveFromCanonicalTree(
       const after = await lstat(absolute);
       totalBytes += contents.byteLength;
       if (
-        totalBytes > 128 * 1024 * 1024 ||
+        totalBytes > MAX_ARCHIVE_BYTES ||
         contents.byteLength !== before.size ||
         !sameMetadata(before, after)
       ) {
@@ -261,7 +380,7 @@ async function archiveFromCanonicalTree(
     ]);
   }
   files.sort((left, right) => Buffer.compare(Buffer.from(left.path), Buffer.from(right.path)));
-  return Object.freeze({ bytes: createZip(files), sha256: afterSha256 });
+  return Object.freeze({ bytes: createValidatedZip(files, skillName), sha256: afterSha256 });
 }
 
 async function readStagedFiles(
@@ -283,8 +402,20 @@ async function readStagedFiles(
   const files = [...staged.files].sort((left, right) =>
     Buffer.compare(Buffer.from(left.path), Buffer.from(right.path)),
   );
+  if (files.length < 1 || files.length > MAX_ENTRIES) {
+    throw new SkillPackageError("The staged file inventory is invalid.", [
+      issue("package.stage.inventory", "/staging", "staged file entry limit exceeded"),
+    ]);
+  }
   const result: Array<{ path: string; contents: Buffer; executable: boolean }> = [];
   for (const file of files) {
+    const archivePath = `${skillName}/${file.path}`;
+    assertArchivePath(archivePath, skillName);
+    if (!Number.isSafeInteger(file.bytes) || file.bytes < 0 || file.bytes > MAX_FILE_BYTES) {
+      throw new SkillPackageError("A staged file exceeds the release archive contract.", [
+        issue("package.stage.file", "/staging", "staged file size limit exceeded"),
+      ]);
+    }
     const path = join(skillRoot, file.path);
     const metadata = await lstat(path);
     const contents = await readFile(path);
@@ -299,7 +430,7 @@ async function readStagedFiles(
       ]);
     }
     result.push({
-      path: posix.join(skillName, file.path),
+      path: archivePath,
       contents,
       executable: file.executable,
     });
@@ -321,7 +452,7 @@ export async function packageStagedSkill(
     ]);
   }
   const files = await readStagedFiles(root, staged, config.skill.name);
-  const archive = createZip(files);
+  const archive = createValidatedZip(files, config.skill.name);
   const archiveSha256 = sha256(archive);
   const baseName = `${config.project.name}-${config.project.version}`;
   const skillArchive = `${baseName}.skill`;

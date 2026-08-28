@@ -1,0 +1,125 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/skill-press/skill-press/main/schemas/release-resource.schema.json",
+  "title": "SkillPressReleaseResource",
+  "description": "Canonical resolver resource for one immutable Skill Press release and its mutable current-trust bindings.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "resourceType",
+    "locator",
+    "namespace",
+    "skill",
+    "version",
+    "artifact",
+    "attestation",
+    "trust",
+    "checkpoint"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "resourceType": { "const": "skillpress.release" },
+    "locator": { "$ref": "#/definitions/locator" },
+    "namespace": { "$ref": "#/definitions/name" },
+    "skill": { "$ref": "#/definitions/name" },
+    "version": { "$ref": "#/definitions/semver" },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "sha256", "bytes", "mediaType"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^https://skill-press[.]com/artifacts/"
+        },
+        "sha256": { "$ref": "#/definitions/digest" },
+        "bytes": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "mediaType": { "const": "application/zip" }
+      }
+    },
+    "attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "sha256", "keyId", "algorithm"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^https://skill-press[.]com/attestations/"
+        },
+        "sha256": { "$ref": "#/definitions/digest" },
+        "keyId": { "$ref": "#/definitions/keyId" },
+        "algorithm": { "const": "ES256" }
+      }
+    },
+    "trust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "sequence", "status", "updatedAt", "keyId", "algorithm"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^https://skill-press[.]com/trust/"
+        },
+        "sequence": { "$ref": "#/definitions/sequence" },
+        "status": { "$ref": "#/definitions/trustStatus" },
+        "updatedAt": { "$ref": "#/definitions/timestamp" },
+        "keyId": { "$ref": "#/definitions/keyId" },
+        "algorithm": { "const": "ES256" }
+      }
+    },
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "keyId", "algorithm"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^https://skill-press[.]com/checkpoints/"
+        },
+        "keyId": { "$ref": "#/definitions/keyId" },
+        "algorithm": { "const": "ES256" }
+      }
+    }
+  },
+  "definitions": {
+    "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "keyId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "semver": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "locator": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 258,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:-[a-z0-9]+)*@(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$"
+    },
+    "trustStatus": { "type": "string", "enum": ["trusted", "quarantined", "revoked"] }
+  }
+}
