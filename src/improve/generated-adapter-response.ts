@@ -7,7 +7,7 @@
 export type Digest = string;
 
 /**
- * Strict response written by an external SkillPress improvement role adapter.
+ * Strict response written by an external Skill Press improvement role adapter.
  */
 export interface SkillPressImprovementAdapterResponse {
   schemaVersion: 1;

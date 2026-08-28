@@ -65,7 +65,7 @@ function snapshotWriteOptions(value: unknown): SnapshottedProjectWriteOptions {
     callback = (value as { readonly onPhase?: unknown }).onPhase;
   } catch {
     throw creationError(
-      "SkillPress project write options are invalid.",
+      "Skill Press project write options are invalid.",
       "io",
       "create.options",
       "project write options must be a readable object",
@@ -73,7 +73,7 @@ function snapshotWriteOptions(value: unknown): SnapshottedProjectWriteOptions {
   }
   if (callback !== undefined && typeof callback !== "function") {
     throw creationError(
-      "SkillPress project write options are invalid.",
+      "Skill Press project write options are invalid.",
       "io",
       "create.options",
       "onPhase must be a function when provided",
@@ -120,7 +120,7 @@ async function inspectSafeDirectory(path: string): Promise<FileMetadata> {
 
   if (!metadata.isDirectory()) {
     throw creationError(
-      "SkillPress output parent must be a directory.",
+      "Skill Press output parent must be a directory.",
       "unsafe-output",
       "create.output_parent",
       "output parent is not a directory",
@@ -208,7 +208,7 @@ export async function writeRenderedProject(
 ): Promise<CreatedCapabilityProject> {
   if (!isSafePathInput(output)) {
     throw creationError(
-      "SkillPress output must use an unambiguous Unicode path.",
+      "Skill Press output must use an unambiguous Unicode path.",
       "unsafe-output",
       "create.output_unicode",
       "output path contains unsupported Unicode or control characters",
@@ -221,7 +221,7 @@ export async function writeRenderedProject(
   const outputName = basename(target);
   if (outputName === "") {
     throw creationError(
-      "A filesystem root cannot be used as a SkillPress output.",
+      "A filesystem root cannot be used as a Skill Press output.",
       "unsafe-output",
       "create.output_root",
       "output must name a new child directory",
@@ -337,7 +337,7 @@ export async function writeRenderedProject(
       );
     }
     throw new ProjectCreationError(
-      "Unable to write the rendered SkillPress project.",
+      "Unable to write the rendered Skill Press project.",
       "io",
       [issue("create.io", "/", "project files could not be written"), ...cleanupIssues],
       error,

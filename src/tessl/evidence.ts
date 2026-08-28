@@ -362,7 +362,7 @@ async function createStorage(root: string): Promise<{ path: string; reportPath: 
   });
   const privateRootMetadata = await lstat(privateRoot);
   if (!privateRootMetadata.isDirectory() || privateRootMetadata.isSymbolicLink()) {
-    throw new TesslEvidenceError("SkillPress private storage is unsafe.", [
+    throw new TesslEvidenceError("Skill Press private storage is unsafe.", [
       issue("tessl.storage.unsafe", "/storage", ".skill-press must be a real directory"),
     ]);
   }

@@ -394,7 +394,7 @@ function uniquenessIssues(brief: SkillPressCapabilityBrief): CapabilityBriefIssu
 
 function remapSourceError(error: ProjectConfigError): CapabilityBriefError {
   return new CapabilityBriefError(
-    "Unable to load the SkillPress capability brief.",
+    "Unable to load the Skill Press capability brief.",
     error.issues.map((entry) =>
       issue(
         entry.code.replace(/^config\./u, "brief.source."),
