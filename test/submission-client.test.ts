@@ -20,7 +20,7 @@ function prepared(): PreparedSubmissionPayload {
   const checksumsBytes = Buffer.from("checksums\n");
   const reviewEvidenceBytes = Buffer.from('{"quality":95}\n');
   const evalEvidenceBytes = Buffer.from('{"impact":96}\n');
-  const manifest = {
+  const manifest: PreparedSubmissionPayload["manifest"] = {
     schemaVersion: 1 as const,
     manifestType: "skillpress.submission-manifest" as const,
     configSchemaVersion: 2 as const,
@@ -72,6 +72,7 @@ function prepared(): PreparedSubmissionPayload {
         bytes: evalEvidenceBytes.byteLength,
         mediaType: "application/json" as const,
       },
+      evalSource: "tessl-evals",
       evalSourceSha256: "4".repeat(64),
     },
     serverValidationRequired: true as const,
