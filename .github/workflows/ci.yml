@@ -35,6 +35,8 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Run quality gates
         run: npm run check
+      - name: Type-check submission fixtures
+        run: npm exec -- tsc -p tsconfig.submission-tests.json
       - name: Audit runtime dependencies
         if: matrix.node-version == 26
         run: npm run security:audit
