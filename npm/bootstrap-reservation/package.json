@@ -1,0 +1,21 @@
+{
+  "name": "@skill-press/cli",
+  "version": "0.0.0",
+  "description": "Inert name reservation for the future Skill Press CLI release.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skill-press/skill-press.git"
+  },
+  "homepage": "https://skill-press.com",
+  "files": [
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "tag": "bootstrap",
+    "provenance": false,
+    "registry": "https://registry.npmjs.org/"
+  }
+}

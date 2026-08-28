@@ -398,21 +398,111 @@ repository identity, release assets, tests, production audit, package inventory,
 and source binding. The protected `publish` job alone receives `id-token: write` and uses npm OIDC
 trusted publishing; no npm write token is stored in GitHub.
 
-Configure the external identity before the first production release:
+The registry requires a package to exist before its Trusted Publisher can be configured. Reserve
+the name once with the tracked, inert `npm/bootstrap-reservation/` package. It is version `0.0.0`,
+has no executable, code, lifecycle script, dependency, or API, and is configured for only the
+`bootstrap` dist-tag. It must never be reused as a product release, promoted to `latest`, or
+published through the formal release workflow.
 
-1. Ensure the public npm package `@skill-press/cli` exists under the intended npm organization.
-2. Create a GitHub environment named `npm` with a required reviewer and tag restrictions.
-3. Protect `v*` tags from unauthorized creation, mutation, and deletion.
-4. Configure npm trusted publishing for GitHub organization `skill-press`, repository
-   `skill-press`, workflow filename `release.yml`, environment `npm`, and publish permission.
-5. Add no `NPM_TOKEN` or `NODE_AUTH_TOKEN` fallback.
+Complete this one-time ceremony before the first production release:
 
-With a supported npm CLI, the intended trusted-publisher command is:
+1. Confirm that the npm organization `skill-press` is controlled by the intended maintainers and
+   that the interactive publishing account has account-level two-factor authentication. Do not use
+   a CI token, granular automation token, `NPM_TOKEN`, or `NODE_AUTH_TOKEN` for this exception.
+2. From a clean canonical checkout, install locked dependencies and verify the exact reservation.
+   The verifier runs `npm pack --dry-run` with lifecycle scripts disabled and accepts only
+   `package.json`, `README.md`, and the byte-identical repository `LICENSE`:
 
-```bash
-npm trust github @skill-press/cli --repo skill-press/skill-press \
-  --file release.yml --env npm --allow-publish
-```
+   ```bash
+   npm ci --ignore-scripts
+   npm run npm:bootstrap:verify
+   BOOTSTRAP_OUTPUT_DIR="$(mktemp -d)"
+   chmod 700 "$BOOTSTRAP_OUTPUT_DIR"
+   npm run --silent npm:bootstrap:prepare -- "$BOOTSTRAP_OUTPUT_DIR"
+   BOOTSTRAP_TARBALL="$BOOTSTRAP_OUTPUT_DIR/skill-press-cli-0.0.0.tgz"
+   ```
+
+3. Inspect the emitted JSON identity, SHA-1 `shasum`, SHA-256, SHA-512 `integrity`, and three-file
+   inventory. Run the exact query below; an explicit canonical-registry `E404` is the expected
+   precondition, while any returned version or any other error means stop without publishing:
+
+   ```bash
+   npm view '@skill-press/cli@*' versions dist-tags --json \
+     --registry=https://registry.npmjs.org/
+   ```
+
+   Only after observing that exact `E404`, run the following fail-fast block. It removes token
+   fallbacks, authenticates interactively with 2FA, makes the output directory and tarball
+   read-only, and reverifies that exact tarball immediately before publishing it to the canonical
+   registry and `bootstrap` tag. Any failed login, identity check, permission change, verification,
+   publish, or post-publish comparison terminates the block:
+
+   ```bash
+   (
+   set -euo pipefail
+   unset NPM_TOKEN NODE_AUTH_TOKEN
+   npm login --registry=https://registry.npmjs.org/ --auth-type=web
+   npm whoami --registry=https://registry.npmjs.org/
+   chmod 400 "$BOOTSTRAP_TARBALL"
+   chmod 500 "$BOOTSTRAP_OUTPUT_DIR"
+   BOOTSTRAP_METADATA="$(npm run --silent npm:bootstrap:verify-tarball -- "$BOOTSTRAP_TARBALL")"
+   printf '%s\n' "$BOOTSTRAP_METADATA"
+   npm publish "$BOOTSTRAP_TARBALL" \
+     --registry=https://registry.npmjs.org/ --access public --tag bootstrap --ignore-scripts
+   NPM_METADATA="$(npm view @skill-press/cli@0.0.0 \
+     name version bin scripts dependencies dist-tags dist.integrity dist.shasum --json \
+     --registry=https://registry.npmjs.org/)"
+   printf '%s\n' "$NPM_METADATA"
+   BOOTSTRAP_METADATA="$BOOTSTRAP_METADATA" NPM_METADATA="$NPM_METADATA" node <<'NODE'
+   const local = JSON.parse(process.env.BOOTSTRAP_METADATA);
+   const remote = JSON.parse(process.env.NPM_METADATA);
+   const forbidden = ["bin", "scripts", "dependencies"];
+   const tags = remote["dist-tags"];
+   if (
+     remote.name !== "@skill-press/cli" ||
+     remote.version !== "0.0.0" ||
+     forbidden.some((field) => Object.hasOwn(remote, field)) ||
+     tags === null ||
+     typeof tags !== "object" ||
+     Array.isArray(tags) ||
+     Object.keys(tags).length !== 1 ||
+     tags.bootstrap !== "0.0.0" ||
+     remote["dist.integrity"] !== local.integrity ||
+     remote["dist.shasum"] !== local.shasum
+   ) {
+     throw new Error("published bootstrap reservation differs from the verified tarball");
+   }
+   NODE
+   npm dist-tag ls @skill-press/cli --registry=https://registry.npmjs.org/
+   )
+   ```
+
+   This manual exception has no provenance by design. Stop on any ambiguous response and query the
+   exact version instead of retrying blindly. The immutable registry SHA-1 and SHA-512 must equal
+   the immediately pre-publish verifier output, no runtime field may appear, and the dist-tag
+   listing must show `bootstrap: 0.0.0` and no `latest`. A mismatch is a release incident, not a
+   reason to retry publishing.
+
+4. Create a GitHub environment named `npm` with a required reviewer and a selected Tag `v*`
+   deployment rule. Protect `v*` tags from unauthorized creation, mutation, and deletion.
+
+5. Configure npm trusted publishing for GitHub organization `skill-press`, repository
+   `skill-press`, workflow filename `release.yml`, environment `npm`, and publish permission:
+
+   ```bash
+   npm trust github @skill-press/cli --repo skill-press/skill-press \
+     --file release.yml --env npm --allow-publish --yes \
+     --registry=https://registry.npmjs.org/
+   npm trust list @skill-press/cli --json --registry=https://registry.npmjs.org/
+   ```
+
+6. Compare the returned binding byte-for-byte with the repository, workflow filename, environment,
+   and allowed publish action above. In npm package settings, require 2FA and disallow traditional
+   publish tokens; revoke any temporary credential used during the manual exception.
+
+7. Publish the usable `0.1.0` package only by creating the protected `v0.1.0` GitHub Release. The
+   OIDC workflow must create its provenance and move `latest` to `0.1.0`; never publish `0.1.0`
+   manually. Keep `0.0.0` isolated under `bootstrap`.
 
 Before approval, compare the tag, source commit, current gate evidence, release assets, and npm
 tarball manifest. Rerun the original workflow after an external approval or transient service
