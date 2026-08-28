@@ -2,6 +2,7 @@ import { join } from "node:path";
 
 import { checkProject } from "./check/project.js";
 import type { SkillPressCheckReport } from "./check/types.js";
+import { ADD_HELP, INSTALL_HELP, runAddCommand, runInstallCommand } from "./cli/install.js";
 import { DOCTOR_HELP, runDoctorCommand, runStatusCommand, STATUS_HELP } from "./cli/inspect.js";
 import { IMPROVE_HELP, runImproveCommand } from "./cli/improve.js";
 import { PACKAGE_HELP, runPackageCommand } from "./cli/package.js";
@@ -54,6 +55,8 @@ Commands:
   tessl              Capture official Tessl Quality and Impact evidence
   package            Create reproducible, provenance-bound release artifacts
   submit             Submit one verified candidate to the canonical Skill Press review pipeline
+  add                Resolve, verify, lock, and install one exact trusted release
+  install            Restore every locked release after refreshing current trust
   status             Summarize gates, evidence, package, and submission state
   doctor             Diagnose environment and release prerequisites
   improve            Run the bounded author/review/evaluation loop
@@ -243,6 +246,14 @@ export function renderPackageHelp(): string {
 
 export function renderSubmitHelp(): string {
   return SUBMIT_HELP;
+}
+
+export function renderAddHelp(): string {
+  return ADD_HELP;
+}
+
+export function renderInstallHelp(): string {
+  return INSTALL_HELP;
 }
 
 export function renderStatusHelp(): string {
@@ -960,6 +971,20 @@ export async function runCli(args: readonly string[], io: CliIo = defaultIo): Pr
       return (await writeStdout(capturedIo, renderSubmitHelp())) ? 0 : 1;
     }
     return runSubmitCommand(capturedArgs.slice(1), capturedIo);
+  }
+
+  if (capturedArgs[0] === "add") {
+    if ((capturedArgs[1] === "--help" || capturedArgs[1] === "-h") && capturedArgs.length === 2) {
+      return (await writeStdout(capturedIo, renderAddHelp())) ? 0 : 1;
+    }
+    return runAddCommand(capturedArgs.slice(1), capturedIo);
+  }
+
+  if (capturedArgs[0] === "install") {
+    if ((capturedArgs[1] === "--help" || capturedArgs[1] === "-h") && capturedArgs.length === 2) {
+      return (await writeStdout(capturedIo, renderInstallHelp())) ? 0 : 1;
+    }
+    return runInstallCommand(capturedArgs.slice(1), capturedIo);
   }
 
   if (capturedArgs[0] === "status") {

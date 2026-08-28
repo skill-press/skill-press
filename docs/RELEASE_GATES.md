@@ -31,6 +31,9 @@ The gate never accepts a numeric score option.
 
 A passed client gate authorizes deterministic packaging of the exact bound source. It is also a
 prerequisite for `skpress submit` and is rechecked before and after package/submission preparation.
+The portable package profile applies to the complete archive, including Markdown that is not linked
+from `SKILL.md`: at most 256 Markdown files, 512 KiB per Markdown file, and 8 MiB of Markdown in
+total. These client-side bounds exactly match the isolated service validator and fail before upload.
 
 It does not authorize or prove:
 
@@ -56,7 +59,7 @@ The deterministic submission manifest binds:
 - immutable artifact bytes, digest, size, and media type;
 - provenance and checksums;
 - review/eval evidence bytes and digests;
-- complete eval-source digest;
+- normalized eval-source path and complete eval-source digest;
 - CLI package identity;
 - `serverValidationRequired: true` and advisory client evidence.
 
@@ -72,16 +75,27 @@ registry namespace. `POST /submissions` must authenticate the caller and atomica
 requested namespace before it creates a candidate, reserves an idempotency key or version, retains
 upload bytes, or emits `received`. An unauthorized request fails without occupying any identity.
 
-After that admission boundary, and before the future service can move a candidate to `accepted` or
-`published`, it must independently:
+After that admission boundary, and before the service can move a candidate to `accepted` or
+`published`, it must:
 
 1. establish immutable version absence or an exact idempotent match;
 2. unpack and validate the artifact inside an isolated worker;
-3. recompute source, config, skill, artifact, provenance, checksums, and evidence bindings;
-4. run the current automated quality and safety policy without trusting client pass/fail fields;
-5. preserve review findings and policy versions;
-6. obtain the required curator decision;
+3. recompute the artifact digest and canonical tree digest, validate the archive and safety profile,
+   and verify the exact provenance, checksums, and evidence-object bindings;
+4. apply the versioned server policy to the untrusted Tessl evidence: pinned executable allowlist,
+   normalized command digests, freshness, minimum scores, and scenario arithmetic/non-regression;
+5. preserve the exact input digests, findings, policy version, and validity deadline;
+6. obtain a curator decision that independently reviews the repository and records a digest of its
+   corroboration workpaper;
 7. create immutable storage and an authenticated attestation for the exact bytes.
+
+The server can derive `skillSha256` from the uploaded ZIP. It cannot reconstruct the repository
+commit, `skill-press.yaml`, or eval-source tree from this six-object protocol, so those values remain
+cross-bound client claims for curator review. Likewise, Tessl currently supplies no detached provider
+signature: command/output digests and score arithmetic prove evidence self-consistency, not that the
+client actually executed Tessl. The automated gate therefore combines artifact-authoritative static
+validation with advisory evidence policy checks; authenticated curator judgment remains an explicit
+release authority.
 
 Candidate review statuses are:
 
@@ -91,12 +105,18 @@ automated-review
 curator-review
 changes-requested
 accepted
+publication-blocked
 published
 rejected
+withdrawn
 ```
 
-Only `published` means an immutable release record exists. `submitted`, `received`, and `accepted`
-are not synonyms for published.
+Only `published` means an immutable release record exists. `submitted`, `received`, `accepted`, and
+`publication-blocked` are not synonyms for published. `publication-blocked` records an operational
+capacity stop without misrepresenting it as a candidate-quality failure; resumption is an audited
+curator action after the capacity/protocol limit is raised.
+`withdrawn` is an author-requested terminal review state; it preserves the version reservation and
+audit evidence while releasing pending-submission capacity.
 
 ## Release trust gate
 
@@ -110,9 +130,9 @@ The release locator, semantic version, bytes, artifact digest, and original atte
 immutable. Trust changes append an authenticated, monotonically sequenced state; they do not erase
 or overwrite the release.
 
-The future `skpress add` and `skpress install` commands must require `published` plus current
-`trusted` state and verify the canonical digest and attestation. Those commands and the registry
-download backend are not implemented today.
+The implemented `skpress add` and `skpress install` commands require `published` plus current
+`trusted` state and verify the canonical digest, attestation, trust event, and short-lived
+current-trust checkpoint. They remain unusable against production until the registry is deployed.
 
 ## Local trust limitation
 
@@ -122,9 +142,11 @@ evidence file can falsify local state. Tessl CLI output currently has no detache
 signature.
 
 The client gate prevents accidental/manual score substitution and detects inconsistent tampering;
-it does not claim cryptographic proof that the filesystem owner is honest. The future service must
-treat all client artifacts and evidence as untrusted, rerun its current policy, and use its own
-authenticated review and release records.
+it does not claim cryptographic proof that the filesystem owner is honest. The service must treat all
+client artifacts and evidence as untrusted, derive what it can from the uploaded bytes, apply its
+current policy to the advisory evidence, and require its own authenticated curator and release
+records. A future provider-signed receipt or isolated service-side rerun can strengthen this boundary
+without changing what a current advisory document proves.
 
 ## External catalogs
 

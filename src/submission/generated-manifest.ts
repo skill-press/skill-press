@@ -70,6 +70,7 @@ export interface SkillPressSubmissionManifest {
     advisory: true;
     review: ReviewEvidencePayload;
     evaluation: EvalEvidencePayload;
+    evalSource: RelativePath;
     evalSourceSha256: Digest;
   };
   serverValidationRequired: true;

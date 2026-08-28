@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
-import { mkdtemp, mkdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -147,7 +147,7 @@ describe("canonical submission manifest", () => {
         author: { name: "Independent Maintainer", github: "maintainer-user" },
       },
       registry: { namespace: "registry-team" },
-      evidence: { advisory: true },
+      evidence: { advisory: true, evalSource: "tessl-evals" },
       serverValidationRequired: true,
       tool: { name: "@skill-press/cli" },
     });
@@ -171,6 +171,63 @@ describe("canonical submission manifest", () => {
     expect(changed.manifest.project).toEqual(original.manifest.project);
     expect(changed.manifestSha256).not.toBe(original.manifestSha256);
     expect(changed.idempotencyKey).not.toBe(original.idempotencyKey);
+  });
+
+  it("accepts the longest artifact name reachable from valid project identity fields", async () => {
+    const value = await fixture();
+    const projectName = "a".repeat(64);
+    const version = `1.0.0+${"b".repeat(122)}`;
+    const artifactName = `${projectName}-${version}.skill`;
+    const oldArtifact = join(
+      value.root,
+      value.artifacts.artifactsPath,
+      value.artifacts.skillArchive,
+    );
+    const artifact = join(value.root, value.artifacts.artifactsPath, artifactName);
+    await rename(oldArtifact, artifact);
+    const checksumBytes = Buffer.from(`${value.artifacts.artifactSha256}  ${artifactName}\n`);
+    await writeFile(join(value.root, value.artifacts.artifactsPath, "SHA256SUMS"), checksumBytes, {
+      mode: 0o600,
+    });
+    const configPath = join(value.root, "skill-press.yaml");
+    const config = await readFile(configPath, "utf8");
+    await writeFile(
+      configPath,
+      config
+        .replaceAll("example-skill", projectName)
+        .replace("version: 1.2.3", `version: ${version}`),
+    );
+
+    const prepared = await prepareSkillSubmission(
+      value.root,
+      {
+        ...value.artifacts,
+        skillArchive: artifactName,
+        zipArchive: `${projectName}-${version}.zip`,
+        checksumsSha256: sha256(checksumBytes),
+        checksumsBytes: checksumBytes.byteLength,
+      },
+      value.evidence,
+    );
+
+    expect(artifactName).toHaveLength(199);
+    expect(prepared.manifest.package.artifact.name).toBe(artifactName);
+  });
+
+  it("rejects a project/skill identity that the server manifest contract cannot accept", async () => {
+    const value = await fixture();
+    const configPath = join(value.root, "skill-press.yaml");
+    const config = await readFile(configPath, "utf8");
+    await writeFile(
+      configPath,
+      config.replace("skill:\n  name: example-skill", "skill:\n  name: different-skill"),
+    );
+
+    await expect(
+      prepareSkillSubmission(value.root, value.artifacts, value.evidence),
+    ).rejects.toMatchObject({
+      issues: [expect.objectContaining({ code: "submission.project.identity" })],
+    });
   });
 
   it("changes the key when advisory evidence or evaluated source bytes change", async () => {
@@ -209,6 +266,31 @@ describe("canonical submission manifest", () => {
     await expect(
       prepareSkillSubmission(value.root, value.artifacts, value.evidence),
     ).rejects.toBeInstanceOf(SubmissionManifestError);
+  });
+
+  it("rejects provenance and checksum payloads above the server reservation contract", async () => {
+    for (const [name, bytes, patch] of [
+      [
+        "provenance.json",
+        Buffer.alloc(64 * 1024 + 1, 0x20),
+        (value: Buffer) => ({ provenanceBytes: value.byteLength, provenanceSha256: sha256(value) }),
+      ],
+      [
+        "SHA256SUMS",
+        Buffer.alloc(1024 + 1, 0x20),
+        (value: Buffer) => ({ checksumsBytes: value.byteLength, checksumsSha256: sha256(value) }),
+      ],
+    ] as const) {
+      const value = await fixture();
+      await writeFile(join(value.root, value.artifacts.artifactsPath, name), bytes, {
+        mode: 0o600,
+      });
+      await expect(
+        prepareSkillSubmission(value.root, { ...value.artifacts, ...patch(bytes) }, value.evidence),
+      ).rejects.toMatchObject({
+        issues: [expect.objectContaining({ code: "submission.payload.unsafe" })],
+      });
+    }
   });
 
   it("rejects traversal and noncanonical private payload paths at the public API boundary", async () => {

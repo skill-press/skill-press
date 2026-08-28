@@ -6,13 +6,18 @@ the Skill Press CLI.
 
 ## Current interface boundary
 
-The CLI implements `init`, `check`, `test`, `eval`, `tessl`, `improve`, `package`, `submit`,
-`status`, and `doctor`. It does not implement `add` or `install` yet.
+The CLI implements `init`, `check`, `test`, `eval`, `tessl`, `improve`, `package`, `submit`, `add`,
+`install`, `status`, and `doctor`.
 
 `submit` has one production destination, `https://skill-press.com/api/v1`. The production registry
 backend and account/token issuance are not live yet, so `submit --dry-run` is the only current
 end-user submission path. A successful local dry run proves that the candidate can be prepared; it
 does not create a remote review, published release, or trusted release.
+
+`add` and `install` are implemented, but they also require the undeployed canonical registry. Their
+network origin and signing roots cannot be selected by project configuration or CLI flags. The
+implementation is currently usable through hermetic tests, not as a claim that a public release can
+already be installed.
 
 The CLI requires Node.js 22 or newer. The maintained CI matrix covers Node.js 22, 24, and 26.
 
@@ -48,7 +53,7 @@ Examples use `skpress`; while developing from source, substitute `node dist/bin.
 | `0` | Command completed and its requested gate/report passed | all commands |
 | `1` | Unexpected internal, subprocess-I/O, or output-sink failure | all commands |
 | `2` | Invalid CLI usage or arguments | all commands |
-| `3` | Project, evidence, evaluation, release gate, package, submission, status, or bounded-improvement result is blocked | operational commands |
+| `3` | Project, evidence, evaluation, release gate, package, submission, installation, status, or bounded-improvement result is blocked | operational commands |
 | `4` | `init` destination was unsafe, concurrently changed, or could not be rolled back without deleting unknown data | `init` only |
 
 Exit `3` is an expected fail-closed result, not permission to bypass the gate. JSON mode retains
@@ -286,6 +291,65 @@ manifest, source, version, artifact, evidence, or permissions changed.
 Never create a second candidate merely because a timeout made remote state ambiguous. Preserve the
 journal. When it contains a validated remote ID, resume refreshes that resource without POSTing
 again; otherwise it retries the identical manifest under the same idempotency key.
+
+## Add and restore trusted releases
+
+Once the canonical registry is live, add one exact release from a project root:
+
+```bash
+skpress add <namespace>/<skill>@<exact-semver> --project . --json
+```
+
+The command accepts no range, tag, branch, arbitrary URL, alternate registry, or offline cache. It
+resolves the fixed canonical release, downloads the exact bounded stored ZIP, verifies its digest
+and size, verifies the immutable ES256 release attestation, then obtains the latest signed trust
+event and a short-lived signed current-trust checkpoint. The checkpoint must bind the exact trust
+envelope, remain fresh at activation, and arrive through a non-cached dynamic response.
+
+Before `SKILL.md` becomes visible under `.agents/skills/<skill>/`, `add` validates the complete
+staged Agent Skill and persists the highest observed trust sequence in `skill-lock.json`. A process
+crash can therefore leave a locked-but-absent or installer-marked pending tree, never an active
+untracked release. A later trusted install can resume only a marker bound to the same archive;
+arbitrary partial directories fail closed.
+
+Restore every exact entry after a fresh online trust check:
+
+```bash
+skpress install --project . --json
+```
+
+Each entry is processed within bounded per-artifact and aggregate budgets. A higher trust sequence
+is persisted before that entry is activated. The client rejects signature-role confusion, key
+epochs outside their validity window, a sequence below the lock's floor, a same-sequence envelope
+change, stale or future-dated metadata, cached dynamic responses, checkpoint expiry, and any
+quarantined or revoked state. There is deliberately no `--offline` or `--force` bypass.
+
+`skill-lock.json` is project state and should be committed. `.agents/skills/` is derived local
+state and must remain ignored; do not commit installed bytes. In a Git worktree, installation fails
+closed if the target is tracked or is not covered by Git ignore rules. The CLI does not silently
+rewrite a user-owned `.gitignore`; add `/.agents/skills/` explicitly when adopting Skill Press in an
+existing project. A clean clone must restore the lock online so quarantine and revocation are
+checked again.
+
+`install` does not auto-delete a previously active directory when trust refresh fails. Remote
+unavailability is not proof of revocation, and a running agent cannot be remotely made to forget a
+skill it already loaded. For a registry-confirmed `quarantined` or `revoked` result, stop affected
+agents and move the complete `.agents/skills/<skill>/` directory outside all agent discovery roots.
+Preserve it separately if incident response needs the bytes. Keep the lock entry and its trust
+floor; never delete or edit the sequence to force the old release back into service. An ambiguous,
+unsigned, or unavailable response should block refresh and prompt investigation, not destructive
+cleanup.
+
+Temporary mutation locks, staging directories, and installation markers are recovery state; do
+not delete them while another `skpress add` or `skpress install` process is active. A stale mutation
+lock whose recorded process is definitively absent is reclaimed by identity; an unknown or
+replaced lock is preserved and reported as a conflict.
+
+The atomicity contract covers concurrent mutation and process termination. It does not claim that
+every filesystem/storage stack preserves all target directory entries across sudden power loss.
+After an unclean shutdown, run `skpress install` successfully before starting an agent; the command
+rechecks exact bytes and current trust, repairs a recognized archive-bound pending state, and
+rejects ambiguous or corrupted local state.
 
 ## Status and diagnostics
 

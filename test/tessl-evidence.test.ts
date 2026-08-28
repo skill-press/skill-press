@@ -15,7 +15,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
@@ -28,9 +28,11 @@ import type { CapturedCommand, CapturedCommandResult } from "../src/process/capt
 import {
   captureTesslEvalEvidence,
   captureTesslReviewEvidence,
+  normalizeTesslRelativePath,
   TesslEvidenceError,
   type TesslCommandExecutor,
 } from "../src/tessl/evidence.js";
+import { tesslCommandDigest } from "../src/tessl/command-digest.js";
 import { isTrustedTesslCli } from "../src/tessl/trusted-cli.js";
 
 const execFileAsync = promisify(execFile);
@@ -234,6 +236,27 @@ function completedEval(
 }
 
 describe("Tessl official evidence bridge", () => {
+  it("binds Windows lint staging paths with the portable server-policy spelling", () => {
+    const executableSha256 = "a".repeat(64);
+    const storagePath = `.skill-press/tessl/${"b".repeat(64)}`;
+    const windowsManifest = win32.relative(
+      String.raw`C:\repo`,
+      win32.join(String.raw`C:\repo`, storagePath, "lint-plugin", ".tessl-plugin", "plugin.json"),
+    );
+    const portableManifest = `${storagePath}/lint-plugin/.tessl-plugin/plugin.json`;
+
+    expect(windowsManifest).toContain("\\");
+    expect(normalizeTesslRelativePath(windowsManifest)).toBe(portableManifest);
+    expect(normalizeTesslRelativePath(portableManifest)).toBe(portableManifest);
+    expect(
+      tesslCommandDigest(executableSha256, [
+        "skill",
+        "lint",
+        normalizeTesslRelativePath(windowsManifest),
+      ]),
+    ).toBe(tesslCommandDigest(executableSha256, ["skill", "lint", portableManifest]));
+  });
+
   it("trusts only a signed-release version and executable digest pair", () => {
     const releaseDigests = [
       "9494050a66ec8a6f3f82405f7d7c5afccbdc03c1a195a823e07b6bfc5dea2f6c",

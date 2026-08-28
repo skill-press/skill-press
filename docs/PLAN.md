@@ -15,8 +15,9 @@ human review.
 
 The canonical registry at `skill-press.com` is the only publication authority in the product
 model. Authors do not select downstream registries or supply credentials for other Agent Skill
-platforms. External catalogs may later discover or mirror a canonical release, but they do not
-decide whether it is accepted, published, trusted, quarantined, or revoked.
+platforms. External catalogs may discover or mirror a canonical release only through the
+platform-controlled downstream feed; they do not decide whether it is accepted, published,
+trusted, quarantined, or revoked.
 
 The product promise is therefore narrower and stronger than “publish everywhere”:
 
@@ -52,11 +53,12 @@ reproducible packaging, and a canonical submission client/journal contract.
 | `skpress tessl`, `package`, `status`, `doctor` | Implemented locally |
 | `skpress submit --dry-run` | Implemented locally |
 | Canonical submission client for `https://skill-press.com/api/v1` | Implemented and hermetically testable |
-| Production registry backend and account/token issuance | Not live yet |
-| Curator review console and server-side revalidation | Not live yet |
-| Immutable registry downloads and attestations | Not live yet |
-| `skpress add` and `skpress install` | Planned, not implemented |
-| External catalog syndication | Deferred until the canonical registry is stable |
+| Cloudflare registry backend and account/token issuance | Implemented in the private control-plane repository; not deployed |
+| Curator API and isolated server-side validation | Implemented and locally integration-tested; not live |
+| Immutable registry downloads, attestations, and current-trust checkpoints | Implemented and locally integration-tested; not live |
+| `skpress add` and `skpress install` | Implemented and hermetically testable; live origin unavailable |
+| Canonical discovery client, schema, and snapshot verification | Implemented and hermetically testable |
+| Discovery snapshot, cursor, and mirror service | Implemented in the control plane; not live |
 
 This distinction is part of the contract. A compiled client or a schema does not prove that a
 remote service exists, and a locally prepared submission does not prove publication or trust.
@@ -77,8 +79,9 @@ remote service exists, and a locally prepared submission does not prove publicat
    Impact, curator decisions, artifact attestations, and release trust are never collapsed into a
    single invented score.
 6. **Server validation is authoritative.** Client evidence is useful for fast feedback and
-   reproducible submission, but it is advisory to the service. The registry must independently
-   rerun policy and safety checks before publication.
+   reproducible submission, but it is advisory to the service. The registry derives artifact/tree
+   facts itself, applies its versioned safety and evidence policy, and requires an authenticated
+   curator's independent corroboration before publication.
 7. **Submission is not publication.** Upload success means only that an exact candidate entered
    review. Human acceptance and immutable publication are later service-side events.
 8. **Trust can change; bytes cannot.** Published artifact bytes and versions are immutable. Their
@@ -104,15 +107,16 @@ skpress status     local gate, package, and submission-journal summary
 skpress doctor     runtime, sandbox, Tessl, credential-name, and collision diagnostics
 ```
 
-The intended post-registry workflow will add:
+After the registry is deployed, the implemented installation workflow is:
 
 ```text
-skpress add <owner>/<skill>@<version>  resolve and record a canonical trusted release
+skpress add <namespace>/<skill>@<version>  resolve and record a canonical trusted release
 skpress install                       restore exact locked releases and verify trust
 ```
 
-These installation commands are not live or implemented yet. Their eventual default must be the
-Skill Press registry, not an arbitrary GitHub branch or third-party catalog entry.
+These commands have one compiled registry origin and are intentionally unusable offline. They do
+not resolve an arbitrary GitHub branch or third-party catalog entry. Code availability does not
+mean that the production origin is already serving releases.
 
 Commands support human-readable output and stable JSON. External processes are invoked without a
 shell, with explicit argv, bounded output, timeouts, and narrow environment forwarding.
@@ -132,6 +136,8 @@ src/
   release/               current source-bound evidence gate
   package/               tracked-only staging, deterministic archives, provenance
   submission/            fixed-origin manifest, client, journal, and recovery
+  discovery/             fixed-origin, full-snapshot discovery verification
+  install/               signatures, trust freshness, lockfiles, ZIP parsing, atomic activation
   status/                read-only local lifecycle summary
   doctor/                local prerequisites and credential-name diagnostics
 skills/skill-press/       the self-hosted Skill Press meta-skill
@@ -141,9 +147,11 @@ docs/                    current operating and trust contracts
 docs/reviews/            historical slice reviews; not the current product contract
 ```
 
-The future service is a separate authority boundary. It must provide authenticated submission,
-isolated validation workers, curator workflow, immutable object storage, signed release metadata,
-trust-state history, and read APIs used by installation clients.
+The production service is a separate authority boundary. Its private Cloudflare control plane uses
+D1 for the authoritative state machine, separate candidate and immutable-release R2 buckets,
+Queues for bounded review work, and isolated API, validator, review, signer, and current-trust
+checkpoint Workers. None of those deployed-service claims apply until the production resources are
+provisioned and verified.
 
 ## Project, evidence, and artifact model
 
@@ -184,15 +192,19 @@ what the client attempted and last observed; it is not a server attestation.
 ## Canonical submission protocol
 
 The production client has one compiled origin: `https://skill-press.com/api/v1`. Project content
-cannot override it. The protocol currently defines:
+cannot override it. The staged protocol defines:
 
 - `GET /session` to establish the bearer-token identity;
-- `POST /submissions` to send one multipart candidate with an idempotency key;
+- `POST /submissions` to reserve an exact manifest and version with an idempotency key;
+- `PUT /submissions/{id}/objects/{role}` to upload each declared digest-bound object;
+- `POST /submissions/{id}/finalize` to commit the complete object set and validation outbox event;
 - `GET /submissions/{id}` to verify or refresh the exact remote resource.
 
-The upload contains the deterministic manifest, one canonical archive, provenance, checksums,
-Tessl review evidence, and Tessl evaluation evidence. The manifest marks all submitted evidence as
-advisory and explicitly requires server validation.
+Reservation retains only the bounded canonical manifest after authentication and namespace
+authorization. The five remaining objects are the canonical archive, provenance, checksums, Tessl
+review evidence, and Tessl evaluation evidence. Every upload must match its reserved media type,
+byte length, and SHA-256 before finalization. The manifest marks all client evidence advisory and
+explicitly requires server validation.
 
 `SKILL_PRESS_TOKEN` is the only canonical submission credential name. It must never enter
 `skill-press.yaml`, canonical skill files, evidence, provenance, journals, or logs.
@@ -204,8 +216,8 @@ candidate, reserving an idempotency key or version, or retaining bytes. Ambiguou
 journaled and must be recovered by resuming the exact receipt rather than creating a different
 candidate with the same version.
 
-The production backend and token issuer are not live yet. Until they exist, only the local
-`--dry-run` path is an operational user workflow.
+The production backend and token issuer are not live yet. Until deployment, only the local
+`--dry-run` submission path and hermetic install/discovery tests are operational workflows.
 
 ## Review lifecycle and release trust
 
@@ -218,8 +230,10 @@ Submission review status is candidate-scoped:
 | `curator-review` | Automated gates passed far enough for human review |
 | `changes-requested` | Author must prepare a new candidate addressing explicit findings |
 | `accepted` | Review approved, but immutable release publication is not yet complete |
+| `publication-blocked` | Review remains accepted, but a platform capacity gate requires an audited retry after expansion |
 | `published` | Immutable release record and artifact are available |
 | `rejected` | Candidate will not be published |
+| `withdrawn` | Author stopped a pre-acceptance candidate while preserving its version reservation and audit trail |
 
 Release trust is a separate, release-scoped state:
 
@@ -232,6 +246,14 @@ Release trust is a separate, release-scoped state:
 Only a `published` submission can carry a release record. Publication does not imply that a
 release remains trusted forever. Quarantine and revocation append state transitions while keeping
 the original locator, version, digest, and attestation immutable.
+
+Three independently pinned P-256 roles prevent one protocol purpose from silently substituting for
+another: `release-attestation`, `trust-event`, and `current-trust`. The current-trust Worker issues
+a 10-minute signed checkpoint that binds the exact current trust-envelope digest and sequence.
+Installers accept at most a 15-minute checkpoint lifetime, reject cached dynamic responses, persist
+the highest observed trust sequence before activation, and make `SKILL.md` visible last. This is a
+small freshness layer inspired by update-system timestamp metadata, not a claim to implement the
+complete TUF specification.
 
 ## Authority and distribution roles
 
@@ -260,10 +282,12 @@ publish skills to Tessl as part of its canonical workflow.
 
 ### External catalogs and mirrors
 
-External discovery is deferred. A future platform-operated syndication service may expose an
-already published Skill Press release elsewhere only if it preserves the exact immutable digest,
-version, canonical URL, and current trust signal. A mirror or listing is never acceptance evidence
-and its availability must not block canonical publication.
+The platform-operated discovery contract may expose an already published Skill Press release
+elsewhere only if it preserves the exact immutable digest, version, canonical URL, attestation,
+and current trust signal. Full collections verify a domain-separated digest over all normalized
+records. The initial mirror allowlist is limited to verified `github.com/skill-press/` listing and
+artifact projections. A mirror or listing is never acceptance evidence, and its availability must
+not block canonical publication.
 
 ## Quality model
 
@@ -278,8 +302,11 @@ regardless of its numeric total. The default client release gate additionally re
 - reproducible tracked-only packaging, checksums, and provenance;
 - exact submission-manifest and artifact bindings.
 
-These client gates are necessary to submit, not sufficient to publish. The service must rerun its
-own validation under the current policy and then obtain the required curator decision.
+These client gates are necessary to submit, not sufficient to publish. The service must independently
+validate the exact artifact and canonical tree, check advisory evidence against its current policy,
+and then obtain a curator decision backed by an independent corroboration workpaper. Until an
+evidence provider supplies a detached verifiable receipt, the service does not claim cryptographic
+proof that a submitting client actually executed the reported provider run.
 
 ## Evaluation and improvement threat model
 
@@ -354,11 +381,15 @@ quarantined, revoked, unavailable, or ambiguously identified release.
 
 ### Phase 5: controlled discovery and mirroring
 
-After the canonical registry is stable, design a platform-operated feed or syndication service for
-external catalogs. Do not add author provider credentials or restore a `publish.targets` model.
+Expose a platform-operated, read-only feed at
+`https://skill-press.com/api/v1/discovery`. A full collection begins at the origin, locks one
+snapshot across all pages, and recomputes the domain-separated digest of every normalized release.
+Opaque server cursors bind the snapshot, last position, and expiry. Initial mirrors are verified
+GitHub projections under `github.com/skill-press/`; artifact projections bind the exact artifact
+digest. Do not add author provider credentials or restore a `publish.targets` model.
 
 Exit criterion: every external record links back to the canonical release, preserves its exact
-digest, and cannot alter Skill Press review or trust state.
+digest, passes full-snapshot verification, and cannot alter Skill Press review or trust state.
 
 ## Definition of the initial platform release
 

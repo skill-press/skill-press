@@ -4,9 +4,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-
-import { parse, stringify } from "yaml";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { parse, stringify } from "yaml";
 
 import { loadProjectConfig } from "../src/config/load.js";
 import { CapabilityBriefError } from "../src/create/errors.js";
@@ -109,7 +108,7 @@ describe("capability brief rendering", () => {
       fileContent(project, "skills/incident-summary/LICENSE"),
     );
     expect(fileContent(project, ".gitignore")).toBe(
-      ".skill-press/runs/\n.skill-press/tessl/\n.skill-press/tessl-evals/\n.skill-press/submissions/\n.skill-press/staging/\n.skill-press/tmp/\n.skillpress/\n",
+      "/.agents/skills/\n/.skill-lock.json.lock*\n/.skill-lock.*.tmp\n/.skill-lock.*.previous\n.skill-press/runs/\n.skill-press/tessl/\n.skill-press/tessl-evals/\n.skill-press/submissions/\n.skill-press/staging/\n.skill-press/tmp/\n.skillpress/\n",
     );
   });
 

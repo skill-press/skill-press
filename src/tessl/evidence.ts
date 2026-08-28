@@ -12,7 +12,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { constants } from "node:fs";
-import { delimiter, isAbsolute, join, relative, resolve } from "node:path";
+import { delimiter, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { Ajv, type ValidateFunction } from "ajv";
 
@@ -141,19 +141,19 @@ function boundedIdentifier(value: string, maximum: number): boolean {
   );
 }
 
+/** Normalize a generated native relative path before binding it into portable evidence. */
+export function normalizeTesslRelativePath(path: string): string {
+  return path.replaceAll("\\", "/");
+}
+
 function ensureInside(root: string, target: string, label: string): string {
   const path = relative(root, target);
-  if (
-    path === "" ||
-    path === ".." ||
-    path.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) ||
-    isAbsolute(path)
-  ) {
+  if (path === "" || path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path)) {
     throw new TesslEvidenceError("Tessl evidence path is outside the project.", [
       issue("tessl.path.outside", label, "path must resolve to a project subdirectory"),
     ]);
   }
-  return path.split(process.platform === "win32" ? "\\" : "/").join("/");
+  return normalizeTesslRelativePath(path);
 }
 
 async function resolveExecutablePath(root: string, input: string): Promise<string> {
@@ -498,8 +498,12 @@ async function stageTesslLintPlugin(
     ]);
   }
   return {
-    manifestPath: relative(context.root, join(plugin, ".tessl-plugin", "plugin.json")),
-    skillPath: relative(context.root, stagedSkill),
+    manifestPath: ensureInside(
+      context.root,
+      join(plugin, ".tessl-plugin", "plugin.json"),
+      "/lint/manifest",
+    ),
+    skillPath: ensureInside(context.root, stagedSkill, "/lint/skill"),
   };
 }
 

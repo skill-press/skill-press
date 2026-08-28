@@ -1,4 +1,6 @@
+export { SERVER_REVIEW_POLICY } from "./release/server-policy.js";
 export {
+  renderAddHelp,
   renderCheckHelp,
   renderDoctorHelp,
   renderEvalHelp,
@@ -6,6 +8,7 @@ export {
   renderHumanTesslReport,
   renderImproveHelp,
   renderInitHelp,
+  renderInstallHelp,
   renderPackageHelp,
   renderStatusHelp,
   renderSubmitHelp,
@@ -87,6 +90,63 @@ export type { SkillSubmissionOptions, SubmissionRunIssue } from "./submission/ru
 export type { SkillPressSubmissionManifest } from "./submission/generated-manifest.js";
 export type { SkillPressSubmissionResource } from "./submission/generated-resource.js";
 export type { SkillPressSubmissionReceipt } from "./submission/generated-receipt.js";
+export {
+  computeDiscoverySnapshotSha256,
+  createCanonicalDiscoveryClient,
+  DEFAULT_DISCOVERY_MAX_ENTRIES,
+  DEFAULT_DISCOVERY_MAX_MIRRORS,
+  DEFAULT_DISCOVERY_MAX_PAGES,
+  DEFAULT_DISCOVERY_PAGE_SIZE,
+  DISCOVERY_SNAPSHOT_DOMAIN,
+  DiscoveryClientError,
+  MAX_DISCOVERY_COLLECTION_BYTES,
+  MAX_DISCOVERY_COLLECTION_DURATION_MS,
+  MAX_DISCOVERY_MAX_ENTRIES,
+  MAX_DISCOVERY_MAX_MIRRORS,
+  MAX_DISCOVERY_MAX_PAGES,
+  MAX_DISCOVERY_PAGE_SIZE,
+  MAX_DISCOVERY_RESPONSE_BYTES,
+  MAX_MIRROR_URL_LENGTH,
+  SKILL_PRESS_DISCOVERY_URL,
+} from "./discovery/client.js";
+export type {
+  CanonicalDiscoveryClientOptions,
+  DeepReadonly,
+  DiscoveryClientErrorCode,
+  DiscoveryCollectionRequest,
+  DiscoveryPageRequest,
+  SkillPressDiscoveryClient,
+  SkillPressDiscoveryPage,
+  SkillPressDiscoveryRelease,
+  SkillPressDiscoverySnapshot,
+  SkillPressMirrorProjection,
+} from "./discovery/client.js";
+export type {
+  ArtifactMirror as SkillPressArtifactMirror,
+  ListingMirror as SkillPressListingMirror,
+  SkillPressDiscoveryFeed,
+} from "./discovery/generated-feed.js";
+export {
+  parseExactSkillLocator,
+  readSkillLock,
+  SKILL_PRESS_PINNED_KEYS,
+  TrustedInstallError,
+} from "./install/index.js";
+export type {
+  ExactSkillLocator,
+  SkillLockEntry,
+  SkillPressCurrentTrustCheckpoint,
+  SkillPressLockfile,
+  SkillPressP256PublicJwk,
+  SkillPressPinnedKey,
+  SkillPressReleaseAttestation,
+  SkillPressReleaseResource,
+  SkillPressSigningKeyRole,
+  SkillPressSignedEnvelope,
+  SkillPressTrustStatement,
+  SkillPressTrustStatus,
+  TrustedInstallResult,
+} from "./install/index.js";
 export { inspectProjectStatus } from "./status/project.js";
 export type {
   ProjectStatusIssue,

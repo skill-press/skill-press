@@ -1,5 +1,5 @@
 import { realpathSync } from "node:fs";
-import { chmod, lstat, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,8 +10,8 @@ import {
   createSubmissionStorage,
   persistSubmissionReceipt,
   readSubmissionReceipt,
-  submissionReceiptExists,
   SubmissionJournalError,
+  submissionReceiptExists,
   submissionReceiptPath,
 } from "../src/submission/journal.js";
 
@@ -77,7 +77,7 @@ function publishedReceipt(
     remote: {
       id: "submission_12345678",
       namespace: "example",
-      url: "https://skill-press.com/submissions/submission_12345678",
+      url: "https://skill-press.com/api/v1/submissions/submission_12345678",
       status: "published",
       statusVersion: 7,
       observedAt: timestamp,

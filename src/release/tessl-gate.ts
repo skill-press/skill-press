@@ -12,6 +12,7 @@ import { inspectTesslEvalSource } from "../tessl/eval-source.js";
 import type { SkillPressTesslEvalEvidence } from "../tessl/generated-eval-evidence.js";
 import type { SkillPressTesslReviewEvidence } from "../tessl/generated-review-evidence.js";
 import { isTrustedTesslCli } from "../tessl/trusted-cli.js";
+import { SERVER_REVIEW_POLICY } from "./server-policy.js";
 
 export interface TesslReleaseGateIssue {
   readonly code: string;
@@ -732,7 +733,11 @@ export async function checkTesslReleaseGate(
     "/project",
     "release-relevant inputs must be clean",
   );
-  const maxAgeMs = config.quality.evidenceMaxAgeHours * 60 * 60 * 1000;
+  const effectiveMaxAgeHours = Math.min(
+    config.quality.evidenceMaxAgeHours,
+    SERVER_REVIEW_POLICY.evidenceMaxAgeHours,
+  );
+  const maxAgeMs = effectiveMaxAgeHours * 60 * 60 * 1000;
   for (const [label, evidence] of [
     ["review", review],
     ["eval", evaluation],
@@ -862,7 +867,7 @@ export async function checkTesslReleaseGate(
     thresholds: {
       quality: config.quality.tesslQualityMinimum,
       impact: config.quality.tesslImpactMinimum,
-      maxAgeHours: config.quality.evidenceMaxAgeHours,
+      maxAgeHours: effectiveMaxAgeHours,
     },
     scores: {
       quality: review.review.qualityScore,

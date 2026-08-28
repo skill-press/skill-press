@@ -7,8 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { LoadedSkillPackageArtifacts } from "../src/package/archive.js";
 import {
-  SubmissionClientError,
   type SkillPressSubmissionClient,
+  SubmissionClientError,
 } from "../src/submission/client.js";
 import type { SkillPressSubmissionResource } from "../src/submission/generated-resource.js";
 import { readSubmissionReceipt } from "../src/submission/journal.js";
@@ -150,7 +150,7 @@ function resource(
     sourceCommit: payload.manifest.source.commit,
     artifactSha256: payload.manifest.package.artifact.sha256,
     projectVersion: payload.manifest.project.version,
-    url: "https://skill-press.com/submissions/submission_12345678",
+    url: "https://skill-press.com/api/v1/submissions/submission_12345678",
     receivedAt: now.toISOString(),
     updatedAt: now.toISOString(),
     ...overrides,
@@ -637,7 +637,7 @@ describe("canonical submission orchestration", () => {
 
     const replacement = resource(payload, {
       id: "submission_replacement",
-      url: "https://skill-press.com/submissions/submission_replacement",
+      url: "https://skill-press.com/api/v1/submissions/submission_replacement",
       status: "accepted",
       statusVersion: 2,
     });

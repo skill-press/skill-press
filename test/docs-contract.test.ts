@@ -56,6 +56,8 @@ describe("operating documentation contracts", () => {
       "tessl",
       "package",
       "submit",
+      "add",
+      "install",
       "status",
       "doctor",
     ]) {
@@ -82,7 +84,20 @@ describe("operating documentation contracts", () => {
     expect(tessl).toContain("fresh private temporary HOME");
     expect(operations).not.toContain("tessl auth token");
     expect(registries).toContain("Skill Press does not provide author-facing multi-publish.");
-    expect(readme).toContain("`skpress add` / `skpress install` are not live yet.");
+    expect(registries).toContain("GET  https://skill-press.com/api/v1/discovery");
+    expect(registries).toContain("skillpress.discovery-snapshot.v1\\n");
+    expect(registries).toContain("snapshot, the last emitted position, and an expiry");
+    expect(registries).toContain("exact `github.com` origin");
+    expect(registries).toContain("under `/skill-press/`");
+    expect(security).toContain("2,048 mirrors");
+    expect(security).toContain("4 MiB cumulative response bytes");
+    expect(readme).toContain("are implemented and hermetically tested");
+    expect(readme).toContain("keep `.agents/skills/` ignored");
+    expect(operations).toContain("add `/.agents/skills/` explicitly");
+    expect(registries).toContain("current-trust checkpoint");
+    expect(registries).toContain(
+      "Offline installation and force bypasses are intentionally unsupported",
+    );
     expect(registries).toMatch(/Tessl[\s\S]*external evidence/iu);
     expect(registries).toContain("Skill Press does not publish the canonical skill to Tessl");
     for (const status of [
@@ -91,8 +106,10 @@ describe("operating documentation contracts", () => {
       "curator-review",
       "changes-requested",
       "accepted",
+      "publication-blocked",
       "published",
       "rejected",
+      "withdrawn",
     ]) {
       expect(registries).toContain(`\`${status}\``);
     }

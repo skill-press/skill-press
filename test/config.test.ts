@@ -134,6 +134,20 @@ describe("project configuration", () => {
     await expectIssue(fixture.path, "config.schema.pattern");
   });
 
+  it("enforces SemVer numeric prerelease identifiers without leading zeroes", async () => {
+    const invalid = await temporaryConfig(
+      validConfig.replace("version: 1.2.3", "version: 1.2.3-01"),
+    );
+    const valid = await temporaryConfig(
+      validConfig.replace("version: 1.2.3", "version: 1.2.3-alpha.1+build.01"),
+    );
+
+    await expectIssue(invalid.path, "config.schema.pattern");
+    await expect(loadProjectConfig(valid.path)).resolves.toMatchObject({
+      project: { version: "1.2.3-alpha.1+build.01" },
+    });
+  });
+
   it("requires one canonical lowercase registry namespace", async () => {
     const missing = await temporaryConfig(
       validConfig.replace("registry:\n  namespace: example\n", ""),

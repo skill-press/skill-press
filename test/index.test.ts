@@ -39,6 +39,18 @@ describe("Skill Press public API", () => {
     expect(skillPress.readSubmissionReceipt).toBeTypeOf("function");
     expect(skillPress.SKILL_PRESS_ORIGIN).toBe("https://skill-press.com");
     expect(skillPress.SKILL_PRESS_TOKEN_ENV).toBe("SKILL_PRESS_TOKEN");
+    expect(skillPress.createCanonicalDiscoveryClient).toBeTypeOf("function");
+    expect(skillPress.computeDiscoverySnapshotSha256).toBeTypeOf("function");
+    expect(skillPress.SKILL_PRESS_DISCOVERY_URL).toBe("https://skill-press.com/api/v1/discovery");
+    expect(skillPress.DISCOVERY_SNAPSHOT_DOMAIN).toBe("skillpress.discovery-snapshot.v1\n");
+    expect(skillPress.SERVER_REVIEW_POLICY).toMatchObject({
+      id: "skillpress.server-review",
+      version: 1,
+      tesslVersion: "0.101.0",
+      qualityMinimum: 90,
+      impactMinimum: 90,
+      evidenceMaxAgeHours: 168,
+    });
   });
 
   it("does not expose the retired multi-provider publication surface", () => {
@@ -58,5 +70,18 @@ describe("Skill Press public API", () => {
     ]) {
       expect(skillPress).not.toHaveProperty(retired);
     }
+  });
+
+  it("does not expose install test seams that can replace production trust roots", () => {
+    for (const internal of [
+      "addTrustedSkill",
+      "installTrustedSkills",
+      "createCanonicalInstallClient",
+    ]) {
+      expect(skillPress).not.toHaveProperty(internal);
+    }
+    expect(skillPress.parseExactSkillLocator).toBeTypeOf("function");
+    expect(skillPress.readSkillLock).toBeTypeOf("function");
+    expect(skillPress.SKILL_PRESS_PINNED_KEYS).toHaveLength(3);
   });
 });

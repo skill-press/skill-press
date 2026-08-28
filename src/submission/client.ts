@@ -108,7 +108,7 @@ function hasCanonicalResourceSemantics(
     receivedAt === null ||
     updatedAt === null ||
     updatedAt < receivedAt ||
-    value.url !== `${SKILL_PRESS_ORIGIN}/submissions/${encodeURIComponent(value.id)}`
+    value.url !== `${SKILL_PRESS_API_BASE}/submissions/${encodeURIComponent(value.id)}`
   ) {
     return false;
   }
@@ -189,25 +189,27 @@ export function createCanonicalSubmissionClient(
   }
   const request = async (url: string, init: RequestInit, expected: readonly number[]) => {
     let response: Response;
+    const headers = new Headers(init.headers);
+    headers.set("accept", "application/json");
+    headers.set("authorization", `Bearer ${token}`);
+    headers.set("skill-press-protocol-version", "1");
     try {
-      response = await fetcher(url, {
+      const hardenedInit = {
         ...init,
+        cache: "no-store",
+        credentials: "omit",
         redirect: "error",
+        referrerPolicy: "no-referrer",
         signal: AbortSignal.timeout(timeoutMs),
-        headers: {
-          ...init.headers,
-          accept: "application/json",
-          authorization: `Bearer ${token}`,
-          "skill-press-protocol-version": "1",
-        },
-      });
+        headers: Object.fromEntries(headers),
+      } as RequestInit;
+      response = await fetcher(url, hardenedInit);
     } catch {
       throw new SubmissionClientError(
         "registry_unavailable",
         "The canonical Skill Press registry is unavailable.",
       );
     }
-    const contentType = response.headers.get("content-type")?.split(";", 1)[0]?.trim();
     let body: Buffer;
     try {
       body = await boundedBody(response);
@@ -222,12 +224,19 @@ export function createCanonicalSubmissionClient(
       const code =
         response.status === 401 || response.status === 403
           ? "authentication_rejected"
-          : "registry_rejected";
+          : response.status === 429
+            ? "rate_limited"
+            : "registry_rejected";
       throw new SubmissionClientError(
         code,
         `Skill Press rejected the request with HTTP ${response.status}.`,
       );
     }
+    return { response, body };
+  };
+  const requestJson = async (url: string, init: RequestInit, expected: readonly number[]) => {
+    const { response, body } = await request(url, init, expected);
+    const contentType = response.headers.get("content-type")?.split(";", 1)[0]?.trim();
     if (contentType !== "application/json") {
       throw new SubmissionClientError("response_invalid", "Skill Press did not return JSON.");
     }
@@ -239,9 +248,18 @@ export function createCanonicalSubmissionClient(
     }
     return parseJson(text, "JSON");
   };
+  const requestEmpty = async (url: string, init: RequestInit, expected: readonly number[]) => {
+    const { body } = await request(url, init, expected);
+    if (body.byteLength !== 0) {
+      throw new SubmissionClientError(
+        "response_invalid",
+        "Skill Press returned an unexpected upload response body.",
+      );
+    }
+  };
   return Object.freeze({
     checkSession: async () => {
-      const value = await request(`${SKILL_PRESS_API_BASE}/session`, { method: "GET" }, [200]);
+      const value = await requestJson(`${SKILL_PRESS_API_BASE}/session`, { method: "GET" }, [200]);
       if (
         value === null ||
         typeof value !== "object" ||
@@ -263,46 +281,74 @@ export function createCanonicalSubmissionClient(
       });
     },
     submit: async (payload: PreparedSubmissionPayload) => {
-      const form = new FormData();
-      form.set(
-        "manifest",
-        new Blob([payload.manifestBytes], { type: "application/json" }),
-        "manifest.json",
-      );
-      form.set(
-        "artifact",
-        new Blob([payload.artifactBytes], { type: "application/zip" }),
-        payload.manifest.package.artifact.name,
-      );
-      form.set(
-        "provenance",
-        new Blob([payload.provenanceBytes], { type: "application/json" }),
-        payload.manifest.package.provenance.name,
-      );
-      form.set(
-        "checksums",
-        new Blob([payload.checksumsBytes], { type: "text/plain" }),
-        payload.manifest.package.checksums.name,
-      );
-      form.set(
-        "reviewEvidence",
-        new Blob([payload.reviewEvidenceBytes], { type: "application/json" }),
-        "review-evidence.json",
-      );
-      form.set(
-        "evalEvidence",
-        new Blob([payload.evalEvidenceBytes], { type: "application/json" }),
-        "eval-evidence.json",
-      );
-      return resource(
-        await request(
+      const reserved = resource(
+        await requestJson(
           `${SKILL_PRESS_API_BASE}/submissions`,
           {
             method: "POST",
-            headers: { "idempotency-key": payload.idempotencyKey },
-            body: form,
+            headers: {
+              "content-length": String(payload.manifestBytes.byteLength),
+              "content-type": "application/json",
+              "idempotency-key": payload.idempotencyKey,
+            },
+            body: payload.manifestBytes,
           },
           [200, 201],
+        ),
+        payload,
+      );
+      if (reserved.status !== "received") return reserved;
+
+      const base = `${SKILL_PRESS_API_BASE}/submissions/${encodeURIComponent(reserved.id)}`;
+      const uploads = [
+        {
+          role: "provenance",
+          bytes: payload.provenanceBytes,
+          mediaType: payload.manifest.package.provenance.mediaType,
+        },
+        {
+          role: "checksums",
+          bytes: payload.checksumsBytes,
+          mediaType: payload.manifest.package.checksums.mediaType,
+        },
+        {
+          role: "review-evidence",
+          bytes: payload.reviewEvidenceBytes,
+          mediaType: payload.manifest.evidence.review.mediaType,
+        },
+        {
+          role: "eval-evidence",
+          bytes: payload.evalEvidenceBytes,
+          mediaType: payload.manifest.evidence.evaluation.mediaType,
+        },
+        {
+          role: "artifact",
+          bytes: payload.artifactBytes,
+          mediaType: payload.manifest.package.artifact.mediaType,
+        },
+      ] as const;
+      for (const upload of uploads) {
+        await requestEmpty(
+          `${base}/objects/${upload.role}`,
+          {
+            method: "PUT",
+            headers: {
+              "content-length": String(upload.bytes.byteLength),
+              "content-type": upload.mediaType,
+            },
+            body: upload.bytes,
+          },
+          [204],
+        );
+      }
+      return resource(
+        await requestJson(
+          `${base}/finalize`,
+          {
+            method: "POST",
+            headers: { "content-length": "0" },
+          },
+          [200, 202],
         ),
         payload,
       );
@@ -312,7 +358,7 @@ export function createCanonicalSubmissionClient(
         throw new SubmissionClientError("submission_id_invalid", "Submission ID is invalid.");
       }
       return resource(
-        await request(
+        await requestJson(
           `${SKILL_PRESS_API_BASE}/submissions/${encodeURIComponent(id)}`,
           { method: "GET" },
           [200],
