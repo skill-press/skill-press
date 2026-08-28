@@ -61,17 +61,25 @@ function artifacts(): LoadedSkillPackageArtifacts {
   };
 }
 
+interface PreparedOverrides {
+  readonly idempotencyKey?: string;
+  readonly projectVersion?: string;
+  readonly reviewEvidenceSha256?: string;
+  readonly evalEvidenceSha256?: string;
+  readonly evalSourceSha256?: string;
+}
+
 function prepared(
   inputArtifacts: LoadedSkillPackageArtifacts,
-  idempotencyKey = "a".repeat(64),
+  overrides: PreparedOverrides = {},
 ): PreparedSubmissionPayload {
-  const manifest = {
+  const manifest: PreparedSubmissionPayload["manifest"] = {
     schemaVersion: 1 as const,
     manifestType: "skillpress.submission-manifest" as const,
     configSchemaVersion: 2 as const,
     project: {
       name: "example-skill",
-      version: "1.2.3",
+      version: overrides.projectVersion ?? "1.2.3",
       repository: "https://github.com/example/example-skill",
       license: "MIT",
       author: { name: "Example Author", github: "example" },
@@ -91,13 +99,13 @@ function prepared(
         mediaType: "application/zip" as const,
       },
       provenance: {
-        name: inputArtifacts.provenance,
+        name: "provenance.json",
         sha256: inputArtifacts.provenanceSha256,
         bytes: inputArtifacts.provenanceBytes,
         mediaType: "application/json" as const,
       },
       checksums: {
-        name: inputArtifacts.checksums,
+        name: "SHA256SUMS",
         sha256: inputArtifacts.checksumsSha256,
         bytes: inputArtifacts.checksumsBytes,
         mediaType: "text/plain" as const,
@@ -107,17 +115,18 @@ function prepared(
       advisory: true as const,
       review: {
         name: "review-evidence.json",
-        sha256: "b".repeat(64),
+        sha256: overrides.reviewEvidenceSha256 ?? "b".repeat(64),
         bytes: 10,
         mediaType: "application/json" as const,
       },
       evaluation: {
         name: "eval-evidence.json",
-        sha256: "c".repeat(64),
+        sha256: overrides.evalEvidenceSha256 ?? "c".repeat(64),
         bytes: 10,
         mediaType: "application/json" as const,
       },
-      evalSourceSha256: "d".repeat(64),
+      evalSource: "tessl-evals",
+      evalSourceSha256: overrides.evalSourceSha256 ?? "d".repeat(64),
     },
     serverValidationRequired: true as const,
     tool: { name: "@skill-press/cli" as const },
@@ -126,7 +135,7 @@ function prepared(
     manifest,
     manifestBytes: Buffer.from(`${JSON.stringify(manifest)}\n`),
     manifestSha256: "e".repeat(64),
-    idempotencyKey,
+    idempotencyKey: overrides.idempotencyKey ?? "a".repeat(64),
     artifactBytes: Buffer.from("artifact"),
     provenanceBytes: Buffer.from("provenance"),
     checksumsBytes: Buffer.from("checksums"),
@@ -134,6 +143,49 @@ function prepared(
     evalEvidenceBytes: Buffer.from("evaluation"),
   };
 }
+
+const resumeIdentityMutations = [
+  {
+    name: "source commit",
+    mutateArtifacts: (value: LoadedSkillPackageArtifacts) => ({
+      ...value,
+      sourceCommit: "f".repeat(40),
+    }),
+    preparedOverrides: {},
+  },
+  {
+    name: "project version",
+    mutateArtifacts: (value: LoadedSkillPackageArtifacts) => value,
+    preparedOverrides: { projectVersion: "1.2.4" },
+  },
+  {
+    name: "artifact digest",
+    mutateArtifacts: (value: LoadedSkillPackageArtifacts) => ({
+      ...value,
+      artifactSha256: "f".repeat(64),
+    }),
+    preparedOverrides: {},
+  },
+  {
+    name: "review evidence digest",
+    mutateArtifacts: (value: LoadedSkillPackageArtifacts) => value,
+    preparedOverrides: { reviewEvidenceSha256: "f".repeat(64) },
+  },
+  {
+    name: "evaluation evidence digest",
+    mutateArtifacts: (value: LoadedSkillPackageArtifacts) => value,
+    preparedOverrides: { evalEvidenceSha256: "f".repeat(64) },
+  },
+  {
+    name: "evaluation source digest",
+    mutateArtifacts: (value: LoadedSkillPackageArtifacts) => value,
+    preparedOverrides: { evalSourceSha256: "f".repeat(64) },
+  },
+] satisfies readonly {
+  readonly name: string;
+  readonly mutateArtifacts: (value: LoadedSkillPackageArtifacts) => LoadedSkillPackageArtifacts;
+  readonly preparedOverrides: PreparedOverrides;
+}[];
 
 function resource(
   payload: PreparedSubmissionPayload,
@@ -609,7 +661,9 @@ describe("canonical submission orchestration", () => {
       now: () => now,
     });
 
-    dependencies.prepare.mockResolvedValue(prepared(packageArtifacts, "f".repeat(64)));
+    dependencies.prepare.mockResolvedValue(
+      prepared(packageArtifacts, { idempotencyKey: "f".repeat(64) }),
+    );
     const unused = client(payload);
     await expect(
       runSkillSubmission(root, packageArtifacts, {
@@ -622,6 +676,52 @@ describe("canonical submission orchestration", () => {
     expect(unused.checkSession).not.toHaveBeenCalled();
     expect(unused.submit).not.toHaveBeenCalled();
   });
+
+  it.each(resumeIdentityMutations)(
+    "rejects resume when the $name changes even if the idempotency key is reused",
+    async ({ mutateArtifacts, preparedOverrides }) => {
+      const root = await project();
+      const originalArtifacts = artifacts();
+      const originalPayload = prepared(originalArtifacts);
+      const unavailable = client(originalPayload, {
+        submit: async () => {
+          throw new SubmissionClientError("registry_unavailable", "unavailable");
+        },
+      });
+      const failed = await runSkillSubmission(root, originalArtifacts, {
+        evidence,
+        client: unavailable,
+        now: () => now,
+      });
+
+      const currentArtifacts = mutateArtifacts(originalArtifacts);
+      const currentPayload = prepared(currentArtifacts, {
+        ...preparedOverrides,
+        idempotencyKey: originalPayload.idempotencyKey,
+      });
+      dependencies.checkGate.mockResolvedValue({
+        passed: true,
+        sourceCommit: currentArtifacts.sourceCommit,
+      });
+      dependencies.loadPackage.mockResolvedValue(currentArtifacts);
+      dependencies.prepare.mockResolvedValue(currentPayload);
+      const unused = client(currentPayload);
+
+      await expect(
+        runSkillSubmission(root, currentArtifacts, {
+          evidence,
+          client: unused,
+          resumeReceiptPath: failed.storagePath as string,
+          now: () => now,
+        }),
+      ).rejects.toMatchObject({
+        issues: [expect.objectContaining({ code: "submission.resume.binding" })],
+      });
+      expect(unused.checkSession).not.toHaveBeenCalled();
+      expect(unused.submit).not.toHaveBeenCalled();
+      expect(unused.getSubmission).not.toHaveBeenCalled();
+    },
+  );
 
   it("fails closed if status refresh returns a different remote submission ID", async () => {
     const root = await project();
