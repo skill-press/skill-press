@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/skill-press/skill-press/main/schemas/improve-adapter-response.schema.json",
   "title": "SkillPressImprovementAdapterResponse",
-  "description": "Strict response written by an external SkillPress improvement role adapter.",
+  "description": "Strict response written by an external Skill Press improvement role adapter.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "responseType", "requestId", "operation", "result"],

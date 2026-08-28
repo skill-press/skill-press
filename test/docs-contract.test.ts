@@ -132,4 +132,21 @@ describe("operating documentation contracts", () => {
     expect(activeDocs).not.toContain("CLAWHUB_MIT0_CONSENT");
     expect(activeDocs).not.toMatch(/\bskillpress (?:create|check|test|eval|publish)\b/u);
   });
+
+  it("keeps user-facing runtime and schema prose on the spaced Skill Press brand", async () => {
+    for (const path of [
+      "src/cli.ts",
+      "src/create/load.ts",
+      "src/create/write.ts",
+      "src/package/archive.ts",
+      "src/tessl/evidence.ts",
+      "schemas/improve-adapter-request.schema.json",
+      "schemas/improve-adapter-response.schema.json",
+      "src/improve/generated-adapter-request.ts",
+      "src/improve/generated-adapter-response.ts",
+      "skills/skill-press/SKILL.md",
+    ]) {
+      expect(await source(path), path).not.toMatch(/\bSkillPress\b/u);
+    }
+  });
 });

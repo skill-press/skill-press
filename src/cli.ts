@@ -137,7 +137,7 @@ Options:
   --json                     Emit one stable JSON object
   -h, --help                 Show this help
 
-The adapter must implement the SkillPress request/result protocol. Submission credentials and
+The adapter must implement the Skill Press request/result protocol. Submission credentials and
 host execution are never implied by this command.
 `;
 
@@ -565,7 +565,7 @@ async function writeInternalFailure(
   json: boolean,
   command: string,
 ): Promise<CliExitCode> {
-  await writeError(io, json, "internal", "SkillPress could not complete the command.", [
+  await writeError(io, json, "internal", "Skill Press could not complete the command.", [
     {
       code: `${command}.internal`,
       path: "/",

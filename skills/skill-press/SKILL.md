@@ -61,6 +61,7 @@ The CLI requires Node.js 22 or newer; sandboxed evaluation additionally requires
 The production registry backend, account and token issuer, immutable downloads, and verified
 installation are not live yet. Until they are, stop canonical submission at `--dry-run`; do not
 substitute a third-party publication target.
-The CLI exposes `init`, `check`, `test`, `eval`, `tessl`, `improve`, `package`, `submit`, `status`,
-and `doctor`. Run the installed command's `--help` before constructing optional arguments. The typed
-package exports the lower-level validation, evaluation, packaging, and submission contracts.
+The CLI exposes `init`, `check`, `test`, `eval`, `tessl`, `improve`, `package`, `submit`, `add`,
+`install`, `status`, and `doctor`. Run the installed command's `--help` before constructing optional
+arguments. The typed package exports the lower-level validation, evaluation, packaging, and
+submission contracts.

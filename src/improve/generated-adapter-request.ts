@@ -7,7 +7,7 @@
 export type Digest = string;
 
 /**
- * Private request passed to one external SkillPress improvement role adapter.
+ * Private request passed to one external Skill Press improvement role adapter.
  */
 export interface SkillPressImprovementAdapterRequest {
   schemaVersion: 1;

@@ -553,7 +553,7 @@ export async function loadPackagedSkill(
       issue(
         "package.load.path",
         "/artifactsPath",
-        "artifact path must identify private SkillPress staging storage",
+        "artifact path must identify private Skill Press staging storage",
       ),
     ]);
   }
