@@ -50,4 +50,10 @@ describe("Skill Press self-hosted project", () => {
       expect(`${skill}\n${authoring}`).toContain(path);
     }
   });
+
+  it("keeps bounded improvement state private", async () => {
+    const ignore = await readFile(new URL("../.gitignore", import.meta.url), "utf8");
+
+    expect(ignore.split("\n")).toContain(".skill-press/improvements/");
+  });
 });

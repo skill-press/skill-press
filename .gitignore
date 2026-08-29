@@ -8,6 +8,7 @@ coverage/
 /.skill-lock.json.lock*
 /.skill-lock.*.tmp
 /.skill-lock.*.previous
+.skill-press/improvements/
 .skill-press/runs/
 .skill-press/tessl/
 .skill-press/tessl-evals/

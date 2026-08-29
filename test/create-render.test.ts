@@ -108,7 +108,7 @@ describe("capability brief rendering", () => {
       fileContent(project, "skills/incident-summary/LICENSE"),
     );
     expect(fileContent(project, ".gitignore")).toBe(
-      "/.agents/skills/\n/.skill-lock.json.lock*\n/.skill-lock.*.tmp\n/.skill-lock.*.previous\n.skill-press/runs/\n.skill-press/tessl/\n.skill-press/tessl-evals/\n.skill-press/submissions/\n.skill-press/staging/\n.skill-press/tmp/\n.skillpress/\n",
+      "/.agents/skills/\n/.skill-lock.json.lock*\n/.skill-lock.*.tmp\n/.skill-lock.*.previous\n.skill-press/improvements/\n.skill-press/runs/\n.skill-press/tessl/\n.skill-press/tessl-evals/\n.skill-press/submissions/\n.skill-press/staging/\n.skill-press/tmp/\n.skillpress/\n",
     );
   });
 
