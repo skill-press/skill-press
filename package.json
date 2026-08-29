@@ -52,17 +52,18 @@
     "generate:config-types": "node scripts/generate-config-types.mjs",
     "generate:unicode": "node scripts/generate-unicode-tables.mjs",
     "check:generated": "node scripts/generate-config-types.mjs --check && node scripts/generate-unicode-tables.mjs --check",
+    "production-keys:check": "node scripts/verify-production-keyring.mjs",
     "lint": "biome lint --error-on-warnings .",
     "test": "npm run build && vitest run",
     "test:coverage": "npm run build && vitest run --coverage",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "check": "npm run format:check && npm run lint && npm run check:generated && npm run typecheck && npm run test:coverage",
+    "check": "npm run production-keys:check && npm run format:check && npm run lint && npm run check:generated && npm run typecheck && npm run test:coverage",
     "security:audit": "npm audit --omit=dev --audit-level=high",
     "npm:bootstrap:verify": "node scripts/verify-npm-bootstrap-reservation.mjs",
     "npm:bootstrap:prepare": "node scripts/verify-npm-bootstrap-reservation.mjs --pack-destination",
     "npm:bootstrap:verify-tarball": "node scripts/verify-npm-bootstrap-reservation.mjs --verify-tarball",
     "package:verify": "node scripts/verify-package.mjs",
-    "prepack": "npm run build"
+    "prepack": "node scripts/verify-production-keyring.mjs --quiet && npm run build"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.9",

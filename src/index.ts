@@ -1,3 +1,4 @@
+export { SKILL_PRESS_PINNED_KEYS } from "./install/production-keys.js";
 export { SERVER_REVIEW_POLICY } from "./release/server-policy.js";
 export {
   renderAddHelp,
@@ -129,7 +130,6 @@ export type {
 export {
   parseExactSkillLocator,
   readSkillLock,
-  SKILL_PRESS_PINNED_KEYS,
   TrustedInstallError,
 } from "./install/index.js";
 export type {

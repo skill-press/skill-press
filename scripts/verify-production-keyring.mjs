@@ -3,7 +3,7 @@
 import { createHash, webcrypto } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, open, realpath } from "node:fs/promises";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -12,9 +12,12 @@ const REPOSITORY_ROOT = resolve(fileURLToPath(new URL("../", import.meta.url)));
 const MAXIMUM_MANIFEST_BYTES = 16 * 1024;
 const MAXIMUM_SOURCE_BYTES = 128 * 1024;
 const MAXIMUM_SIGNATURES_BYTES = 128 * 1024;
+const MAXIMUM_INDEX_BYTES = 512 * 1024;
 const MANIFEST_PATH = "production-public-keys.json";
 const SOURCE_PATH = "src/install/production-keys.ts";
 const SIGNATURES_PATH = "src/install/signatures.ts";
+const INSTALL_INDEX_PATH = "src/install/index.ts";
+const ROOT_INDEX_PATH = "src/index.ts";
 const SHA256 = /^[a-f0-9]{64}$/u;
 const COORDINATE = /^[A-Za-z0-9_-]{43}$/u;
 const INLINE_KEY_ID = /["']skill-press-[a-z0-9._-]*p256[a-z0-9._-]*["']/u;
@@ -100,13 +103,25 @@ function sameIdentity(left, right) {
   );
 }
 
+export function isReviewedRelativePath(value, separator, absolute) {
+  return (
+    typeof value === "string" &&
+    (separator === "/" || separator === "\\") &&
+    absolute === false &&
+    value !== "" &&
+    value !== ".." &&
+    !value.startsWith(`..${separator}`)
+  );
+}
+
 async function readReviewedFile(root, relativePath, maximumBytes) {
   const path = resolve(root, relativePath);
+  const remainder = relative(root, path);
   if (
     !isAbsolute(root) ||
     resolve(root) !== root ||
     dirname(path) === path ||
-    !path.startsWith(`${root}/`)
+    !isReviewedRelativePath(remainder, sep, isAbsolute(remainder))
   ) {
     fail("a reviewed path escaped the repository root");
   }
@@ -304,6 +319,36 @@ function assertCanonicalSignaturesSource(bytes) {
   }
 }
 
+function decodeCanonicalSource(bytes, path) {
+  let source;
+  try {
+    source = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    fail(`${path} is not valid UTF-8`);
+  }
+  if (source.includes("\r")) fail(`${path} does not use canonical newlines`);
+  return source;
+}
+
+function assertCanonicalKeyringExportSource(bytes, path, expectedLine, expectedModule, first) {
+  const source = decodeCanonicalSource(bytes, path);
+  singleOccurrence(source, expectedLine, `${path} production keyring export`);
+  if (first && !source.startsWith(`${expectedLine}\n`)) {
+    fail(`${path} does not establish the production keyring as its first runtime dependency`);
+  }
+  if (
+    (source.match(/\bSKILL_PRESS_PINNED_KEYS\b/gu) ?? []).length !== 1 ||
+    (source.match(new RegExp(`["']${expectedModule.replaceAll(".", "[.]")}["']`, "gu")) ?? [])
+      .length !== 1 ||
+    /\bexport\s*\*/u.test(source) ||
+    RETIRED_PRODUCTION_KEY_IDS.some((keyId) => source.includes(keyId)) ||
+    INLINE_KEY_ID.test(source) ||
+    INLINE_COORDINATE.test(source)
+  ) {
+    fail(`${path} has an alternate, shadowed, inline, or ambiguous production keyring export`);
+  }
+}
+
 function runtimeProjection(keys) {
   return Object.freeze(
     keys.map((entry) =>
@@ -341,14 +386,33 @@ export async function verifyProductionKeyring(repositoryRoot = REPOSITORY_ROOT) 
   let manifestBytes;
   let sourceBytes;
   let signaturesBytes;
+  let installIndexBytes;
+  let rootIndexBytes;
   let expectedSource;
   try {
-    [manifestBytes, sourceBytes, signaturesBytes] = await Promise.all([
-      readReviewedFile(root, MANIFEST_PATH, MAXIMUM_MANIFEST_BYTES),
-      readReviewedFile(root, SOURCE_PATH, MAXIMUM_SOURCE_BYTES),
-      readReviewedFile(root, SIGNATURES_PATH, MAXIMUM_SIGNATURES_BYTES),
-    ]);
+    [manifestBytes, sourceBytes, signaturesBytes, installIndexBytes, rootIndexBytes] =
+      await Promise.all([
+        readReviewedFile(root, MANIFEST_PATH, MAXIMUM_MANIFEST_BYTES),
+        readReviewedFile(root, SOURCE_PATH, MAXIMUM_SOURCE_BYTES),
+        readReviewedFile(root, SIGNATURES_PATH, MAXIMUM_SIGNATURES_BYTES),
+        readReviewedFile(root, INSTALL_INDEX_PATH, MAXIMUM_INDEX_BYTES),
+        readReviewedFile(root, ROOT_INDEX_PATH, MAXIMUM_INDEX_BYTES),
+      ]);
     assertCanonicalSignaturesSource(signaturesBytes);
+    assertCanonicalKeyringExportSource(
+      installIndexBytes,
+      INSTALL_INDEX_PATH,
+      'export { SKILL_PRESS_PINNED_KEYS } from "./signatures.js";',
+      "./signatures.js",
+      false,
+    );
+    assertCanonicalKeyringExportSource(
+      rootIndexBytes,
+      ROOT_INDEX_PATH,
+      'export { SKILL_PRESS_PINNED_KEYS } from "./install/production-keys.js";',
+      "./install/production-keys.js",
+      true,
+    );
     let manifestText;
     let manifest;
     try {
@@ -398,6 +462,8 @@ export async function verifyProductionKeyring(repositoryRoot = REPOSITORY_ROOT) 
     manifestBytes?.fill(0);
     sourceBytes?.fill(0);
     signaturesBytes?.fill(0);
+    installIndexBytes?.fill(0);
+    rootIndexBytes?.fill(0);
     expectedSource?.fill(0);
   }
 }
