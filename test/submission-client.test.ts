@@ -121,6 +121,13 @@ function jsonResponse(value: unknown, status = 200): Response {
   });
 }
 
+const mismatchedCandidateBindings = [
+  ["idempotency key", { idempotencyKey: "6".repeat(64) }],
+  ["source commit", { sourceCommit: "6".repeat(40) }],
+  ["artifact digest", { artifactSha256: "6".repeat(64) }],
+  ["project version", { projectVersion: "1.2.4" }],
+] satisfies ReadonlyArray<readonly [string, Partial<SkillPressSubmissionResource>]>;
+
 describe("canonical submission client", () => {
   it("uses only fixed canonical endpoints and binds every staged upload", async () => {
     const payload = prepared();
@@ -403,6 +410,23 @@ describe("canonical submission client", () => {
       });
     }
   });
+
+  it.each(mismatchedCandidateBindings)(
+    "rejects a schema-valid response with a mismatched %s before uploading objects",
+    async (_label, overrides) => {
+      const payload = prepared();
+      const fetcher = vi.fn(async () =>
+        jsonResponse(remote(payload, overrides), 201),
+      ) as unknown as typeof globalThis.fetch;
+      const client = createCanonicalSubmissionClient({ token: "token", fetcher });
+
+      await expect(client.submit(payload)).rejects.toMatchObject({
+        code: "response_contract_invalid",
+        message: "Skill Press returned a resource that did not bind the submitted candidate.",
+      });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("keeps review workflow status distinct from mutable release trust status", async () => {
     const payload = prepared();
