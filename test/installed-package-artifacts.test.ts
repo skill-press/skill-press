@@ -353,6 +353,33 @@ describe("installed package static artifact gate", () => {
     }
   });
 
+  it("rejects a caller that consumes snapshot authority without awaiting verification", async () => {
+    const current = await fixture();
+    let verificationSettled = Promise.resolve();
+    try {
+      await expect(
+        withCapturedPackageArtifactSnapshot(
+          current.expectedRoot,
+          REVIEWED_KEYRING_ARTIFACT_PATHS,
+          keyringProof,
+          (snapshot) => {
+            verificationSettled = verifyInstalledPackageArtifactSnapshot(
+              snapshot,
+              current.installAnchor,
+              current.installedRoot,
+            ).then(
+              () => undefined,
+              () => undefined,
+            );
+          },
+        ),
+      ).rejects.toThrow(/did not complete its consumed verification/u);
+      await verificationSettled;
+    } finally {
+      await rm(current.outerRoot, { recursive: true, force: true });
+    }
+  });
+
   it("keeps static keyring acceptance before the only installed CLI execution", async () => {
     const verifier = await readFile(
       new URL("../scripts/verify-package.mjs", import.meta.url),
