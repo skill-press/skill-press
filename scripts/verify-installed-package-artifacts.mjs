@@ -576,12 +576,14 @@ export async function verifyInstalledPackageArtifactSnapshot(...inputs) {
   await assertStableDirectories(inventory.directories);
   await assertStableRoot(anchor, "private installation anchor");
   await assertStableRoot(installed, "installed package root");
-  return Object.freeze({
+  const proof = Object.freeze({
     artifacts: Object.freeze(artifacts),
     files: artifacts.length,
     status: "verified",
     totalBytes,
   });
+  state.completed = true;
+  return proof;
 }
 
 export async function withCapturedPackageArtifactSnapshot(...inputs) {
@@ -591,6 +593,7 @@ export async function withCapturedPackageArtifactSnapshot(...inputs) {
   const paths = sortedPaths(inputs[1]);
   const state = await captureExpected(inputs[0], paths, inputs[2]);
   state.active = true;
+  state.completed = false;
   state.consumed = false;
   const capability = Object.freeze(Object.create(null));
   snapshots.set(capability, state);
@@ -613,5 +616,8 @@ export async function withCapturedPackageArtifactSnapshot(...inputs) {
   if (operationFailed) throw operationError;
   if (operationResult !== undefined || state.consumed !== true) {
     fail("the package snapshot operation did not consume its authority exactly once");
+  }
+  if (state.completed !== true) {
+    fail("the package snapshot operation did not complete its consumed verification");
   }
 }
