@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "keyringType": "skillpress.production-signing-keyring",
+  "keys": [
+    {
+      "role": "release-attestation",
+      "binding": "ATTESTATION_SIGNING_PRIVATE_JWK",
+      "keyId": "skill-press-attestation-p256-2026-08-28",
+      "validFrom": "2026-08-28T00:00:00.000Z",
+      "validUntil": "2027-08-31T23:59:59.999Z",
+      "jwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "xKRn71aQ0xRJKlbJ6RnD-QI3TrMxwuflWwRB3SqZSXA",
+        "y": "3TwtdsHRW2TtbB-Eo9jn5XzAVMNvlRIQOevLWNHIr5E"
+      },
+      "thumbprintSha256": "caceb8c10f8b8d8680d381048fe5fd710486072fddf9749b8b05d0f0702a0ff0"
+    },
+    {
+      "role": "trust-event",
+      "binding": "TRUST_SIGNING_PRIVATE_JWK",
+      "keyId": "skill-press-trust-p256-2026-08-28",
+      "validFrom": "2026-08-28T00:00:00.000Z",
+      "validUntil": "2027-08-31T23:59:59.999Z",
+      "minimumTrustSequence": 1,
+      "jwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "6yRTecGuBpgkQ92mCCfiecwRLTt9Sh_xsEl-kvDXdMU",
+        "y": "NAiztMcKaBORuitUXP9ud3CbD7iaGiDqbPfsQeHTd3U"
+      },
+      "thumbprintSha256": "bbb76ab4fc7ccc7bafad4564579a3af34c4aa0e3d3d03ade4e125fca4deea73b"
+    },
+    {
+      "role": "current-trust",
+      "binding": "CHECKPOINT_SIGNING_PRIVATE_JWK",
+      "keyId": "skill-press-checkpoint-p256-2026-08-28",
+      "validFrom": "2026-08-28T00:00:00.000Z",
+      "validUntil": "2027-08-31T23:59:59.999Z",
+      "minimumTrustSequence": 1,
+      "jwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": "B7rDCK6fDyvL10ebdTCAGe87zpTzD6eA0ZPL-wOWMK0",
+        "y": "OZ17e9aIdiX6S8Kj8r8P5jHy3ul-5p2ESoy6ur0mRbE"
+      },
+      "thumbprintSha256": "cb42223314f72c186daefa43646670613679b436da0e00d93432c8d1d9f6600f"
+    }
+  ]
+}
