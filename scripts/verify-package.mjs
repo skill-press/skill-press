@@ -1,5 +1,6 @@
-import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import { constants } from "node:fs";
 import {
   copyFile,
   mkdir,
@@ -10,14 +11,22 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { constants } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import {
+  REVIEWED_KEYRING_ARTIFACT_PATHS,
+  verifyInstalledPackageArtifactSnapshot,
+  withCapturedPackageArtifactSnapshot,
+} from "./verify-installed-package-artifacts.mjs";
+import {
+  RETIRED_PRODUCTION_KEY_IDS,
+  verifyProductionKeyring,
+} from "./verify-production-keyring.mjs";
 
 const execFileAsync = promisify(execFile);
-const root = fileURLToPath(new URL("../", import.meta.url));
+const root = resolve(fileURLToPath(new URL("../", import.meta.url)));
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const maximumOutput = 16 * 1024 * 1024;
 
@@ -79,6 +88,7 @@ function paths(result) {
     "schemas/submission-receipt.schema.json",
     "schemas/improve-adapter-request.schema.json",
     "schemas/improve-adapter-response.schema.json",
+    ...REVIEWED_KEYRING_ARTIFACT_PATHS,
   ]) {
     if (!values.includes(required)) fail(`required package path is missing: ${required}`);
   }
@@ -91,6 +101,11 @@ function digest(algorithm, bytes) {
     .digest(algorithm === "sha512" ? "base64" : "hex");
 }
 
+const productionKeyring = await verifyProductionKeyring(root);
+const expectedPinnedKeysJson = JSON.stringify(productionKeyring.pinnedKeys);
+if (RETIRED_PRODUCTION_KEY_IDS.some((keyId) => expectedPinnedKeysJson.includes(keyId))) {
+  fail("the canonical production keyring contains a retired key ID");
+}
 const packageJson = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 const temporaryBase = await realpath(
   process.env.RUNNER_TEMP ?? (process.platform === "darwin" ? "/private/tmp" : tmpdir()),
@@ -144,23 +159,34 @@ try {
     `${JSON.stringify({ name: "skill-press-install-smoke", private: true })}\n`,
     { mode: 0o600 },
   );
-  await run(
-    npm,
-    ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", tarball],
-    installRoot,
+  const installedPackageRoot = join(installRoot, "node_modules", "@skill-press", "cli");
+  let installedArtifactProof;
+  let version;
+  await withCapturedPackageArtifactSnapshot(
+    root,
+    packedPaths,
+    productionKeyring,
+    async (snapshot) => {
+      await run(
+        npm,
+        ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", tarball],
+        installRoot,
+      );
+      installedArtifactProof = await verifyInstalledPackageArtifactSnapshot(
+        snapshot,
+        installRoot,
+        installedPackageRoot,
+      );
+      const installedBinary = join(
+        installRoot,
+        "node_modules",
+        ".bin",
+        process.platform === "win32" ? "skpress.cmd" : "skpress",
+      );
+      version = (await run(installedBinary, ["--version"], installRoot)).stdout.trim();
+      if (version !== packageJson.version) fail("installed CLI returned the wrong version");
+    },
   );
-  const installedBinary = join(
-    installRoot,
-    "node_modules",
-    ".bin",
-    process.platform === "win32" ? "skpress.cmd" : "skpress",
-  );
-  const version = (await run(installedBinary, ["--version"], installRoot)).stdout.trim();
-  if (version !== packageJson.version) fail("installed CLI returned the wrong version");
-  const apiProbe =
-    'const api = await import("@skill-press/cli");' +
-    'if (typeof api.checkProject !== "function" || typeof api.runSkillSubmission !== "function") process.exit(1);';
-  await run(process.execPath, ["--input-type=module", "--eval", apiProbe], installRoot);
 
   const releaseOutput = process.env.SKILL_PRESS_PACKAGE_OUTPUT_DIR;
   if (releaseOutput !== undefined) {
@@ -219,6 +245,7 @@ try {
       shasum: packed.shasum,
       integrity: packed.integrity,
       cliVersion: version,
+      installedFiles: installedArtifactProof.files,
     })}\n`,
   );
 } finally {

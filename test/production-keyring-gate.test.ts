@@ -1,11 +1,16 @@
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, realpath, rm, unlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, realpath, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix, win32 } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { verifyProductionKeyring } from "../scripts/verify-production-keyring.mjs";
+import {
+  isReviewedRelativePath,
+  verifyProductionKeyring,
+} from "../scripts/verify-production-keyring.mjs";
 
 const jwks = [
   {
@@ -119,6 +124,17 @@ export function createTrustedSignatureVerifier(
 `;
 }
 
+function installIndex(): string {
+  return 'export { SKILL_PRESS_PINNED_KEYS } from "./signatures.js";\n';
+}
+
+function rootIndex(): string {
+  return (
+    'export { SKILL_PRESS_PINNED_KEYS } from "./install/production-keys.js";\n' +
+    "export function checkProject() {}\nexport function runSkillSubmission() {}\n"
+  );
+}
+
 async function fixture(value = manifest()): Promise<{ root: string; manifestBytes: Buffer }> {
   const created = await mkdtemp(join(tmpdir(), "skill-press-keyring-gate-"));
   const root = await realpath(created);
@@ -135,10 +151,53 @@ async function fixture(value = manifest()): Promise<{ root: string; manifestByte
   await writeFile(join(root, "src", "install", "signatures.ts"), signatures(), {
     mode: 0o600,
   });
+  await writeFile(join(root, "src", "install", "index.ts"), installIndex(), { mode: 0o600 });
+  await writeFile(join(root, "src", "index.ts"), rootIndex(), { mode: 0o600 });
   return { root, manifestBytes };
 }
 
 describe("production keyring release gate", () => {
+  it("contains reviewed paths across POSIX and Windows separators, prefixes, parents, and drives", () => {
+    for (const [pathApi, root, accepted, rejected] of [
+      [
+        posix,
+        "/work/skill-press",
+        [
+          "/work/skill-press/production-public-keys.json",
+          "/work/skill-press/src/install/production-keys.ts",
+        ],
+        ["/work/skill-press", "/work/skill-press-other/key.json", "/work/key.json"],
+      ],
+      [
+        win32,
+        "C:\\work\\skill-press",
+        [
+          "C:\\work\\skill-press\\production-public-keys.json",
+          "C:\\work\\skill-press\\src\\install\\production-keys.ts",
+        ],
+        [
+          "C:\\work\\skill-press",
+          "C:\\work\\skill-press-other\\key.json",
+          "C:\\work\\key.json",
+          "D:\\work\\skill-press\\production-public-keys.json",
+        ],
+      ],
+    ] as const) {
+      for (const candidate of accepted) {
+        const remainder = pathApi.relative(root, candidate);
+        expect(isReviewedRelativePath(remainder, pathApi.sep, pathApi.isAbsolute(remainder))).toBe(
+          true,
+        );
+      }
+      for (const candidate of rejected) {
+        const remainder = pathApi.relative(root, candidate);
+        expect(isReviewedRelativePath(remainder, pathApi.sep, pathApi.isAbsolute(remainder))).toBe(
+          false,
+        );
+      }
+    }
+  });
+
   it("fails closed when the ceremony manifest is absent", async () => {
     const missing = await fixture();
     try {
@@ -149,6 +208,56 @@ describe("production keyring release gate", () => {
     } finally {
       missing.manifestBytes.fill(0);
       await rm(missing.root, { recursive: true, force: true });
+    }
+  });
+
+  it("blocks npm prepack before build when the manifest is missing or generated source drifts", async () => {
+    for (const failure of ["missing-manifest", "source-drift"] as const) {
+      const current = await fixture();
+      const sentinel = join(current.root, "build-ran");
+      try {
+        await mkdir(join(current.root, "scripts"), { mode: 0o700 });
+        await copyFile(
+          fileURLToPath(new URL("../scripts/verify-production-keyring.mjs", import.meta.url)),
+          join(current.root, "scripts", "verify-production-keyring.mjs"),
+        );
+        await writeFile(
+          join(current.root, "build-sentinel.mjs"),
+          'import { writeFile } from "node:fs/promises"; await writeFile("build-ran", "ran\\n");\n',
+          { mode: 0o600 },
+        );
+        await writeFile(
+          join(current.root, "package.json"),
+          `${JSON.stringify({
+            name: "skill-press-prepack-gate-fixture",
+            version: "1.0.0",
+            private: true,
+            scripts: {
+              build: "node build-sentinel.mjs",
+              prepack: "node scripts/verify-production-keyring.mjs --quiet && npm run build",
+            },
+          })}\n`,
+          { mode: 0o600 },
+        );
+        if (failure === "missing-manifest") {
+          await unlink(join(current.root, "production-public-keys.json"));
+        } else {
+          await writeFile(join(current.root, "src", "install", "production-keys.ts"), "drift\n", {
+            mode: 0o600,
+          });
+        }
+        const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+        const result = spawnSync(npm, ["pack", "--json", "--silent"], {
+          cwd: current.root,
+          encoding: "utf8",
+          timeout: 30_000,
+        });
+        expect(result.status).not.toBe(0);
+        await expect(stat(sentinel)).rejects.toThrow();
+      } finally {
+        current.manifestBytes.fill(0);
+        await rm(current.root, { recursive: true, force: true });
+      }
     }
   });
 
@@ -263,6 +372,41 @@ describe("production keyring release gate", () => {
     } finally {
       alternate.manifestBytes.fill(0);
       await rm(alternate.root, { recursive: true, force: true });
+    }
+  });
+
+  it("requires one direct first root export and one unambiguous install export", async () => {
+    for (const [relativePath, replacement, message] of [
+      [
+        "src/index.ts",
+        rootIndex().replace("./install/production-keys.js", "./install/index.js"),
+        /production keyring export/u,
+      ],
+      ["src/index.ts", `export const before = true;\n${rootIndex()}`, /first runtime dependency/u],
+      [
+        "src/index.ts",
+        `${rootIndex()}export * from "./alternate.js";\n`,
+        /ambiguous production keyring export/u,
+      ],
+      [
+        "src/install/index.ts",
+        installIndex().replace("./signatures.js", "./alternate.js"),
+        /production keyring export/u,
+      ],
+      [
+        "src/install/index.ts",
+        `${installIndex()}export { SKILL_PRESS_PINNED_KEYS } from "./alternate.js";\n`,
+        /sole canonical occurrence|ambiguous production keyring export/u,
+      ],
+    ] as const) {
+      const current = await fixture();
+      try {
+        await writeFile(join(current.root, relativePath), replacement, { mode: 0o600 });
+        await expect(verifyProductionKeyring(current.root)).rejects.toThrow(message);
+      } finally {
+        current.manifestBytes.fill(0);
+        await rm(current.root, { recursive: true, force: true });
+      }
     }
   });
 });
