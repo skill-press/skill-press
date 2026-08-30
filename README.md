@@ -184,8 +184,9 @@ and every clone must rehydrate them through a fresh current-trust check.
 - The public, read-only discovery feed exposes only already published immutable releases. Its
   canonical snapshot digest covers every normalized release and mirror projection.
 - Initial mirrors are Skill Press-operated GitHub projections under `github.com/skill-press/`.
-  A listing must expose the canonical release URL and exact artifact digest; an artifact must be
-  byte-identical. Mirror failure cannot change canonical release state.
+  A listing must contain an actual anchor whose `href` is the exact canonical release URL and an
+  actual `code` element whose text is the exact artifact digest; an artifact must be byte-identical.
+  Mirror failure cannot change canonical release state.
 
 Skill Press does not provide author-facing multi-publish. Discovery and mirroring are
 platform-operated downstream processes after canonical publication, without author provider
