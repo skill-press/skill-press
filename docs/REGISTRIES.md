@@ -279,6 +279,10 @@ locator, artifact digest, release URL, and attestation URL:
 - `mirrorKind: listing` is a read-only catalog projection;
 - `mirrorKind: artifact` must additionally carry `artifactSha256` equal to the immutable release.
 
+Before activation, a listing's bounded UTF-8 HTML must contain both the canonical release URL and
+the exact artifact digest. An artifact projection is streamed and accepted only when its length and
+SHA-256 match the immutable release bytes.
+
 Mirror IDs are globally unique. Reusing a mirror URL is allowed only for identical canonical source
 provenance. Mirrors propagate current `trusted`, `quarantined`, or `revoked` state but do not create
 or alter it. Their failure is independent of canonical publication, and they never fabricate

@@ -229,7 +229,9 @@ The server must issue opaque authenticated cursor tokens bound to the snapshot, 
 position, and expiry. Clients do not decode them, and `collect()` never accepts one as its starting
 point. The initial mirror allowlist is exactly `https://github.com/skill-press/...`, without
 userinfo, ports, queries, fragments, IP literals, or ambiguous paths. A `listing` projection links
-to canonical provenance; an `artifact` projection additionally binds `artifactSha256` exactly.
+to canonical provenance only when its bounded UTF-8 HTML contains the canonical release URL and
+exact artifact digest; an `artifact` projection additionally binds `artifactSha256` exactly and
+serves byte-identical content.
 
 Every mirror preserves the release locator, artifact digest, canonical URL, and attestation URL.
 Mirror failure cannot turn a canonical trusted release into unpublished state, and a listing cannot
