@@ -286,9 +286,10 @@ The platform-operated discovery contract may expose an already published Skill P
 elsewhere only if it preserves the exact immutable digest, version, canonical URL, attestation,
 and current trust signal. Full collections verify a domain-separated digest over all normalized
 records. The initial mirror allowlist is limited to verified `github.com/skill-press/` listing and
-artifact projections. A listing's bounded HTML must contain the canonical release URL and exact
-artifact digest; an artifact projection must be byte-identical. A mirror or listing is never
-acceptance evidence, and its availability must not block canonical publication.
+artifact projections. A listing's bounded HTML must contain an actual anchor whose `href` is the
+exact canonical release URL and an actual `code` element whose text is the exact artifact digest;
+an artifact projection must be byte-identical. A mirror or listing is never acceptance evidence,
+and its availability must not block canonical publication.
 
 ## Quality model
 
@@ -386,9 +387,9 @@ Expose a platform-operated, read-only feed at
 `https://skill-press.com/api/v1/discovery`. A full collection begins at the origin, locks one
 snapshot across all pages, and recomputes the domain-separated digest of every normalized release.
 Opaque server cursors bind the snapshot, last position, and expiry. Initial mirrors are verified
-GitHub projections under `github.com/skill-press/`; listing pages expose the canonical release URL
-and exact artifact digest, while artifact projections are byte-identical. Do not add author provider
-credentials or restore a `publish.targets` model.
+GitHub projections under `github.com/skill-press/`; listing pages contain an exact canonical
+release anchor and exact artifact-digest `code` element, while artifact projections are
+byte-identical. Do not add author provider credentials or restore a `publish.targets` model.
 
 Exit criterion: every external record links back to the canonical release, preserves its exact
 digest, passes full-snapshot verification, and cannot alter Skill Press review or trust state.
