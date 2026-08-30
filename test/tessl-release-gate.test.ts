@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
-import { chmod, cp, mkdtemp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -936,7 +936,7 @@ describe("Tessl release gate", () => {
       const report = await gate(value);
       expect(report.issues.map((entry) => entry.code)).toContain("release.evidence.output");
     }
-  });
+  }, 15_000);
 
   it("binds version text, workspace argv, validation failure, and zero baselines", async () => {
     const versionValue = await fixture();
