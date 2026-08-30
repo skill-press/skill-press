@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   quality:
-    name: Node ${{ matrix.node-version }}
+    name: Linux / Node ${{ matrix.node-version }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
