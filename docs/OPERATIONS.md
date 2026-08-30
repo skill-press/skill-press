@@ -505,9 +505,13 @@ Complete this one-time ceremony before the first production release:
    manually. Keep `0.0.0` isolated under `bootstrap`.
 
 Before approval, compare the tag, source commit, current gate evidence, release assets, and npm
-tarball manifest. Rerun the original workflow after an external approval or transient service
-failure; do not edit and republish a GitHub Release to manufacture a new event. Exact-existing npm
-state must be reverified rather than republished.
+tarball manifest. Environment approval resumes the original attempt and is safe; do not rerun a
+failed workflow for the initial deployment receipt. The sealed first-deploy verifier accepts only
+`runAttempt: "1"` because GitHub's run-level artifact API cannot prove which rerun produced a
+same-named artifact. Preserve a failed attempt as a release incident, verify exact npm state, and
+stop first deployment. Resolve the incident and deliberately prepare a new package version and
+matching sealed deployment manifest instead of editing a GitHub Release, rerunning blindly, or
+republishing an existing npm version.
 
 ## Incident checklist
 
