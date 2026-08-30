@@ -63,6 +63,10 @@ reproducible packaging, and a canonical submission client/journal contract.
 This distinction is part of the contract. A compiled client or a schema does not prove that a
 remote service exists, and a locally prepared submission does not prove publication or trust.
 
+The launch compatibility baseline for `skpress` is Linux on supported Node.js releases. The public
+CI and npm release workflows run only on Linux. Native macOS and Windows compatibility matrices are
+future roadmap work and are not launch gates.
+
 ## Product principles
 
 1. **Behavior over prose.** A polished `SKILL.md` is not evidence that an agent performs better.

@@ -38,8 +38,9 @@ owner; the production service verifies that the authenticated submitter controls
 
 ## Current development setup
 
-Use Node.js 22 or newer. Until the first formal `@skill-press/cli` release, build the executable
-from this repository:
+Use Node.js 22 or newer. Linux is the current compatibility baseline; macOS and Windows are not yet
+release gates. Until the first formal `@skill-press/cli` release, build the executable from this
+repository:
 
 ```bash
 npm ci --ignore-scripts

@@ -19,7 +19,9 @@ network origin and signing roots cannot be selected by project configuration or 
 implementation is currently usable through hermetic tests, not as a claim that a public release can
 already be installed.
 
-The CLI requires Node.js 22 or newer. The maintained CI matrix covers Node.js 22, 24, and 26.
+The CLI requires Node.js 22 or newer. The maintained compatibility baseline is Linux, with CI on
+Node.js 22, 24, and 26. macOS and Windows compatibility testing is roadmap work rather than a
+current release gate; no compatibility claim is made for those operating systems yet.
 
 ## Repository gates
 
