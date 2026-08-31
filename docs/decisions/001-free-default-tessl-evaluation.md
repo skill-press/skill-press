@@ -46,4 +46,3 @@ Tessl may change its workspace default over time. Every evidence object therefor
 resolved agent and model, trusted CLI digest, exact command digest, raw output hashes, source commit,
 and scenario tree. Any provider-default change is reviewed as a new evidence fact rather than
 silently treated as equivalent.
-

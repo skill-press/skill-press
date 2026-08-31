@@ -143,10 +143,10 @@ Each weighted checklist must total exactly 100 points and include at least one u
 `critical_*` criterion. A critical criterion describes conjunctive release invariants: its rubric
 must direct the evaluator to assign zero unless every listed invariant holds. Every contextual
 critical criterion must receive full credit, regardless of the aggregate Impact score. Required
-scenario non-regression is enforced independently. Returned baseline and contextual criterion
-names, weights, and order must match the exact current `criteria.json` inventories, and returned
-scenarios must form complete repetitions of the source inventory. Placeholder, missing, extra,
-reordered, or reweighted criteria fail closed.
+scenario non-regression is enforced independently. Returned scenarios must match the source
+inventory exactly once; baseline and contextual criterion names, weights, and order must match each
+current `criteria.json`, and every solution must carry the exact requested number of completed
+`runs`. Placeholder, missing, extra, reordered, reweighted, or incomplete results fail closed.
 
 ## Executable trust and pin updates
 
