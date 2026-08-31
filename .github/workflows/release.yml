@@ -14,7 +14,7 @@ concurrency:
 jobs:
   verify:
     name: Verify exact npm tarball
-    if: github.repository == 'skill-press/skill-press' && !github.event.release.prerelease
+    if: github.repository == 'skill-press/skill-press' && !github.event.release.prerelease && github.run_attempt == 1
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -69,9 +69,9 @@ jobs:
   publish:
     name: Publish approved exact tarball
     needs: verify
-    if: github.repository == 'skill-press/skill-press' && !github.event.release.prerelease
+    if: github.repository == 'skill-press/skill-press' && !github.event.release.prerelease && github.run_attempt == 1
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 60
     environment: npm
     permissions:
       contents: read
@@ -136,15 +136,21 @@ jobs:
       - name: Wait for exact registry provenance
         run: |
           verified=false
-          for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            if node "${RUNNER_TEMP}/npm-release/verify-npm-registry-release.mjs" "${RUNNER_TEMP}/npm-release/manifest.json" > "${RUNNER_TEMP}/npm-registry.json"; then
-              status=$(node --input-type=module --eval 'import {readFile} from "node:fs/promises"; const v=JSON.parse(await readFile(process.argv[1],"utf8")); process.stdout.write(typeof v.status === "string" ? v.status : "")' "${RUNNER_TEMP}/npm-registry.json")
-              if [ "$status" = "match" ]; then
-                verified=true
-                break
-              fi
+          attempt=1
+          while [ "$attempt" -le 200 ]; do
+            node "${RUNNER_TEMP}/npm-release/verify-npm-registry-release.mjs" "${RUNNER_TEMP}/npm-release/manifest.json" > "${RUNNER_TEMP}/npm-registry.json"
+            status=$(node --input-type=module --eval 'import {readFile} from "node:fs/promises"; const v=JSON.parse(await readFile(process.argv[1],"utf8")); process.stdout.write(typeof v.status === "string" ? v.status : "")' "${RUNNER_TEMP}/npm-registry.json")
+            if [ "$status" = "match" ]; then
+              verified=true
+              break
             fi
-            sleep 3
+            if [ "$status" != "absent" ]; then
+              echo "exact npm registry verifier returned an unexpected status" >&2
+              exit 1
+            fi
+            echo "npm publish-time scan pending (attempt ${attempt}/200)"
+            sleep 15
+            attempt=$((attempt + 1))
           done
           if [ "$verified" != "true" ]; then
             echo "exact npm registry provenance did not become available" >&2
