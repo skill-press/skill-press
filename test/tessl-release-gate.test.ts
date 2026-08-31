@@ -352,6 +352,20 @@ describe("Tessl release gate", () => {
     },
   );
 
+  it("rejects an extra non-object solution element", async () => {
+    const value = await fixture();
+    const evaluation = JSON.parse(await readFile(join(value.root, value.evalPath), "utf8"));
+    const raw = JSON.parse(
+      await readFile(join(value.root, evaluation.storagePath, "eval-result.stdout"), "utf8"),
+    );
+    raw.data.attributes.scenarios[0].solutions.push(null);
+    await replaceRawStdout(value, value.evalPath, "result", "eval-result", JSON.stringify(raw));
+
+    expect((await gate(value)).issues.map((entry) => entry.code)).toContain(
+      "release.evidence.output",
+    );
+  });
+
   it("accepts omitted provider selections only when the exact command is bound", async () => {
     const selections = [[], ["--agent", "codex"], ["--model", "model"]] as const;
     for (const selection of selections) {

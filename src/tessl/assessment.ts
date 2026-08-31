@@ -20,7 +20,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  *
  * Release evaluation checklists are normalized to 100 points and must contain at least one
  * explicitly named `critical_*` criterion. Critical criteria are conjunctive release invariants:
- * every one must receive full credit in the with-context solution.
+ * every one must receive full credit in the contextual usage-spec solution.
  */
 export function tesslSolutionAssessment(value: unknown): TesslSolutionAssessment | undefined {
   if (

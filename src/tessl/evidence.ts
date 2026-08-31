@@ -888,7 +888,7 @@ function parseCompletedEval(
         issue(
           "tessl.eval.rubric_binding",
           `/result/scenarios/${index}`,
-          "baseline and with-context variants must use the same exact rubric inventory",
+          "baseline and usage-spec variants must use the same exact rubric inventory",
         ),
       ]);
     }
