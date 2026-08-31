@@ -1268,10 +1268,8 @@ describe("Tessl official evidence bridge", () => {
             attributes: { scenarios: Array<{ solutions: Array<Record<string, unknown>> }> };
           }
         ).attributes.scenarios;
-        scenarios[0]?.solutions.push({
-          ...(scenarios[0]?.solutions[1] ?? {}),
-          variant: "other",
-        });
+        const context = scenarios[0]?.solutions[1];
+        if (context !== undefined) context.variant = "other";
         return value;
       })(),
     ],
