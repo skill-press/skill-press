@@ -1400,7 +1400,7 @@ describe("Tessl official evidence bridge", () => {
       }),
     ).rejects.toBeInstanceOf(TesslEvidenceError);
 
-    let conflictingRunsExecuted = false;
+    let conflictingProviderRunExecuted = false;
     await expect(
       captureTesslEvalEvidence(fixture.root, {
         source: "tessl-evals",
@@ -1408,15 +1408,16 @@ describe("Tessl official evidence bridge", () => {
         model: "gpt-fixed",
         runs: 1,
         executable: fixture.executable,
-        executor: async () => {
-          conflictingRunsExecuted = true;
-          return result("unexpected");
+        executor: async (command) => {
+          const args = command.argv.slice(1);
+          if (args[0] === "eval" && args[1] === "run") conflictingProviderRunExecuted = true;
+          return args[0] === "--version" ? result("0.101.0\n") : result("unexpected");
         },
       }),
     ).rejects.toMatchObject({
       issues: [expect.objectContaining({ code: "tessl.option.eval_runs" })],
     });
-    expect(conflictingRunsExecuted).toBe(false);
+    expect(conflictingProviderRunExecuted).toBe(false);
 
     let now = 0;
     const pendingExecutor = executorFor((args) => {

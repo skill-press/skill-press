@@ -88,6 +88,7 @@ interface CommonContext {
   readonly projectName: string;
   readonly projectVersion: string;
   readonly projectDescription: string;
+  readonly evaluationRepetitions: number;
   readonly sourceCommit: string;
   readonly dirty: boolean;
   readonly executable: string;
@@ -452,6 +453,7 @@ async function commonContext(
     projectName: config.project.name,
     projectVersion: config.project.version,
     projectDescription: config.project.description,
+    evaluationRepetitions: config.evaluation.repetitions,
     sourceCommit: state.commit,
     dirty: state.dirty,
     executable,
@@ -960,17 +962,6 @@ export async function captureTesslEvalEvidence(
     ]);
   }
   const root = await realpath(resolve(projectDirectory));
-  const projectConfig = await loadProjectConfig(root);
-  const runs = options.runs ?? projectConfig.evaluation.repetitions;
-  if (runs !== projectConfig.evaluation.repetitions) {
-    throw new TesslEvidenceError("Tessl eval runs do not match project policy.", [
-      issue(
-        "tessl.option.eval_runs",
-        "/options/runs",
-        "runs must equal evaluation.repetitions from skill-press.yaml",
-      ),
-    ]);
-  }
   const source = await realpath(resolve(root, options.source));
   const sourcePath = ensureInside(root, source, "/source");
   const scenarioSourceSha256 = await digestBoundedTree(source);
@@ -991,6 +982,16 @@ export async function captureTesslEvalEvidence(
     );
   }
   const context = await commonContext(projectDirectory, options, [sourcePath]);
+  const runs = options.runs ?? context.evaluationRepetitions;
+  if (runs !== context.evaluationRepetitions) {
+    throw new TesslEvidenceError("Tessl eval runs do not match project policy.", [
+      issue(
+        "tessl.option.eval_runs",
+        "/options/runs",
+        "runs must equal evaluation.repetitions from skill-press.yaml",
+      ),
+    ]);
+  }
   const sourceBinding = await inspectTesslEvalSource(source, context.skillName);
   if (
     !sourceBinding.structureValid ||
