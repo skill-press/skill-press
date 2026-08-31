@@ -217,7 +217,7 @@ function completedEval(
                 ],
               },
               {
-                variant: "with-context",
+                variant: "usage-spec",
                 assessmentResults: [
                   { name: "critical_safety", score: 10, max_score: 10 },
                   { name: "quality", score: 80, max_score: 90 },
@@ -236,7 +236,7 @@ function completedEval(
                 ],
               },
               {
-                variant: "with-context",
+                variant: "usage-spec",
                 assessmentResults: [
                   { name: "critical_safety", score: 10, max_score: 10 },
                   { name: "quality", score: 90, max_score: 90 },
@@ -1270,6 +1270,20 @@ describe("Tessl official evidence bridge", () => {
         ).attributes.scenarios;
         const context = scenarios[0]?.solutions[1];
         if (context !== undefined) context.variant = "other";
+        return value;
+      })(),
+    ],
+    [
+      "unverified legacy context variant",
+      (() => {
+        const value = completedEval();
+        const scenarios = (
+          value.data as {
+            attributes: { scenarios: Array<{ solutions: Array<Record<string, unknown>> }> };
+          }
+        ).attributes.scenarios;
+        const context = scenarios[0]?.solutions[1];
+        if (context !== undefined) context.variant = "with-context";
         return value;
       })(),
     ],

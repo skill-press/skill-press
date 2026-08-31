@@ -101,7 +101,7 @@ function executor(): TesslCommandExecutor {
                     ],
                   },
                   {
-                    variant: "with-context",
+                    variant: "usage-spec",
                     assessmentResults: [
                       { name: "critical_safety", score: 10, max_score: 10 },
                       { name: "quality", score: 80, max_score: 90 },
@@ -120,7 +120,7 @@ function executor(): TesslCommandExecutor {
                     ],
                   },
                   {
-                    variant: "with-context",
+                    variant: "usage-spec",
                     assessmentResults: [
                       { name: "critical_safety", score: 10, max_score: 10 },
                       { name: "quality", score: 90, max_score: 90 },
@@ -335,19 +335,22 @@ describe("Tessl release gate", () => {
     expect(report.issues.map((entry) => entry.code)).toContain("release.evidence.output");
   });
 
-  it("rejects a sole non-baseline solution whose variant is not with-context", async () => {
-    const value = await fixture();
-    const evaluation = JSON.parse(await readFile(join(value.root, value.evalPath), "utf8"));
-    const raw = JSON.parse(
-      await readFile(join(value.root, evaluation.storagePath, "eval-result.stdout"), "utf8"),
-    );
-    raw.data.attributes.scenarios[0].solutions[1].variant = "other";
-    await replaceRawStdout(value, value.evalPath, "result", "eval-result", JSON.stringify(raw));
+  it.each(["with-context", "other"])(
+    "rejects a sole non-baseline solution whose variant is %s",
+    async (variant) => {
+      const value = await fixture();
+      const evaluation = JSON.parse(await readFile(join(value.root, value.evalPath), "utf8"));
+      const raw = JSON.parse(
+        await readFile(join(value.root, evaluation.storagePath, "eval-result.stdout"), "utf8"),
+      );
+      raw.data.attributes.scenarios[0].solutions[1].variant = variant;
+      await replaceRawStdout(value, value.evalPath, "result", "eval-result", JSON.stringify(raw));
 
-    expect((await gate(value)).issues.map((entry) => entry.code)).toContain(
-      "release.evidence.output",
-    );
-  });
+      expect((await gate(value)).issues.map((entry) => entry.code)).toContain(
+        "release.evidence.output",
+      );
+    },
+  );
 
   it("accepts omitted provider selections only when the exact command is bound", async () => {
     const selections = [[], ["--agent", "codex"], ["--model", "model"]] as const;
@@ -970,19 +973,19 @@ describe("Tessl release gate", () => {
         evidence: "eval",
         key: "result",
         raw: "eval-result",
-        text: '{"data":{"id":"eval-1","attributes":{"status":"completed","scenarios":[{"fingerprint":"x","solutions":[{"variant":"with-context","assessmentResults":[{"score":9,"max_score":10}]},{"variant":"other","assessmentResults":[{"score":9,"max_score":10}]}]}]}}}\n',
+        text: '{"data":{"id":"eval-1","attributes":{"status":"completed","scenarios":[{"fingerprint":"x","solutions":[{"variant":"usage-spec","assessmentResults":[{"score":9,"max_score":10}]},{"variant":"other","assessmentResults":[{"score":9,"max_score":10}]}]}]}}}\n',
       },
       {
         evidence: "eval",
         key: "result",
         raw: "eval-result",
-        text: '{"data":{"id":"eval-1","attributes":{"status":"completed","scenarios":[{"fingerprint":"x","solutions":[{"variant":"baseline","assessmentResults":[{"score":4,"max_score":10}]},{"variant":"with-context","assessmentResults":[{"score":11,"max_score":10}]}]}]}}}\n',
+        text: '{"data":{"id":"eval-1","attributes":{"status":"completed","scenarios":[{"fingerprint":"x","solutions":[{"variant":"baseline","assessmentResults":[{"score":4,"max_score":10}]},{"variant":"usage-spec","assessmentResults":[{"score":11,"max_score":10}]}]}]}}}\n',
       },
       {
         evidence: "eval",
         key: "result",
         raw: "eval-result",
-        text: '{"data":{"id":"eval-1","attributes":{"status":"completed","scenarios":[{"fingerprint":"x","solutions":[{"variant":"baseline","assessmentResults":[{"score":4,"max_score":10}]},{"variant":"with-context","assessmentResults":[{"score":9,"max_score":10}]}]},{"fingerprint":"x","solutions":[{"variant":"baseline","assessmentResults":[{"score":5,"max_score":10}]},{"variant":"with-context","assessmentResults":[{"score":9,"max_score":10}]}]}]}}}\n',
+        text: '{"data":{"id":"eval-1","attributes":{"status":"completed","scenarios":[{"fingerprint":"x","solutions":[{"variant":"baseline","assessmentResults":[{"score":4,"max_score":10}]},{"variant":"usage-spec","assessmentResults":[{"score":9,"max_score":10}]}]},{"fingerprint":"x","solutions":[{"variant":"baseline","assessmentResults":[{"score":5,"max_score":10}]},{"variant":"usage-spec","assessmentResults":[{"score":9,"max_score":10}]}]}]}}}\n',
       },
     ];
     for (const fault of cases) {

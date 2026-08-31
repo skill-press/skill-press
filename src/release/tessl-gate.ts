@@ -7,7 +7,12 @@ import { Ajv, type ValidateFunction } from "ajv";
 import { loadProjectConfig } from "../config/load.js";
 import { digestBoundedTree } from "../evidence/tree-digest.js";
 import { runCapturedCommand } from "../process/capture.js";
-import { tesslRubricUsageMatches, tesslSolutionAssessment } from "../tessl/assessment.js";
+import {
+  TESSL_BASELINE_VARIANT,
+  TESSL_CONTEXT_VARIANT,
+  tesslRubricUsageMatches,
+  tesslSolutionAssessment,
+} from "../tessl/assessment.js";
 import { tesslCommandDigest } from "../tessl/command-digest.js";
 import { loadTesslEvalRubricInventories } from "../tessl/eval-rubric.js";
 import { inspectTesslEvalSource } from "../tessl/eval-source.js";
@@ -399,14 +404,17 @@ function verifyEvalOutputs(
       scenario.solutions.some(
         (solution) =>
           !isRecord(solution) ||
-          (solution.variant !== "baseline" && solution.variant !== "with-context"),
+          (solution.variant !== TESSL_BASELINE_VARIANT &&
+            solution.variant !== TESSL_CONTEXT_VARIANT),
       )
     ) {
       throw new TypeError("pairing variant");
     }
-    const baseline = scenario.solutions.filter((solution) => solution.variant === "baseline");
+    const baseline = scenario.solutions.filter(
+      (solution) => solution.variant === TESSL_BASELINE_VARIANT,
+    );
     const withContext = scenario.solutions.filter(
-      (solution) => solution.variant === "with-context",
+      (solution) => solution.variant === TESSL_CONTEXT_VARIANT,
     );
     if (baseline.length !== 1 || withContext.length !== 1) throw new TypeError("pairing");
     const baselineAssessment = tesslSolutionAssessment(baseline[0]);

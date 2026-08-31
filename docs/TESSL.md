@@ -124,13 +124,14 @@ argv path or Tessl's documented content-addressed basename normalization. Final
 canonical skill are checked before capture, after capture, and again at release-gate time.
 
 The eval bridge binds returned run ID, resolved agent and model, repetitions, and scenario count to
-its request. It computes each baseline and with-context percentage from returned assessment
-criteria. Impact is the mean with-context percentage; baseline, delta, and uplift remain separate.
+its request. Tessl 0.101.0 names the contextual raw solution `usage-spec`; Skill Press computes each
+baseline and contextual percentage from returned assessment criteria. Impact is the mean contextual
+percentage; baseline, delta, and uplift remain separate.
 Each weighted checklist must total exactly 100 points and include at least one uniquely named
 `critical_*` criterion. A critical criterion describes conjunctive release invariants: its rubric
-must direct the evaluator to assign zero unless every listed invariant holds. Every with-context
+must direct the evaluator to assign zero unless every listed invariant holds. Every contextual
 critical criterion must receive full credit, regardless of the aggregate Impact score. Required
-scenario non-regression is enforced independently. Returned baseline and with-context criterion
+scenario non-regression is enforced independently. Returned baseline and contextual criterion
 names, weights, and order must match the exact current `criteria.json` inventories, and returned
 scenarios must form complete repetitions of the source inventory. Placeholder, missing, extra,
 reordered, or reweighted criteria fail closed.

@@ -25,7 +25,12 @@ import {
 } from "../process/capture.js";
 import { withPrivateProviderHome } from "../process/provider-home.js";
 import { validateAgentSkill } from "../validate/agent-skill.js";
-import { tesslRubricUsageMatches, tesslSolutionAssessment } from "./assessment.js";
+import {
+  TESSL_BASELINE_VARIANT,
+  TESSL_CONTEXT_VARIANT,
+  tesslRubricUsageMatches,
+  tesslSolutionAssessment,
+} from "./assessment.js";
 import { tesslCommandDigest } from "./command-digest.js";
 import { loadTesslEvalRubricInventories } from "./eval-rubric.js";
 import { inspectTesslEvalSource } from "./eval-source.js";
@@ -839,20 +844,23 @@ function parseCompletedEval(
       scenario.solutions.some(
         (solution) =>
           !isRecord(solution) ||
-          (solution.variant !== "baseline" && solution.variant !== "with-context"),
+          (solution.variant !== TESSL_BASELINE_VARIANT &&
+            solution.variant !== TESSL_CONTEXT_VARIANT),
       )
     ) {
       throw new TesslEvidenceError("Tessl eval pairing is invalid.", [
         issue(
           "tessl.eval.pairing",
           `/result/scenarios/${index}`,
-          "solutions may contain only baseline and with-context variants",
+          "solutions may contain only the pinned baseline and usage-spec variants",
         ),
       ]);
     }
-    const baselines = scenario.solutions.filter((solution) => solution.variant === "baseline");
+    const baselines = scenario.solutions.filter(
+      (solution) => solution.variant === TESSL_BASELINE_VARIANT,
+    );
     const withContext = scenario.solutions.filter(
-      (solution) => solution.variant === "with-context",
+      (solution) => solution.variant === TESSL_CONTEXT_VARIANT,
     );
     if (baselines.length > 1 || withContext.length !== 1) {
       throw new TesslEvidenceError("Tessl eval pairing is invalid.", [

@@ -1,6 +1,10 @@
 const CRITICAL_PREFIX = "critical_";
 const CRITERION_NAME = /^[a-z][a-z0-9_]{0,99}$/u;
 
+/** Exact solution variants returned by the pinned official Tessl 0.101.0 eval protocol. */
+export const TESSL_BASELINE_VARIANT = "baseline";
+export const TESSL_CONTEXT_VARIANT = "usage-spec";
+
 export interface TesslSolutionAssessment {
   readonly score: number;
   readonly criticalPassed: boolean;
