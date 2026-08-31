@@ -43,7 +43,7 @@
     "runId": { "type": "string", "minLength": 1, "maxLength": 200 },
     "agent": { "type": "string", "minLength": 1, "maxLength": 100 },
     "model": { "type": "string", "minLength": 1, "maxLength": 200 },
-    "runs": { "type": "integer", "minimum": 1, "maximum": 10 },
+    "runs": { "type": "integer", "minimum": 1, "maximum": 20 },
     "impactScore": { "type": "integer", "minimum": 0, "maximum": 100 },
     "baselineScore": { "type": "integer", "minimum": 0, "maximum": 100 },
     "impactDelta": { "type": "integer", "minimum": -100, "maximum": 100 },

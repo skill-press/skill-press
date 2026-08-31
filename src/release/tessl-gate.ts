@@ -11,6 +11,7 @@ import {
   TESSL_BASELINE_VARIANT,
   TESSL_CONTEXT_VARIANT,
   tesslRubricUsageMatches,
+  tesslSolutionRunsMatch,
   tesslSolutionAssessment,
 } from "../tessl/assessment.js";
 import { tesslCommandDigest } from "../tessl/command-digest.js";
@@ -378,7 +379,11 @@ function verifyEvalOutputs(
     throw new TypeError("eval identity");
   }
   const rawScenarios = data.attributes.scenarios;
-  if (data.attributes.status !== "completed" || !Array.isArray(rawScenarios)) {
+  if (
+    data.attributes.status !== "completed" ||
+    data.attributes.runCount !== evidence.runs ||
+    !Array.isArray(rawScenarios)
+  ) {
     throw new TypeError("eval result");
   }
   const fingerprints = new Set<string>();
@@ -404,6 +409,7 @@ function verifyEvalOutputs(
       scenario.solutions.some(
         (solution) =>
           !isRecord(solution) ||
+          !tesslSolutionRunsMatch(solution, evidence.runs) ||
           (solution.variant !== TESSL_BASELINE_VARIANT &&
             solution.variant !== TESSL_CONTEXT_VARIANT),
       )
@@ -439,7 +445,7 @@ function verifyEvalOutputs(
       delta: withContextScore - baselineScore,
     };
   });
-  if (!tesslRubricUsageMatches(observedRubrics, expectedRubrics, evidence.runs)) {
+  if (!tesslRubricUsageMatches(observedRubrics, expectedRubrics, 1)) {
     throw new TypeError("rubric binding");
   }
   const baselineScore = Math.round(

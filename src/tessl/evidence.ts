@@ -29,6 +29,7 @@ import {
   TESSL_BASELINE_VARIANT,
   TESSL_CONTEXT_VARIANT,
   tesslRubricUsageMatches,
+  tesslSolutionRunsMatch,
   tesslSolutionAssessment,
 } from "./assessment.js";
 import { tesslCommandDigest } from "./command-digest.js";
@@ -799,6 +800,15 @@ function parseCompletedEval(
       issue("tessl.eval.status", "/result", "eval status must be completed"),
     ]);
   }
+  if (data.attributes.runCount !== expectedRuns) {
+    throw new TesslEvidenceError("Tessl eval repetition binding is invalid.", [
+      issue(
+        "tessl.eval.repetitions",
+        "/result/data/attributes/runCount",
+        "provider runCount must equal the requested runs",
+      ),
+    ]);
+  }
   const agent = data.attributes.agent;
   const model = data.attributes.model;
   if (
@@ -857,6 +867,15 @@ function parseCompletedEval(
         ),
       ]);
     }
+    if (scenario.solutions.some((solution) => !tesslSolutionRunsMatch(solution, expectedRuns))) {
+      throw new TesslEvidenceError("Tessl eval solution repetitions are invalid.", [
+        issue(
+          "tessl.eval.repetitions",
+          `/result/scenarios/${index}/solutions`,
+          "every solution must contain the exact requested number of completed runs",
+        ),
+      ]);
+    }
     const baselines = scenario.solutions.filter(
       (solution) => solution.variant === TESSL_BASELINE_VARIANT,
     );
@@ -904,7 +923,7 @@ function parseCompletedEval(
       delta: withContextScore - baselineScore,
     };
   }) as SkillPressTesslEvalEvidence["scenarios"];
-  if (!tesslRubricUsageMatches(observedRubrics, expectedRubrics, expectedRuns)) {
+  if (!tesslRubricUsageMatches(observedRubrics, expectedRubrics, 1)) {
     throw new TesslEvidenceError("Tessl eval result rubrics do not match the source.", [
       issue(
         "tessl.eval.rubric_binding",
@@ -922,14 +941,12 @@ export async function captureTesslEvalEvidence(
   options: TesslEvalOptions,
 ): Promise<SkillPressTesslEvalEvidence> {
   const timeout = timeoutOf(options);
-  const runs = options.runs ?? 1;
   const pollIntervalMs = options.pollIntervalMs ?? 30_000;
   if (
     (options.agent !== undefined && !boundedIdentifier(options.agent, 100)) ||
     (options.model !== undefined && !boundedIdentifier(options.model, 200)) ||
-    !Number.isSafeInteger(runs) ||
-    runs < 1 ||
-    runs > 10 ||
+    (options.runs !== undefined &&
+      (!Number.isSafeInteger(options.runs) || options.runs < 1 || options.runs > 20)) ||
     !Number.isSafeInteger(pollIntervalMs) ||
     pollIntervalMs < 1 ||
     pollIntervalMs > 60_000
@@ -943,6 +960,17 @@ export async function captureTesslEvalEvidence(
     ]);
   }
   const root = await realpath(resolve(projectDirectory));
+  const projectConfig = await loadProjectConfig(root);
+  const runs = options.runs ?? projectConfig.evaluation.repetitions;
+  if (runs !== projectConfig.evaluation.repetitions) {
+    throw new TesslEvidenceError("Tessl eval runs do not match project policy.", [
+      issue(
+        "tessl.option.eval_runs",
+        "/options/runs",
+        "runs must equal evaluation.repetitions from skill-press.yaml",
+      ),
+    ]);
+  }
   const source = await realpath(resolve(root, options.source));
   const sourcePath = ensureInside(root, source, "/source");
   const scenarioSourceSha256 = await digestBoundedTree(source);

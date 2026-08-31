@@ -11,6 +11,20 @@ export interface TesslSolutionAssessment {
   readonly inventoryKey: string;
 }
 
+/** Bind a provider solution to the exact requested set of completed Tessl repetitions. */
+export function tesslSolutionRunsMatch(value: unknown, expectedRepetitions: number): boolean {
+  if (
+    !isRecord(value) ||
+    !Number.isSafeInteger(expectedRepetitions) ||
+    expectedRepetitions < 1 ||
+    !Array.isArray(value.runs) ||
+    value.runs.length !== expectedRepetitions
+  ) {
+    return false;
+  }
+  return value.runs.every((run) => isRecord(run) && run.status === "completed");
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }

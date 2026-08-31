@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { tesslRubricUsageMatches, tesslSolutionAssessment } from "../src/tessl/assessment.js";
+import {
+  tesslRubricUsageMatches,
+  tesslSolutionAssessment,
+  tesslSolutionRunsMatch,
+} from "../src/tessl/assessment.js";
 
 function solution(criticalScore = 40, qualityScore = 55): Record<string, unknown> {
   return {
@@ -21,6 +25,22 @@ describe("Tessl weighted checklist assessment", () => {
       score: 99,
       criticalPassed: false,
     });
+  });
+
+  it("binds a solution to the exact number of completed provider runs", () => {
+    expect(
+      tesslSolutionRunsMatch(
+        { runs: [{ status: "completed" }, { status: "completed" }, { status: "completed" }] },
+        3,
+      ),
+    ).toBe(true);
+    expect(tesslSolutionRunsMatch({ runs: [{ status: "completed" }] }, 3)).toBe(false);
+    expect(
+      tesslSolutionRunsMatch(
+        { runs: [{ status: "completed" }, { status: "failed" }, { status: "completed" }] },
+        3,
+      ),
+    ).toBe(false);
   });
 
   it.each([
