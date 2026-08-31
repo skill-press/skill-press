@@ -1,14 +1,14 @@
 ---
 name: skill-press
-description: Use when the user asks to create or harden an Agent Skill, verify readiness, run behavioral or Tessl evaluation, reproducibly package a skill, submit it to Skill Press for review, inspect submission status, or recover an exact failed submission. Do not use for ordinary writing, general application development, unrelated package publishing, or publishing an unreviewed skill to third-party marketplaces.
+description: Use when the user asks to create or harden an Agent Skill; test, review, or evaluate it; package it reproducibly; publish or submit it through Skill Press; inspect status; install an approved release; or recover an exact failed submission. Do not use for ordinary writing, general application development, unrelated package publishing, or publishing an unreviewed skill to third-party marketplaces.
 license: MIT
 ---
 
 # Skill Press
 
-Use Skill Press for the quality-controlled Agent Skill lifecycle. Skill Press is the canonical
-review and trust boundary; GitHub is source infrastructure, npm distributes the CLI, and other
-catalogs may only provide discovery or controlled mirrors of an already approved immutable release.
+Use Skill Press to author, validate, evaluate, package, submit, and install trusted Agent Skills.
+Skill Press owns canonical review and trust. GitHub hosts source, npm distributes this CLI, and any
+mirror may point only to an approved immutable release.
 
 ## Choose the operating path
 
@@ -27,10 +27,12 @@ Read only the references needed for the current request.
    `skillpress.yaml` filename rather than silently combining old and new state.
 2. Keep one portable canonical skill tree. Registry identity, review state, mirrors, and runtime
    projections never belong in `SKILL.md` frontmatter.
-3. Run `skpress check --project <root> --json`, then trusted project commands with
-   `skpress test --project <root> --json` when the owner authorizes them.
-4. Use paired sandbox evaluation for behavioral evidence. Improve only from training failures and
-   keep private holdout contents isolated from the authoring role.
+3. Run `skpress check`, then trusted project commands with `skpress test` when the owner authorizes
+   them. On failure, fix manually or use the bounded `skpress improve` workflow from the authoring
+   reference; rerun check, test, and training evaluation before testing the unchanged private
+   holdout.
+4. Use paired sandbox evaluation for behavioral evidence. Keep private holdout contents isolated
+   from the authoring role.
 5. Capture official Tessl Quality and Impact evidence without inventing scores or replacing them
    with local readiness.
 6. Stage only clean tracked canonical files and create deterministic artifacts bound to the exact
@@ -41,12 +43,26 @@ Read only the references needed for the current request.
    `changes-requested`, `accepted`, `publication-blocked`, `rejected`, and `withdrawn` are not
    synonyms for `published`.
 
+Common local gate:
+
+```sh
+skpress check --project . --json
+skpress test --project . --json
+```
+
+After official evidence passes, prepare without contacting the registry:
+
+```sh
+skpress submit --project . --dry-run \
+  --review-evidence <review-evidence.json> \
+  --eval-evidence <eval-evidence.json> --eval-source <eval-source> --json
+```
+
 ## Trust and authority boundaries
 
-- Creation, project tests, external evaluation, packaging, and remote submission are separate
-  authorities. A request for one does not imply the next.
-- The token comes only from `SKILL_PRESS_TOKEN`; never put credentials or registry endpoints in
-  project configuration, command arguments, artifacts, logs, or receipts.
+- Creation, tests, external evaluation, packaging, and remote submission require separate authority.
+- Read the token only from `SKILL_PRESS_TOKEN`; never place credentials or registry endpoints in
+  configuration, arguments, artifacts, logs, or receipts.
 - Skill Press independently validates submissions. Client-side passing checks and advisory
   evidence do not grant trust.
 - A published version and artifact digest are immutable. Later `quarantined` or `revoked` trust
@@ -58,11 +74,10 @@ Read only the references needed for the current request.
 
 ## Current interface
 
-The CLI requires Node.js 22 or newer; sandboxed evaluation additionally requires Docker or Podman.
-The production registry backend, account and token issuer, immutable downloads, and verified
-installation are not live yet. Until they are, stop canonical submission at `--dry-run`; do not
-substitute a third-party publication target.
-The CLI exposes `init`, `check`, `test`, `eval`, `tessl`, `improve`, `package`, `submit`, `add`,
-`install`, `status`, and `doctor`. Run the installed command's `--help` before constructing optional
-arguments. The typed package exports the lower-level validation, evaluation, packaging, and
-submission contracts.
+The CLI requires Node.js 22+; sandboxed evaluation also requires Docker or Podman. The production
+registry, token issuer, immutable downloads, and verified install are not live. Until they are,
+stop submission at `--dry-run` and do not substitute another publication target.
+
+Commands: `init`, `check`, `test`, `eval`, `tessl`, `improve`, `package`, `submit`, `add`, `install`,
+`status`, and `doctor`. Use `<command> --help` for advanced flags. Typed exports provide the same
+lower-level validation, evaluation, packaging, and submission contracts.
