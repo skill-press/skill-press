@@ -9,6 +9,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { loadCapabilityBrief } from "../src/create/load.js";
 import { renderCapabilityProject } from "../src/create/render.js";
 import { writeRenderedProject } from "../src/create/write.js";
+import { tesslSolutionAssessment } from "../src/tessl/assessment.js";
+import { loadTesslEvalRubricInventories } from "../src/tessl/eval-rubric.js";
 import { inspectTesslEvalSource } from "../src/tessl/eval-source.js";
 
 const temporaryDirectories: string[] = [];
@@ -44,6 +46,49 @@ async function source(): Promise<string> {
 }
 
 describe("Tessl eval source inspection", () => {
+  it("loads exact ordered rubric inventories from scenario criteria", async () => {
+    const value = await source();
+    await mkdir(join(value, "evals", "one"));
+    const criteria =
+      '{"context":"test","type":"weighted_checklist","checklist":[{"name":"critical_safety","description":"test","max_score":10},{"name":"quality","description":"test","max_score":90}]}\n';
+    await writeFile(join(value, "evals", "one", "criteria.json"), criteria);
+    const expected = tesslSolutionAssessment({
+      assessmentResults: [
+        { name: "critical_safety", score: 0, max_score: 10 },
+        { name: "quality", score: 0, max_score: 90 },
+      ],
+    })?.inventoryKey;
+    await expect(loadTesslEvalRubricInventories(value)).resolves.toEqual([expected]);
+  });
+
+  it.each([
+    ["flat file", async (value: string) => writeFile(join(value, "evals", "scenario.json"), "{}")],
+    [
+      "missing critical",
+      async (value: string) => {
+        await mkdir(join(value, "evals", "one"));
+        await writeFile(
+          join(value, "evals", "one", "criteria.json"),
+          '{"type":"weighted_checklist","checklist":[{"name":"quality","description":"test","max_score":100}]}',
+        );
+      },
+    ],
+    [
+      "wrong total",
+      async (value: string) => {
+        await mkdir(join(value, "evals", "one"));
+        await writeFile(
+          join(value, "evals", "one", "criteria.json"),
+          '{"type":"weighted_checklist","checklist":[{"name":"critical_safety","description":"test","max_score":99}]}',
+        );
+      },
+    ],
+  ] as const)("rejects invalid rubric source: %s", async (_name, arrange) => {
+    const value = await source();
+    await arrange(value);
+    await expect(loadTesslEvalRubricInventories(value)).rejects.toBeInstanceOf(Error);
+  });
+
   it("accepts an exclusive single-skill plugin with an optional dependency-free vendored project", async () => {
     const value = await source();
     await writeFile(

@@ -25,8 +25,9 @@ import {
 } from "../process/capture.js";
 import { withPrivateProviderHome } from "../process/provider-home.js";
 import { validateAgentSkill } from "../validate/agent-skill.js";
+import { tesslRubricUsageMatches, tesslSolutionAssessment } from "./assessment.js";
 import { tesslCommandDigest } from "./command-digest.js";
-import { tesslSolutionAssessment } from "./assessment.js";
+import { loadTesslEvalRubricInventories } from "./eval-rubric.js";
 import { inspectTesslEvalSource } from "./eval-source.js";
 import type { SkillPressTesslEvalEvidence } from "./generated-eval-evidence.js";
 import type { SkillPressTesslReviewEvidence } from "./generated-review-evidence.js";
@@ -755,6 +756,7 @@ function parseCompletedEval(
   expectedRunId: string,
   expectedContextPath: string,
   expectedCliInvocation: string,
+  expectedRubrics: readonly string[],
 ): {
   readonly scenarios: SkillPressTesslEvalEvidence["scenarios"];
   readonly missingBaseline: boolean;
@@ -811,6 +813,7 @@ function parseCompletedEval(
   let missingBaseline = false;
   let criticalFailure = false;
   const fingerprints = new Set<string>();
+  const observedRubrics: string[] = [];
   const scenarios = data.attributes.scenarios.map((scenario, index) => {
     if (
       !isRecord(scenario) ||
@@ -859,6 +862,16 @@ function parseCompletedEval(
         ),
       ]);
     }
+    if (baseline !== undefined && baseline.inventoryKey !== context.inventoryKey) {
+      throw new TesslEvidenceError("Tessl eval rubric variants do not match.", [
+        issue(
+          "tessl.eval.rubric_binding",
+          `/result/scenarios/${index}`,
+          "baseline and with-context variants must use the same exact rubric inventory",
+        ),
+      ]);
+    }
+    observedRubrics.push(context.inventoryKey);
     if (!context.criticalPassed) criticalFailure = true;
     const baselineScore = baseline?.score ?? 0;
     const withContextScore = context.score;
@@ -869,6 +882,15 @@ function parseCompletedEval(
       delta: withContextScore - baselineScore,
     };
   }) as SkillPressTesslEvalEvidence["scenarios"];
+  if (!tesslRubricUsageMatches(observedRubrics, expectedRubrics)) {
+    throw new TesslEvidenceError("Tessl eval result rubrics do not match the source.", [
+      issue(
+        "tessl.eval.rubric_binding",
+        "/result/scenarios",
+        "returned rubric names, weights, order, and repetitions must match current criteria.json",
+      ),
+    ]);
+  }
   return { scenarios, missingBaseline, criticalFailure, agent, model };
 }
 
@@ -902,6 +924,22 @@ export async function captureTesslEvalEvidence(
   const source = await realpath(resolve(root, options.source));
   const sourcePath = ensureInside(root, source, "/source");
   const scenarioSourceSha256 = await digestBoundedTree(source);
+  let rubricInventories: readonly string[];
+  try {
+    rubricInventories = await loadTesslEvalRubricInventories(source);
+  } catch (error) {
+    throw new TesslEvidenceError(
+      "Tessl eval rubrics are invalid.",
+      [
+        issue(
+          "tessl.eval.rubric",
+          "/source/evals",
+          "each scenario must contain a valid 100-point weighted checklist with critical_*",
+        ),
+      ],
+      error,
+    );
+  }
   const context = await commonContext(projectDirectory, options, [sourcePath]);
   const sourceBinding = await inspectTesslEvalSource(source, context.skillName);
   if (
@@ -1025,6 +1063,7 @@ export async function captureTesslEvalEvidence(
       runId,
       startContextDefinition.path,
       startArgv.slice(1).join(" "),
+      rubricInventories,
     );
     if (
       (options.agent !== undefined && parsed.agent !== options.agent) ||

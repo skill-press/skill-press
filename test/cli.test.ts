@@ -330,13 +330,16 @@ describe("Skill Press CLI scaffold", () => {
     ).resolves.toBe(0);
     const evalSource = join(project, "tessl-evals");
     await mkdir(join(evalSource, ".tessl-plugin"), { recursive: true });
-    await mkdir(join(evalSource, "evals"));
+    await mkdir(join(evalSource, "evals", "scenario"), { recursive: true });
     await mkdir(join(evalSource, "skills"));
     await writeFile(
       join(evalSource, ".tessl-plugin", "plugin.json"),
       '{"name":"test/incident-summary","version":"0.1.0","private":true,"skills":["skills/incident-summary"]}\n',
     );
-    await writeFile(join(evalSource, "evals", "scenario.json"), "{}\n");
+    await writeFile(
+      join(evalSource, "evals", "scenario", "criteria.json"),
+      '{"context":"test","type":"weighted_checklist","checklist":[{"name":"critical_safety","description":"test","max_score":10},{"name":"quality","description":"test","max_score":90}]}\n',
+    );
     await cp(
       join(project, "skills", "incident-summary"),
       join(evalSource, "skills", "incident-summary"),

@@ -161,13 +161,19 @@ async function fixture(): Promise<Fixture> {
   await writeRenderedProject(renderCapabilityProject(await loadCapabilityBrief(briefPath)), root);
   const evalSource = join(root, "tessl-evals");
   await mkdir(join(evalSource, ".tessl-plugin"), { recursive: true });
-  await mkdir(join(evalSource, "evals"));
+  await mkdir(join(evalSource, "evals", "scenario-one"), { recursive: true });
+  await mkdir(join(evalSource, "evals", "scenario-two"));
   await mkdir(join(evalSource, "skills"));
   await writeFile(
     join(evalSource, ".tessl-plugin", "plugin.json"),
     '{"name":"test/incident-summary","version":"0.1.0","private":true,"skills":["skills/incident-summary"]}\n',
   );
-  await writeFile(join(evalSource, "evals", "scenario.json"), "{}\n");
+  const criteria =
+    '{"context":"test","type":"weighted_checklist","checklist":[{"name":"critical_safety","description":"test","max_score":10},{"name":"quality","description":"test","max_score":90}]}\n';
+  await writeFile(join(evalSource, "evals", "scenario-one", "criteria.json"), criteria);
+  await writeFile(join(evalSource, "evals", "scenario-one", "task.md"), "# One\n");
+  await writeFile(join(evalSource, "evals", "scenario-two", "criteria.json"), criteria);
+  await writeFile(join(evalSource, "evals", "scenario-two", "task.md"), "# Two\n");
   await cp(
     join(root, "skills", "incident-summary"),
     join(evalSource, "skills", "incident-summary"),
@@ -575,7 +581,7 @@ describe("Tessl release gate", () => {
   it("rejects current source, commit, configuration, and scenario drift", async () => {
     const value = await fixture();
     await writeFile(join(value.root, "skills/incident-summary/LICENSE"), "changed\n");
-    await writeFile(join(value.root, "tessl-evals/evals/scenario.json"), "changed\n");
+    await writeFile(join(value.root, "tessl-evals/evals/scenario-one/task.md"), "changed\n");
     const report = await gate(value);
     expect(report.issues.map((entry) => entry.code)).toEqual(
       expect.arrayContaining([
@@ -719,7 +725,7 @@ describe("Tessl release gate", () => {
     const value = await fixture();
     const evaluation = JSON.parse(await readFile(join(value.root, value.evalPath), "utf8"));
     await writeFile(
-      join(value.root, capturedEvalSource(evaluation), "evals", "scenario.json"),
+      join(value.root, capturedEvalSource(evaluation), "evals", "scenario-one", "task.md"),
       "changed\n",
     );
 
@@ -734,8 +740,14 @@ describe("Tessl release gate", () => {
     const review = JSON.parse(await readFile(reviewFile, "utf8"));
     const evaluation = JSON.parse(await readFile(evalFile, "utf8"));
     const oldCapturedSource = capturedEvalSource(evaluation);
-    await writeFile(join(value.root, "tessl-evals", "evals", "scenario.json"), "changed\n");
-    await writeFile(join(value.root, oldCapturedSource, "evals", "scenario.json"), "changed\n");
+    await writeFile(
+      join(value.root, "tessl-evals", "evals", "scenario-one", "task.md"),
+      "changed\n",
+    );
+    await writeFile(
+      join(value.root, oldCapturedSource, "evals", "scenario-one", "task.md"),
+      "changed\n",
+    );
     await execFileAsync("git", ["add", "tessl-evals"], { cwd: value.root });
     await execFileAsync(
       "git",

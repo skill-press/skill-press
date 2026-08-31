@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { tesslSolutionAssessment } from "../src/tessl/assessment.js";
+import { tesslRubricUsageMatches, tesslSolutionAssessment } from "../src/tessl/assessment.js";
 
 function solution(criticalScore = 40, qualityScore = 55): Record<string, unknown> {
   return {
@@ -13,8 +13,11 @@ function solution(criticalScore = 40, qualityScore = 55): Record<string, unknown
 
 describe("Tessl weighted checklist assessment", () => {
   it("returns the normalized score only with a full critical criterion", () => {
-    expect(tesslSolutionAssessment(solution())).toEqual({ score: 95, criticalPassed: true });
-    expect(tesslSolutionAssessment(solution(39, 60))).toEqual({
+    expect(tesslSolutionAssessment(solution())).toMatchObject({
+      score: 95,
+      criticalPassed: true,
+    });
+    expect(tesslSolutionAssessment(solution(39, 60))).toMatchObject({
       score: 99,
       criticalPassed: false,
     });
@@ -44,5 +47,52 @@ describe("Tessl weighted checklist assessment", () => {
     },
   ])("rejects an unsafe or malformed checklist", (value) => {
     expect(tesslSolutionAssessment(value)).toBeUndefined();
+  });
+
+  it("matches only the exact source criterion names, weights, and order", () => {
+    const expected = tesslSolutionAssessment(solution())?.inventoryKey as string;
+    const keys = [
+      {
+        name: "placeholder",
+        value: {
+          assessmentResults: [
+            { name: "critical_placeholder", score: 1, max_score: 1 },
+            { name: "quality", score: 99, max_score: 99 },
+          ],
+        },
+      },
+      {
+        name: "weight drift",
+        value: {
+          assessmentResults: [
+            { name: "critical_release_safety", score: 1, max_score: 1 },
+            { name: "quality", score: 99, max_score: 99 },
+          ],
+        },
+      },
+      {
+        name: "missing and extra",
+        value: {
+          assessmentResults: [
+            { name: "critical_release_safety", score: 40, max_score: 40 },
+            { name: "other", score: 60, max_score: 60 },
+          ],
+        },
+      },
+      {
+        name: "reordered",
+        value: {
+          assessmentResults: [
+            { name: "quality", score: 60, max_score: 60 },
+            { name: "critical_release_safety", score: 40, max_score: 40 },
+          ],
+        },
+      },
+    ];
+    for (const entry of keys) {
+      const observed = tesslSolutionAssessment(entry.value)?.inventoryKey as string;
+      expect(tesslRubricUsageMatches([observed], [expected]), entry.name).toBe(false);
+    }
+    expect(tesslRubricUsageMatches([expected, expected], [expected])).toBe(true);
   });
 });

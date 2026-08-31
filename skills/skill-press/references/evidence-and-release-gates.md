@@ -38,7 +38,9 @@ permissions. A trusted version string without the signed executable digest is in
 Every weighted checklist totals exactly 100 points and includes a uniquely named `critical_*`
 criterion for its release invariants. Critical requirements are conjunctive: the evaluator assigns
 zero if any listed invariant is violated. A with-context critical criterion must receive full
-credit even when the aggregate Impact score would otherwise pass.
+credit even when the aggregate Impact score would otherwise pass. Returned baseline and
+with-context criterion names, weights, and order must match the exact current `criteria.json`
+inventories; placeholder, missing, extra, reordered, or reweighted criteria fail closed.
 
 ## Apply the gate
 

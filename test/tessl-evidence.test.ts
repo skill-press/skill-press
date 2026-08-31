@@ -51,13 +51,17 @@ async function project(): Promise<{ root: string; executable: string; evalSource
   await writeRenderedProject(renderCapabilityProject(await loadCapabilityBrief(briefPath)), root);
   const evalSource = join(root, "tessl-evals");
   await mkdir(join(evalSource, ".tessl-plugin"), { recursive: true });
-  await mkdir(join(evalSource, "evals"));
+  await mkdir(join(evalSource, "evals", "scenario"), { recursive: true });
   await mkdir(join(evalSource, "skills"));
   await writeFile(
     join(evalSource, ".tessl-plugin", "plugin.json"),
     '{"name":"test/incident-summary","version":"0.1.0","private":true,"skills":["skills/incident-summary"]}\n',
   );
-  await writeFile(join(evalSource, "evals", "scenario.json"), "{}\n");
+  await writeFile(
+    join(evalSource, "evals", "scenario", "criteria.json"),
+    '{"context":"test","type":"weighted_checklist","checklist":[{"name":"critical_safety","description":"test","max_score":10},{"name":"quality","description":"test","max_score":90}]}\n',
+  );
+  await writeFile(join(evalSource, "evals", "scenario", "task.md"), "# Test\n");
   await cp(
     join(root, "skills", "incident-summary"),
     join(evalSource, "skills", "incident-summary"),
@@ -982,7 +986,7 @@ describe("Tessl official evidence bridge", () => {
           }),
         );
       }
-      await writeFile(join(fixture.evalSource, "evals", "scenario.json"), "changed\n");
+      await writeFile(join(fixture.evalSource, "evals", "scenario", "task.md"), "changed\n");
       return result(JSON.stringify(completedEval({}, invocation)));
     };
 
@@ -1126,6 +1130,41 @@ describe("Tessl official evidence bridge", () => {
     expect(evidence.impactScore).toBe(100);
     expect(evidence.ineligibilityReasons).toContain("critical_failure");
     expect(evidence.evidenceEligible).toBe(false);
+  });
+
+  it("rejects baseline and with-context rubric inventory mismatch", async () => {
+    const fixture = await project();
+    const value = completedEval();
+    const data = value.data as {
+      attributes: { scenarios: Array<{ solutions: Array<Record<string, unknown>> }> };
+    };
+    const baseline = data.attributes.scenarios[0]?.solutions[0];
+    if (baseline !== undefined)
+      baseline.assessmentResults = [
+        { name: "quality", score: 36, max_score: 90 },
+        { name: "critical_safety", score: 4, max_score: 10 },
+      ];
+    const executor = executorFor((args) => {
+      if (args[0] === "--version") return result("0.101.0\n");
+      if (args[1] === "run")
+        return result(
+          '{"evalRunId":"eval-run-1","agent":"codex","model":"gpt-fixed","scenariosCount":2}',
+        );
+      return result(JSON.stringify(value));
+    });
+    await expect(
+      captureTesslEvalEvidence(fixture.root, {
+        source: "tessl-evals",
+        agent: "codex",
+        model: "gpt-fixed",
+        executable: fixture.executable,
+        executor,
+        pollIntervalMs: 1,
+        wait: async () => undefined,
+      }),
+    ).rejects.toMatchObject({
+      issues: [expect.objectContaining({ code: "tessl.eval.rubric_binding" })],
+    });
   });
 
   it.each([

@@ -4,6 +4,7 @@ const CRITERION_NAME = /^[a-z][a-z0-9_]{0,99}$/u;
 export interface TesslSolutionAssessment {
   readonly score: number;
   readonly criticalPassed: boolean;
+  readonly inventoryKey: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -30,6 +31,7 @@ export function tesslSolutionAssessment(value: unknown): TesslSolutionAssessment
   let criticalCount = 0;
   let criticalPassed = true;
   const names = new Set<string>();
+  const inventory: Array<readonly [string, number]> = [];
   for (const criterion of value.assessmentResults) {
     if (
       !isRecord(criterion) ||
@@ -45,13 +47,45 @@ export function tesslSolutionAssessment(value: unknown): TesslSolutionAssessment
       return undefined;
     }
     names.add(criterion.name);
-    earned += Number(criterion.score);
-    maximum += Number(criterion.max_score);
+    const score = Number(criterion.score);
+    const maxScore = Number(criterion.max_score);
+    inventory.push([criterion.name, maxScore]);
+    earned += score;
+    maximum += maxScore;
     if (criterion.name.startsWith(CRITICAL_PREFIX)) {
       criticalCount += 1;
-      if (Number(criterion.score) !== Number(criterion.max_score)) criticalPassed = false;
+      if (score !== maxScore) criticalPassed = false;
     }
   }
   if (maximum !== 100 || criticalCount === 0) return undefined;
-  return Object.freeze({ score: Math.round(earned), criticalPassed });
+  return Object.freeze({
+    score: Math.round(earned),
+    criticalPassed,
+    inventoryKey: JSON.stringify(inventory),
+  });
+}
+
+/** Match returned scenario rubric inventories to the exact source inventories and repeat count. */
+export function tesslRubricUsageMatches(
+  observed: readonly string[],
+  expected: readonly string[],
+): boolean {
+  if (expected.length === 0 || observed.length < expected.length) return false;
+  const expectedCounts = new Map<string, number>();
+  const observedCounts = new Map<string, number>();
+  for (const inventory of expected)
+    expectedCounts.set(inventory, (expectedCounts.get(inventory) ?? 0) + 1);
+  for (const inventory of observed) {
+    if (!expectedCounts.has(inventory)) return false;
+    observedCounts.set(inventory, (observedCounts.get(inventory) ?? 0) + 1);
+  }
+  let repetition: number | undefined;
+  for (const [inventory, expectedCount] of expectedCounts) {
+    const observedCount = observedCounts.get(inventory) ?? 0;
+    if (observedCount === 0 || observedCount % expectedCount !== 0) return false;
+    const current = observedCount / expectedCount;
+    if (repetition === undefined) repetition = current;
+    else if (repetition !== current) return false;
+  }
+  return repetition !== undefined;
 }

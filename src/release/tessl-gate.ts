@@ -7,8 +7,9 @@ import { Ajv, type ValidateFunction } from "ajv";
 import { loadProjectConfig } from "../config/load.js";
 import { digestBoundedTree } from "../evidence/tree-digest.js";
 import { runCapturedCommand } from "../process/capture.js";
+import { tesslRubricUsageMatches, tesslSolutionAssessment } from "../tessl/assessment.js";
 import { tesslCommandDigest } from "../tessl/command-digest.js";
-import { tesslSolutionAssessment } from "../tessl/assessment.js";
+import { loadTesslEvalRubricInventories } from "../tessl/eval-rubric.js";
 import { inspectTesslEvalSource } from "../tessl/eval-source.js";
 import type { SkillPressTesslEvalEvidence } from "../tessl/generated-eval-evidence.js";
 import type { SkillPressTesslReviewEvidence } from "../tessl/generated-review-evidence.js";
@@ -331,6 +332,7 @@ function verifyEvalOutputs(
   evidence: SkillPressTesslEvalEvidence,
   expectedContextPath: string,
   expectedCliInvocation: string,
+  expectedRubrics: readonly string[],
 ): void {
   const start = extractJsonObject(startBytes);
   const startContext = start.context;
@@ -375,6 +377,7 @@ function verifyEvalOutputs(
     throw new TypeError("eval result");
   }
   const fingerprints = new Set<string>();
+  const observedRubrics: string[] = [];
   const scenarios = rawScenarios.map((scenario) => {
     if (!isRecord(scenario) || typeof scenario.fingerprint !== "string") {
       throw new TypeError("scenario");
@@ -409,6 +412,13 @@ function verifyEvalOutputs(
     ) {
       throw new TypeError("score");
     }
+    if (
+      baselineAssessment !== undefined &&
+      baselineAssessment.inventoryKey !== withContextAssessment.inventoryKey
+    ) {
+      throw new TypeError("rubric pairing");
+    }
+    observedRubrics.push(withContextAssessment.inventoryKey);
     const baselineScore = baselineAssessment?.score ?? 0;
     const withContextScore = withContextAssessment.score;
     return {
@@ -418,6 +428,9 @@ function verifyEvalOutputs(
       delta: withContextScore - baselineScore,
     };
   });
+  if (!tesslRubricUsageMatches(observedRubrics, expectedRubrics)) {
+    throw new TypeError("rubric binding");
+  }
   const baselineScore = Math.round(
     scenarios.reduce((sum, scenario) => sum + scenario.baselineScore, 0) / scenarios.length,
   );
@@ -446,6 +459,18 @@ async function verifyRawEvidence(
   review: SkillPressTesslReviewEvidence,
   evaluation: SkillPressTesslEvalEvidence,
 ): Promise<void> {
+  let rubricInventories: readonly string[];
+  try {
+    rubricInventories = await loadTesslEvalRubricInventories(join(root, evalSource));
+  } catch {
+    throw new TesslReleaseGateError("Tessl eval rubrics are invalid.", [
+      issue(
+        "release.evidence.rubric",
+        "/evalSource/evals",
+        "current weighted checklist inventories must be valid and readable",
+      ),
+    ]);
+  }
   const reviewVersion = await verifyInvocation(
     root,
     review.storagePath,
@@ -591,6 +616,7 @@ async function verifyRawEvidence(
       evaluation,
       evalContext,
       evalStartArgv.join(" "),
+      rubricInventories,
     );
   } catch {
     throw new TesslReleaseGateError("Tessl provider output does not match evidence scores.", [
