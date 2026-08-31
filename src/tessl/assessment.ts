@@ -73,7 +73,14 @@ export function tesslSolutionAssessment(value: unknown): TesslSolutionAssessment
 export function tesslRubricUsageMatches(
   observed: readonly string[],
   expected: readonly string[],
+  expectedRepetitions?: number,
 ): boolean {
+  if (
+    expectedRepetitions !== undefined &&
+    (!Number.isSafeInteger(expectedRepetitions) || expectedRepetitions < 1)
+  ) {
+    return false;
+  }
   if (expected.length === 0 || observed.length < expected.length) return false;
   const expectedCounts = new Map<string, number>();
   const observedCounts = new Map<string, number>();
@@ -91,5 +98,8 @@ export function tesslRubricUsageMatches(
     if (repetition === undefined) repetition = current;
     else if (repetition !== current) return false;
   }
-  return repetition !== undefined;
+  return (
+    repetition !== undefined &&
+    (expectedRepetitions === undefined || repetition === expectedRepetitions)
+  );
 }

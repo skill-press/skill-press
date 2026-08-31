@@ -60,8 +60,9 @@ without selection flags. This supports plans that do not permit explicit model s
 weakening evidence identity.
 
 For the Skill Press v0.1 self-release, omit both selection flags and use the Tessl Free
-provider-default evaluator. Do not lower thresholds, weaken critical criteria, remove failed
-scenarios, or repeatedly sample unchanged bytes. See
+provider-default evaluator. Set `--runs` to `evaluation.repetitions` from `skill-press.yaml`; the
+v0.1 project config requires `--runs 3`. Do not lower thresholds, weaken critical criteria, remove
+failed scenarios, or repeatedly sample unchanged bytes. See
 [ADR 001](decisions/001-free-default-tessl-evaluation.md).
 
 ## Quality capture
@@ -95,9 +96,13 @@ Run:
 skpress tessl eval --project . \
   --source .skill-press/tessl-evals/<set> \
   --executable <absolute-versioned-binary> \
-  [--agent <agent>] [--model <model>] [--runs <count>] \
+  [--agent <agent>] [--model <model>] \
+  --runs <evaluation.repetitions> \
   --json
 ```
+
+Release evidence is accepted only when the command's `--runs`, the evidence field, the exact raw
+scenario repetition count, and `evaluation.repetitions` all agree.
 
 The eval source must contain a real `.tessl-plugin/plugin.json`, evaluation scenarios, and exactly
 one injectable `skills/<configured-skill-name>` tree. Its manifest must declare exactly:

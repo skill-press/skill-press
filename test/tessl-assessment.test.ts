@@ -96,6 +96,8 @@ describe("Tessl weighted checklist assessment", () => {
       expect(tesslRubricUsageMatches([observed], [expected]), entry.name).toBe(false);
     }
     expect(tesslRubricUsageMatches([expected, expected], [expected])).toBe(true);
+    expect(tesslRubricUsageMatches([expected, expected], [expected], 2)).toBe(true);
+    expect(tesslRubricUsageMatches([expected, expected], [expected], 3)).toBe(false);
     expect(tesslRubricUsageMatches([], [])).toBe(false);
     expect(tesslRubricUsageMatches([], [expected])).toBe(false);
     const second = tesslSolutionAssessment({

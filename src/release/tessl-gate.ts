@@ -439,7 +439,7 @@ function verifyEvalOutputs(
       delta: withContextScore - baselineScore,
     };
   });
-  if (!tesslRubricUsageMatches(observedRubrics, expectedRubrics)) {
+  if (!tesslRubricUsageMatches(observedRubrics, expectedRubrics, evidence.runs)) {
     throw new TypeError("rubric binding");
   }
   const baselineScore = Math.round(
@@ -819,6 +819,13 @@ export async function checkTesslReleaseGate(
     "release.evidence.scenarios",
     "/eval/scenarioSourceSha256",
     "Impact evidence must match the complete current eval source",
+  );
+  addCheck(
+    issues,
+    evaluation.runs === config.evaluation.repetitions,
+    "release.impact.runs",
+    "/eval/runs",
+    "official Tessl Impact runs must equal configured evaluation repetitions",
   );
   addCheck(
     issues,

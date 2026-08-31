@@ -155,7 +155,7 @@ skpress tessl review --project . --workspace <workspace> \
 
 skpress tessl eval --project . \
   --source .skill-press/tessl-evals/<set> \
-  --executable "$TESSL_BIN" --json
+  --executable "$TESSL_BIN" --runs 3 --json
 ```
 
 Never paste `TESSL_TOKEN` into chat or store it in `skill-press.yaml`, the skill, fixtures, or Git.
@@ -168,6 +168,10 @@ The Skill Press v0.1 self-release intentionally remains on the selection-free Te
 [ADR 001](decisions/001-free-default-tessl-evaluation.md). A failed default-model result requires a
 material reviewed improvement, not weaker rubrics, lower thresholds, removed scenarios, or another
 sample of unchanged bytes.
+
+The self-release `--runs 3` value comes from `evaluation.repetitions` in `skill-press.yaml`. The
+release gate rejects evidence unless that configured value matches the exact command and raw result
+repetition count.
 
 The eval source must be a private Tessl plugin under `.skill-press/tessl-evals/<set>` with exactly
 one injectable `skills/<configured-name>` tree identical to the canonical skill. Its manifest must
