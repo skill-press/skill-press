@@ -283,6 +283,9 @@ provenance. Agent Skill releases are not npm packages.
 
 Tessl supplies external Quality and Impact evidence through a pinned CLI. Skill Press does not
 publish skills to Tessl as part of its canonical workflow.
+The v0.1 self-release uses Tessl Free with provider-default agent/model selection and preserves the
+90/90 gates, three-run scenario evaluation, and existing critical rubrics; see
+[ADR 001](decisions/001-free-default-tessl-evaluation.md).
 
 ### External catalogs and mirrors
 

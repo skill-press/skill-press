@@ -164,6 +164,10 @@ Rotate it when the evidence window or release work is complete.
 Quality and Impact capture force fresh provider results. If the workspace plan permits selection,
 add `--agent <agent>` and/or `--model <model>` to eval; otherwise omit them and let Tessl choose
 workspace defaults. The returned provider identities and exact invocation remain evidence-bound.
+The Skill Press v0.1 self-release intentionally remains on the selection-free Tessl Free path; see
+[ADR 001](decisions/001-free-default-tessl-evaluation.md). A failed default-model result requires a
+material reviewed improvement, not weaker rubrics, lower thresholds, removed scenarios, or another
+sample of unchanged bytes.
 
 The eval source must be a private Tessl plugin under `.skill-press/tessl-evals/<set>` with exactly
 one injectable `skills/<configured-name>` tree identical to the canonical skill. Its manifest must
