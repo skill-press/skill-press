@@ -451,9 +451,25 @@ Complete this one-time ceremony before the first production release:
    printf '%s\n' "$BOOTSTRAP_METADATA"
    npm publish "$BOOTSTRAP_TARBALL" \
      --registry=https://registry.npmjs.org/ --access public --tag bootstrap --ignore-scripts
-   NPM_METADATA="$(npm view @skill-press/cli@0.0.0 \
-     name version bin scripts dependencies dist-tags dist.integrity dist.shasum --json \
-     --registry=https://registry.npmjs.org/)"
+   NPM_METADATA=
+   attempt=1
+   while [ "$attempt" -le 100 ]; do
+     if NPM_METADATA="$(npm view @skill-press/cli@0.0.0 \
+       name version bin scripts dependencies dist-tags dist.integrity dist.shasum --json \
+       --registry=https://registry.npmjs.org/ 2>&1)"; then
+       break
+     fi
+     case "$NPM_METADATA" in
+       *'npm error code E404'*) ;;
+       *) printf '%s\n' "$NPM_METADATA" >&2; exit 1 ;;
+     esac
+     if [ "$attempt" -eq 100 ]; then
+       printf '%s\n' "$NPM_METADATA" >&2
+       exit 1
+     fi
+     sleep 15
+     attempt=$((attempt + 1))
+   done
    printf '%s\n' "$NPM_METADATA"
    BOOTSTRAP_METADATA="$BOOTSTRAP_METADATA" NPM_METADATA="$NPM_METADATA" node <<'NODE'
    const local = JSON.parse(process.env.BOOTSTRAP_METADATA);
@@ -479,8 +495,11 @@ Complete this one-time ceremony before the first production release:
    )
    ```
 
-   This manual exception has no provenance by design. Stop on any ambiguous response and query the
-   exact version instead of retrying blindly. The immutable registry SHA-1 and SHA-512 must equal
+   This manual exception has no provenance by design. npm's publish-time malware scan keeps a new
+   version unavailable for about five minutes in typical conditions and can take 15 minutes or
+   longer at peak times. After an acknowledged publish, the bounded loop above accepts only E404 as
+   a pending-scan response and never retries publication. Stop on any other ambiguous response. The
+   immutable registry SHA-1 and SHA-512 must equal
    the immediately pre-publish verifier output, no runtime field may appear, and the dist-tag
    listing must show `bootstrap: 0.0.0` and no `latest`. A mismatch is a release incident, not a
    reason to retry publishing.
@@ -508,7 +527,8 @@ Complete this one-time ceremony before the first production release:
 
 Before approval, compare the tag, source commit, current gate evidence, release assets, and npm
 tarball manifest. Environment approval resumes the original attempt and is safe; do not rerun a
-failed workflow for the initial deployment receipt. The sealed first-deploy verifier accepts only
+failed workflow for the initial deployment receipt. Both release jobs reject any
+`github.run_attempt` other than `1` before publishing. The sealed first-deploy verifier accepts only
 `runAttempt: "1"` because GitHub's run-level artifact API cannot prove which rerun produced a
 same-named artifact. Preserve a failed attempt as a release incident, verify exact npm state, and
 stop first deployment. Resolve the incident and deliberately prepare a new package version and

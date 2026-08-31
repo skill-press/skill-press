@@ -83,6 +83,9 @@ describe("GitHub Actions release contracts", () => {
     expect(verify?.environment).toBeUndefined();
     expect(verify?.if).toContain("skill-press/skill-press");
     expect(verify?.permissions).toEqual({ contents: "read" });
+    expect(verify?.if).toBe(
+      "github.repository == 'skill-press/skill-press' && !github.event.release.prerelease && github.run_attempt == 1",
+    );
     expect(verify?.steps?.map((step) => step.uses).filter(Boolean)).toEqual([
       checkout,
       setupNode,
@@ -108,10 +111,12 @@ describe("GitHub Actions release contracts", () => {
       "npm run package:verify",
     ]);
     expect(publish?.environment).toBe("npm");
-    expect(publish?.if).toContain("skill-press/skill-press");
-    expect(publish?.if).toContain("!github.event.release.prerelease");
+    expect(publish?.if).toBe(
+      "github.repository == 'skill-press/skill-press' && !github.event.release.prerelease && github.run_attempt == 1",
+    );
     expect(publish?.permissions).toEqual({ contents: "read", "id-token": "write" });
     expect(publish?.["runs-on"]).toBe("ubuntu-latest");
+    expect(publish?.["timeout-minutes"]).toBe(60);
     expect(publish?.steps?.map((step) => step.uses).filter(Boolean)).toEqual([
       setupNode,
       downloadArtifact,
@@ -124,9 +129,16 @@ describe("GitHub Actions release contracts", () => {
     });
     expect(publish?.steps?.map((step) => step.run).filter(Boolean)).toHaveLength(6);
     const publishStep = publish?.steps?.find((step) => step.run?.includes("npm publish"));
+    const registryWaitStep = publish?.steps?.find((step) =>
+      step.run?.includes("npm publish-time scan pending"),
+    );
     expect(publishStep?.if).toBe("steps.registry-before.outputs.publish_required == 'true'");
+    expect(registryWaitStep?.run).not.toContain("if node");
     expect(source).toContain(`npm publish "${runnerTemp}/npm-release/"*.tgz --access public`);
     expect(source).toContain("verify-npm-registry-release.mjs");
+    expect(source).toContain('while [ "$attempt" -le 200 ]');
+    expect(source).toContain("sleep 15");
+    expect(source).toContain('if [ "$status" != "absent" ]');
     expect(source).toContain('state.status !== "absent" && state.status !== "match"');
     expect(source).toContain("manifest.verifier.sha256");
     expect(source).toContain('remote.status !== "match"');
