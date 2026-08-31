@@ -24,6 +24,8 @@ describe("Tessl weighted checklist assessment", () => {
   });
 
   it.each([
+    null,
+    { assessmentResults: [] },
     {
       assessmentResults: [{ name: "quality", score: 100, max_score: 100 }],
     },
@@ -94,5 +96,11 @@ describe("Tessl weighted checklist assessment", () => {
       expect(tesslRubricUsageMatches([observed], [expected]), entry.name).toBe(false);
     }
     expect(tesslRubricUsageMatches([expected, expected], [expected])).toBe(true);
+    expect(tesslRubricUsageMatches([], [])).toBe(false);
+    expect(tesslRubricUsageMatches([], [expected])).toBe(false);
+    const second = tesslSolutionAssessment({
+      assessmentResults: [{ name: "critical_other", score: 100, max_score: 100 }],
+    })?.inventoryKey as string;
+    expect(tesslRubricUsageMatches([expected, expected, second], [expected, second])).toBe(false);
   });
 });

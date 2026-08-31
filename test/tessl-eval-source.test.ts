@@ -62,7 +62,38 @@ describe("Tessl eval source inspection", () => {
   });
 
   it.each([
+    ["empty scenarios", async (_value: string) => undefined],
     ["flat file", async (value: string) => writeFile(join(value, "evals", "scenario.json"), "{}")],
+    [
+      "evals is not a directory",
+      async (value: string) => {
+        await rm(join(value, "evals"), { recursive: true });
+        await writeFile(join(value, "evals"), "not a directory");
+      },
+    ],
+    [
+      "missing criteria",
+      async (value: string) => {
+        await mkdir(join(value, "evals", "one"));
+      },
+    ],
+    [
+      "invalid shape",
+      async (value: string) => {
+        await mkdir(join(value, "evals", "one"));
+        await writeFile(join(value, "evals", "one", "criteria.json"), "[]");
+      },
+    ],
+    [
+      "invalid criterion",
+      async (value: string) => {
+        await mkdir(join(value, "evals", "one"));
+        await writeFile(
+          join(value, "evals", "one", "criteria.json"),
+          '{"type":"weighted_checklist","checklist":[{"name":"critical_safety","description":7,"max_score":100}]}',
+        );
+      },
+    ],
     [
       "missing critical",
       async (value: string) => {
