@@ -37,8 +37,9 @@ Read only the references needed for the current request.
    commit, configuration digest, skill digest, checksums, and provenance.
 7. Use `skpress submit --dry-run ...` to prepare the exact canonical request locally. A plain
    `skpress submit ...` is a remote mutation to Skill Press and requires separate user authority.
-8. Report submission review status exactly. `received`, automated review, curator review,
-   changes requested, accepted, and rejected are not synonyms for `published`.
+8. Report submission review status exactly. `received`, `automated-review`, `curator-review`,
+   `changes-requested`, `accepted`, `publication-blocked`, `rejected`, and `withdrawn` are not
+   synonyms for `published`.
 
 ## Trust and authority boundaries
 

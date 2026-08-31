@@ -78,9 +78,10 @@ under the same idempotency key so a crash after server acceptance cannot create 
 Do not start a fresh run to hide partial state.
 
 The local journal is not an attestation. Report remote review states exactly: `received`,
-`automated-review`, `curator-review`, `changes-requested`, `accepted`, `published`, or `rejected`.
-Only `published` includes an immutable release binding. Its append-only trust status is `trusted`,
-`quarantined`, or `revoked`; quarantine and revocation never rewrite the artifact bytes or version.
+`automated-review`, `curator-review`, `changes-requested`, `accepted`, `publication-blocked`,
+`published`, `rejected`, or `withdrawn`. Only `published` includes an immutable release binding.
+Its append-only trust status is `trusted`, `quarantined`, or `revoked`; quarantine and revocation
+never rewrite the artifact bytes or version.
 Offline `skpress status` reports only local release-input readiness and cached, last-observed trust;
 its JSON field `currentTrustVerified` is always `false` and cannot authorize installation.
 
