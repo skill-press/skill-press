@@ -7,8 +7,6 @@ license: MIT
 # Skill Press
 
 Use Skill Press to author, validate, evaluate, package, submit, and install trusted Agent Skills.
-Skill Press owns canonical review and trust. GitHub hosts source and npm distributes this CLI.
-External catalogs provide discovery; controlled mirrors copy only approved immutable releases.
 
 ## Choose the operating path
 
@@ -28,9 +26,9 @@ Read only the references needed for the current request.
 2. Keep one portable canonical skill tree. Registry identity, review state, mirrors, and runtime
    projections never belong in `SKILL.md` frontmatter.
 3. Run `skpress check`, then trusted project commands with `skpress test` when the owner authorizes
-   them. On failure, fix manually or use the bounded `skpress improve` workflow from the authoring
-   reference; rerun check, test, and training evaluation before testing the unchanged private
-   holdout.
+   them. Proceed only when both commands exit `0` and their JSON reports contain `ok: true`; treat
+   exit `3` or `ok: false` as blocked. On failure, fix manually or use bounded improvement, then
+   rerun check, test, and training evaluation before testing the unchanged private holdout.
 4. Use paired sandbox evaluation for behavioral evidence. Keep private holdout contents isolated
    from the authoring role.
 5. Capture official Tessl Quality and Impact evidence without inventing scores or replacing them
@@ -48,6 +46,16 @@ Common local gate:
 ```sh
 skpress check --project . --json
 skpress test --project . --json
+```
+
+When the owner authorizes the three role commands, run bounded improvement with separate evidence:
+
+```sh
+skpress improve --project . \
+  --training-evidence <training-evidence.json> \
+  --holdout-evidence <holdout-evidence.json> \
+  --author-command <author> --reviewer-command <reviewer> \
+  --evaluator-command <evaluator> --json
 ```
 
 After official evidence passes, prepare without contacting the registry:
