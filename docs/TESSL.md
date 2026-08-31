@@ -59,6 +59,11 @@ Press binds the resolved agent and model returned by the provider plus the exact
 without selection flags. This supports plans that do not permit explicit model selection without
 weakening evidence identity.
 
+For the Skill Press v0.1 self-release, omit both selection flags and use the Tessl Free
+provider-default evaluator. Do not lower thresholds, weaken critical criteria, remove failed
+scenarios, or repeatedly sample unchanged bytes. See
+[ADR 001](decisions/001-free-default-tessl-evaluation.md).
+
 ## Quality capture
 
 Run:
