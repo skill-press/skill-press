@@ -171,7 +171,8 @@ sample of unchanged bytes.
 
 The self-release `--runs 3` value comes from `evaluation.repetitions` in `skill-press.yaml`. The
 release gate rejects evidence unless that configured value matches the exact command and raw result
-repetition count.
+`runCount` plus every solution's completed `runs` array. Capture rejects a conflicting run count
+before submitting a provider evaluation.
 
 The eval source must be a private Tessl plugin under `.skill-press/tessl-evals/<set>` with exactly
 one injectable `skills/<configured-name>` tree identical to the canonical skill. Its manifest must

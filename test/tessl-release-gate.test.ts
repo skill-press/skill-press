@@ -72,7 +72,7 @@ function executor(): TesslCommandExecutor {
           evalRunId: "eval-1",
           agent: "codex",
           model: "model",
-          scenariosCount: 2 * evalRuns,
+          scenariosCount: 2,
           context: {
             definition: { type: "plugin-directory", path: evalContext },
           },
@@ -87,16 +87,18 @@ function executor(): TesslCommandExecutor {
             status: "completed",
             agent: "codex",
             model: "model",
+            runCount: evalRuns,
             evalRunFixtures: {
               context: { type: "plugin-directory", path: evalContext },
             },
             metadata: { cliInvocation: evalCliInvocation },
-            scenarios: Array.from({ length: evalRuns }, (_, run) => [
+            scenarios: [
               {
-                fingerprint: `one-${run + 1}`,
+                fingerprint: "one",
                 solutions: [
                   {
                     variant: "baseline",
+                    runs: Array.from({ length: evalRuns }, () => ({ status: "completed" })),
                     assessmentResults: [
                       { name: "critical_safety", score: 4, max_score: 10 },
                       { name: "quality", score: 36, max_score: 90 },
@@ -104,6 +106,7 @@ function executor(): TesslCommandExecutor {
                   },
                   {
                     variant: "usage-spec",
+                    runs: Array.from({ length: evalRuns }, () => ({ status: "completed" })),
                     assessmentResults: [
                       { name: "critical_safety", score: 10, max_score: 10 },
                       { name: "quality", score: 80, max_score: 90 },
@@ -112,10 +115,11 @@ function executor(): TesslCommandExecutor {
                 ],
               },
               {
-                fingerprint: `two-${run + 1}`,
+                fingerprint: "two",
                 solutions: [
                   {
                     variant: "baseline",
+                    runs: Array.from({ length: evalRuns }, () => ({ status: "completed" })),
                     assessmentResults: [
                       { name: "critical_safety", score: 6, max_score: 10 },
                       { name: "quality", score: 54, max_score: 90 },
@@ -123,6 +127,7 @@ function executor(): TesslCommandExecutor {
                   },
                   {
                     variant: "usage-spec",
+                    runs: Array.from({ length: evalRuns }, () => ({ status: "completed" })),
                     assessmentResults: [
                       { name: "critical_safety", score: 10, max_score: 10 },
                       { name: "quality", score: 90, max_score: 90 },
@@ -130,7 +135,7 @@ function executor(): TesslCommandExecutor {
                   },
                 ],
               },
-            ]).flat(),
+            ],
           },
         },
       }),
@@ -337,7 +342,6 @@ describe("Tessl release gate", () => {
       "tessl-evals",
     ];
     evaluation.runs = 1;
-    evaluation.scenarios = evaluation.scenarios.slice(0, 2);
     evaluation.start.commandSha256 = tesslCommandDigest(trustedDigest, invocation);
     await writePrivateJson(evalFile, evaluation);
 
@@ -356,7 +360,10 @@ describe("Tessl release gate", () => {
       await readFile(join(value.root, evaluation.storagePath, "eval-result.stdout"), "utf8"),
     );
     rawResult.data.attributes.metadata.cliInvocation = invocation.join(" ");
-    rawResult.data.attributes.scenarios = rawResult.data.attributes.scenarios.slice(0, 2);
+    rawResult.data.attributes.runCount = 1;
+    for (const scenario of rawResult.data.attributes.scenarios) {
+      for (const solution of scenario.solutions) solution.runs = solution.runs.slice(0, 1);
+    }
     await replaceRawStdout(
       value,
       value.evalPath,
@@ -368,6 +375,32 @@ describe("Tessl release gate", () => {
     const report = await gate(value);
     expect(report.issues.map((entry) => entry.code)).toContain("release.impact.runs");
   });
+
+  it.each(["runCount", "solution count", "solution status"] as const)(
+    "rejects raw Impact evidence with a mismatched %s",
+    async (fault) => {
+      const value = await fixture();
+      const evaluation = JSON.parse(await readFile(join(value.root, value.evalPath), "utf8"));
+      const rawResult = JSON.parse(
+        await readFile(join(value.root, evaluation.storagePath, "eval-result.stdout"), "utf8"),
+      );
+      if (fault === "runCount") rawResult.data.attributes.runCount = 2;
+      else if (fault === "solution count")
+        rawResult.data.attributes.scenarios[0].solutions[0].runs.pop();
+      else rawResult.data.attributes.scenarios[0].solutions[0].runs[1].status = "failed";
+      await replaceRawStdout(
+        value,
+        value.evalPath,
+        "result",
+        "eval-result",
+        `${JSON.stringify(rawResult)}\n`,
+      );
+
+      expect((await gate(value)).issues.map((entry) => entry.code)).toContain(
+        "release.evidence.output",
+      );
+    },
+  );
 
   it("rejects a partial critical score even when normalized Impact remains above threshold", async () => {
     const value = await fixture();

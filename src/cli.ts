@@ -82,7 +82,7 @@ Eval options:
   --source <directory>      Tessl eval source inside the project
   --agent <agent>           Optional exact Tessl agent; omit for the provider default
   --model <model>           Optional exact Tessl model; omit for the provider default
-  --runs <count>            Repetitions from 1 to 10; defaults to 1
+  --runs <count>            Must match project evaluation.repetitions (3 to 20); defaults to it
   --poll-interval-ms <ms>   Poll interval from 1 to 60000; defaults to 30000
 
 Only evidence from a pinned, trusted Tessl CLI and unchanged committed inputs can satisfy a

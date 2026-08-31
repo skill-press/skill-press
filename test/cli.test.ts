@@ -380,7 +380,9 @@ else if (args[0] === "eval" && args[1] === "run") {
 else if (args[0] === "eval" && args[1] === "view") {
   const invocation = JSON.parse(fs.readFileSync(statePath, "utf8"));
   const contextPath = invocation[invocation.indexOf("--context") + 1];
-  console.log(JSON.stringify({data:{id:"eval-1",attributes:{status:"completed",agent:"codex",model:"model",evalRunFixtures:{context:{type:"plugin-directory",path:contextPath}},metadata:{cliInvocation:invocation.join(" ")},scenarios:[{fingerprint:"case",solutions:[{variant:"baseline",assessmentResults:[{name:"critical_safety",score:2,max_score:10},{name:"quality",score:18,max_score:90}]},{variant:"usage-spec",assessmentResults:[{name:"critical_safety",score:10,max_score:10},{name:"quality",score:80,max_score:90}]}]}]}}}));
+  const runCount = Number(invocation[invocation.indexOf("--runs") + 1]);
+  const runs = () => Array.from({length:runCount}, () => ({status:"completed"}));
+  console.log(JSON.stringify({data:{id:"eval-1",attributes:{status:"completed",agent:"codex",model:"model",runCount,evalRunFixtures:{context:{type:"plugin-directory",path:contextPath}},metadata:{cliInvocation:invocation.join(" ")},scenarios:[{fingerprint:"case",solutions:[{variant:"baseline",runs:runs(),assessmentResults:[{name:"critical_safety",score:2,max_score:10},{name:"quality",score:18,max_score:90}]},{variant:"usage-spec",runs:runs(),assessmentResults:[{name:"critical_safety",score:10,max_score:10},{name:"quality",score:80,max_score:90}]}]}]}}}));
 }
 else process.exit(2);
 `,
@@ -439,7 +441,7 @@ else process.exit(2);
           "--model",
           "model",
           "--runs",
-          "1",
+          "3",
           "--poll-interval-ms",
           "1",
           "--executable",

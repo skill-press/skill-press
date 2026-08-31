@@ -101,8 +101,10 @@ skpress tessl eval --project . \
   --json
 ```
 
-Release evidence is accepted only when the command's `--runs`, the evidence field, the exact raw
-scenario repetition count, and `evaluation.repetitions` all agree.
+Release evidence is accepted only when the command's `--runs`, the evidence field, raw
+`attributes.runCount`, every solution's completed `runs` array, and `evaluation.repetitions` all
+agree. Capture defaults to the configured repetitions and rejects a conflicting override before
+submitting a provider evaluation.
 
 The eval source must contain a real `.tessl-plugin/plugin.json`, evaluation scenarios, and exactly
 one injectable `skills/<configured-skill-name>` tree. Its manifest must declare exactly:

@@ -51,17 +51,19 @@ async function project(): Promise<{ root: string; executable: string; evalSource
   await writeRenderedProject(renderCapabilityProject(await loadCapabilityBrief(briefPath)), root);
   const evalSource = join(root, "tessl-evals");
   await mkdir(join(evalSource, ".tessl-plugin"), { recursive: true });
-  await mkdir(join(evalSource, "evals", "scenario"), { recursive: true });
+  await mkdir(join(evalSource, "evals", "scenario-one"), { recursive: true });
+  await mkdir(join(evalSource, "evals", "scenario-two"));
   await mkdir(join(evalSource, "skills"));
   await writeFile(
     join(evalSource, ".tessl-plugin", "plugin.json"),
     '{"name":"test/incident-summary","version":"0.1.0","private":true,"skills":["skills/incident-summary"]}\n',
   );
-  await writeFile(
-    join(evalSource, "evals", "scenario", "criteria.json"),
-    '{"context":"test","type":"weighted_checklist","checklist":[{"name":"critical_safety","description":"test","max_score":10},{"name":"quality","description":"test","max_score":90}]}\n',
-  );
-  await writeFile(join(evalSource, "evals", "scenario", "task.md"), "# Test\n");
+  const criteria =
+    '{"context":"test","type":"weighted_checklist","checklist":[{"name":"critical_safety","description":"test","max_score":10},{"name":"quality","description":"test","max_score":90}]}\n';
+  for (const scenario of ["scenario-one", "scenario-two"]) {
+    await writeFile(join(evalSource, "evals", scenario, "criteria.json"), criteria);
+    await writeFile(join(evalSource, "evals", scenario, "task.md"), "# Test\n");
+  }
   await cp(
     join(root, "skills", "incident-summary"),
     join(evalSource, "skills", "incident-summary"),
@@ -190,6 +192,9 @@ function completedEval(
 ): Record<string, unknown> {
   const contextPath =
     invocation === undefined ? undefined : invocation[invocation.indexOf("--context") + 1];
+  const runCount =
+    invocation === undefined ? 3 : Number(invocation[invocation.indexOf("--runs") + 1]);
+  const completedRuns = () => Array.from({ length: runCount }, () => ({ status: "completed" }));
   return {
     data: {
       id: "eval-run-1",
@@ -197,6 +202,7 @@ function completedEval(
         status: "completed",
         agent: "codex",
         model: "gpt-fixed",
+        runCount,
         ...(contextPath === undefined
           ? {}
           : {
@@ -211,6 +217,7 @@ function completedEval(
             solutions: [
               {
                 variant: "baseline",
+                runs: completedRuns(),
                 assessmentResults: [
                   { name: "critical_safety", score: 4, max_score: 10 },
                   { name: "quality", score: 36, max_score: 90 },
@@ -218,6 +225,7 @@ function completedEval(
               },
               {
                 variant: "usage-spec",
+                runs: completedRuns(),
                 assessmentResults: [
                   { name: "critical_safety", score: 10, max_score: 10 },
                   { name: "quality", score: 80, max_score: 90 },
@@ -230,6 +238,7 @@ function completedEval(
             solutions: [
               {
                 variant: "baseline",
+                runs: completedRuns(),
                 assessmentResults: [
                   { name: "critical_safety", score: 6, max_score: 10 },
                   { name: "quality", score: 54, max_score: 90 },
@@ -237,6 +246,7 @@ function completedEval(
               },
               {
                 variant: "usage-spec",
+                runs: completedRuns(),
                 assessmentResults: [
                   { name: "critical_safety", score: 10, max_score: 10 },
                   { name: "quality", score: 90, max_score: 90 },
@@ -615,7 +625,7 @@ describe("Tessl official evidence bridge", () => {
       source: "tessl-evals",
       agent: "codex",
       model: "gpt-fixed",
-      runs: 2,
+      runs: 3,
       executable: fixture.executable,
       executor,
       pollIntervalMs: 1,
@@ -637,7 +647,7 @@ describe("Tessl official evidence bridge", () => {
       "--model",
       "gpt-fixed",
       "--runs",
-      "2",
+      "3",
       "tessl-evals",
     ]);
     expect(observed.at(-1)).toEqual(["eval", "view", "--json", "eval-run-1"]);
@@ -759,7 +769,7 @@ describe("Tessl official evidence bridge", () => {
         source: "tessl-evals",
         agent: "codex",
         model: "gpt-fixed",
-        runs: 2,
+        runs: 3,
         executable: fixture.executable,
         executor,
         pollIntervalMs: 1,
@@ -952,7 +962,7 @@ describe("Tessl official evidence bridge", () => {
         source: "tessl-evals",
         agent: "codex",
         model: "gpt-fixed",
-        runs: 2,
+        runs: 3,
         executable: fixture.executable,
         executor,
         pollIntervalMs: 1,
@@ -988,7 +998,7 @@ describe("Tessl official evidence bridge", () => {
           }),
         );
       }
-      await writeFile(join(fixture.evalSource, "evals", "scenario", "task.md"), "changed\n");
+      await writeFile(join(fixture.evalSource, "evals", "scenario-one", "task.md"), "changed\n");
       return result(JSON.stringify(completedEval({}, invocation)));
     };
 
@@ -996,7 +1006,7 @@ describe("Tessl official evidence bridge", () => {
       source: "tessl-evals",
       agent: "codex",
       model: "gpt-fixed",
-      runs: 2,
+      runs: 3,
       executable: fixture.executable,
       executor,
       pollIntervalMs: 1,
@@ -1037,7 +1047,7 @@ describe("Tessl official evidence bridge", () => {
       const evidence = await captureTesslEvalEvidence(fixture.root, {
         source: "tessl-evals",
         ...value.selection,
-        runs: 2,
+        runs: 3,
         executable: fixture.executable,
         executor,
         pollIntervalMs: 1,
@@ -1055,10 +1065,10 @@ describe("Tessl official evidence bridge", () => {
         "incident-summary",
         ...value.flags,
         "--runs",
-        "2",
+        "3",
         "tessl-evals",
       ]);
-      expect(evidence).toMatchObject({ ...value.resolved, runs: 2 });
+      expect(evidence).toMatchObject({ ...value.resolved, runs: 3 });
     }
   });
 
@@ -1087,7 +1097,7 @@ describe("Tessl official evidence bridge", () => {
       source: "tessl-evals",
       agent: "codex",
       model: "gpt-fixed",
-      runs: 2,
+      runs: 3,
       executable: fixture.executable,
       executor,
       pollIntervalMs: 1,
@@ -1126,7 +1136,7 @@ describe("Tessl official evidence bridge", () => {
       source: "tessl-evals",
       agent: "codex",
       model: "gpt-fixed",
-      runs: 2,
+      runs: 3,
       executable: fixture.executable,
       executor,
       pollIntervalMs: 1,
@@ -1389,6 +1399,24 @@ describe("Tessl official evidence bridge", () => {
         executor: driftExecutor,
       }),
     ).rejects.toBeInstanceOf(TesslEvidenceError);
+
+    let conflictingRunsExecuted = false;
+    await expect(
+      captureTesslEvalEvidence(fixture.root, {
+        source: "tessl-evals",
+        agent: "codex",
+        model: "gpt-fixed",
+        runs: 1,
+        executable: fixture.executable,
+        executor: async () => {
+          conflictingRunsExecuted = true;
+          return result("unexpected");
+        },
+      }),
+    ).rejects.toMatchObject({
+      issues: [expect.objectContaining({ code: "tessl.option.eval_runs" })],
+    });
+    expect(conflictingRunsExecuted).toBe(false);
 
     let now = 0;
     const pendingExecutor = executorFor((args) => {
