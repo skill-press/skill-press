@@ -7,8 +7,8 @@ license: MIT
 # Skill Press
 
 Use Skill Press to author, validate, evaluate, package, submit, and install trusted Agent Skills.
-Skill Press owns canonical review and trust. GitHub hosts source, npm distributes this CLI, and any
-mirror may point only to an approved immutable release.
+Skill Press owns canonical review and trust. GitHub hosts source and npm distributes this CLI.
+External catalogs provide discovery; controlled mirrors copy only approved immutable releases.
 
 ## Choose the operating path
 
