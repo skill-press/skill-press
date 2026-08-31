@@ -395,31 +395,34 @@ function verifyEvalOutputs(
     }
     fingerprints.add(scenario.fingerprint);
     if (!Array.isArray(scenario.solutions)) throw new TypeError("scenario");
-    const baseline = scenario.solutions.filter(
-      (solution) => isRecord(solution) && solution.variant === "baseline",
-    );
+    if (
+      scenario.solutions.some(
+        (solution) =>
+          !isRecord(solution) ||
+          (solution.variant !== "baseline" && solution.variant !== "with-context"),
+      )
+    ) {
+      throw new TypeError("pairing variant");
+    }
+    const baseline = scenario.solutions.filter((solution) => solution.variant === "baseline");
     const withContext = scenario.solutions.filter(
-      (solution) => isRecord(solution) && solution.variant !== "baseline",
+      (solution) => solution.variant === "with-context",
     );
-    if (baseline.length > 1 || withContext.length !== 1) throw new TypeError("pairing");
-    const baselineAssessment =
-      baseline.length === 0 ? undefined : tesslSolutionAssessment(baseline[0]);
+    if (baseline.length !== 1 || withContext.length !== 1) throw new TypeError("pairing");
+    const baselineAssessment = tesslSolutionAssessment(baseline[0]);
     const withContextAssessment = tesslSolutionAssessment(withContext[0]);
     if (
-      (baseline.length !== 0 && baselineAssessment === undefined) ||
+      baselineAssessment === undefined ||
       withContextAssessment === undefined ||
       !withContextAssessment.criticalPassed
     ) {
       throw new TypeError("score");
     }
-    if (
-      baselineAssessment !== undefined &&
-      baselineAssessment.inventoryKey !== withContextAssessment.inventoryKey
-    ) {
+    if (baselineAssessment.inventoryKey !== withContextAssessment.inventoryKey) {
       throw new TypeError("rubric pairing");
     }
     observedRubrics.push(withContextAssessment.inventoryKey);
-    const baselineScore = baselineAssessment?.score ?? 0;
+    const baselineScore = baselineAssessment.score;
     const withContextScore = withContextAssessment.score;
     return {
       fingerprintSha256: sha256(scenario.fingerprint),

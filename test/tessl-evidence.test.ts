@@ -1260,6 +1260,35 @@ describe("Tessl official evidence bridge", () => {
       })(),
     ],
     [
+      "unknown solution variant",
+      (() => {
+        const value = completedEval();
+        const scenarios = (
+          value.data as {
+            attributes: { scenarios: Array<{ solutions: Array<Record<string, unknown>> }> };
+          }
+        ).attributes.scenarios;
+        scenarios[0]?.solutions.push({
+          ...(scenarios[0]?.solutions[1] ?? {}),
+          variant: "other",
+        });
+        return value;
+      })(),
+    ],
+    [
+      "non-object solution",
+      (() => {
+        const value = completedEval();
+        const scenarios = (
+          value.data as {
+            attributes: { scenarios: Array<{ solutions: unknown[] }> };
+          }
+        ).attributes.scenarios;
+        scenarios[0]?.solutions.push(null);
+        return value;
+      })(),
+    ],
+    [
       "duplicate fingerprint",
       (() => {
         const value = completedEval();

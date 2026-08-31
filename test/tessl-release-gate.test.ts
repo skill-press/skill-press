@@ -1064,6 +1064,36 @@ describe("Tessl release gate", () => {
     );
   });
 
+  it("independently rejects coordinated evidence that omits every baseline", async () => {
+    const value = await fixture();
+    const evalFile = join(value.root, value.evalPath);
+    const evidence = JSON.parse(await readFile(evalFile, "utf8"));
+    const raw = JSON.parse(
+      await readFile(join(value.root, evidence.storagePath, "eval-result.stdout"), "utf8"),
+    );
+    for (const scenario of raw.data.attributes.scenarios) {
+      scenario.solutions = scenario.solutions.filter(
+        (solution: { variant: string }) => solution.variant !== "baseline",
+      );
+    }
+    await replaceRawStdout(value, value.evalPath, "result", "eval-result", JSON.stringify(raw));
+    const rebound = JSON.parse(await readFile(evalFile, "utf8"));
+    for (const scenario of rebound.scenarios) {
+      scenario.baselineScore = 0;
+      scenario.delta = scenario.withContextScore;
+    }
+    rebound.baselineScore = 0;
+    rebound.impactDelta = rebound.impactScore;
+    rebound.upliftRatio = null;
+    rebound.evidenceEligible = true;
+    rebound.ineligibilityReasons = [];
+    await writePrivateJson(evalFile, rebound);
+
+    expect((await gate(value)).issues.map((entry) => entry.code)).toContain(
+      "release.evidence.output",
+    );
+  });
+
   it("rejects unsafe evidence permissions, schema drift, raw files, and missing Git HEAD", async () => {
     const permissionValue = await fixture();
     await chmod(join(permissionValue.root, permissionValue.reviewPath), 0o644);

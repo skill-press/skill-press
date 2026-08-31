@@ -835,11 +835,24 @@ function parseCompletedEval(
       ]);
     }
     fingerprints.add(scenario.fingerprint);
-    const baselines = scenario.solutions.filter(
-      (solution) => isRecord(solution) && solution.variant === "baseline",
-    );
+    if (
+      scenario.solutions.some(
+        (solution) =>
+          !isRecord(solution) ||
+          (solution.variant !== "baseline" && solution.variant !== "with-context"),
+      )
+    ) {
+      throw new TesslEvidenceError("Tessl eval pairing is invalid.", [
+        issue(
+          "tessl.eval.pairing",
+          `/result/scenarios/${index}`,
+          "solutions may contain only baseline and with-context variants",
+        ),
+      ]);
+    }
+    const baselines = scenario.solutions.filter((solution) => solution.variant === "baseline");
     const withContext = scenario.solutions.filter(
-      (solution) => isRecord(solution) && solution.variant !== "baseline",
+      (solution) => solution.variant === "with-context",
     );
     if (baselines.length > 1 || withContext.length !== 1) {
       throw new TesslEvidenceError("Tessl eval pairing is invalid.", [
