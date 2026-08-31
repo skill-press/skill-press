@@ -762,6 +762,7 @@ function parseCompletedEval(
   expectedContextPath: string,
   expectedCliInvocation: string,
   expectedRubrics: readonly string[],
+  expectedRuns: number,
 ): {
   readonly scenarios: SkillPressTesslEvalEvidence["scenarios"];
   readonly missingBaseline: boolean;
@@ -903,7 +904,7 @@ function parseCompletedEval(
       delta: withContextScore - baselineScore,
     };
   }) as SkillPressTesslEvalEvidence["scenarios"];
-  if (!tesslRubricUsageMatches(observedRubrics, expectedRubrics)) {
+  if (!tesslRubricUsageMatches(observedRubrics, expectedRubrics, expectedRuns)) {
     throw new TesslEvidenceError("Tessl eval result rubrics do not match the source.", [
       issue(
         "tessl.eval.rubric_binding",
@@ -1085,6 +1086,7 @@ export async function captureTesslEvalEvidence(
       startContextDefinition.path,
       startArgv.slice(1).join(" "),
       rubricInventories,
+      runs,
     );
     if (
       (options.agent !== undefined && parsed.agent !== options.agent) ||

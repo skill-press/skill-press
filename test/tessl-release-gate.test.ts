@@ -53,6 +53,7 @@ function result(stdout: string, stderr = ""): CapturedCommandResult {
 function executor(): TesslCommandExecutor {
   let evalContext = "";
   let evalCliInvocation = "";
+  let evalRuns = 1;
   return async (command) => {
     const args = command.argv.slice(1);
     if (args[0] === "--version") return result("0.101.0\n");
@@ -65,12 +66,13 @@ function executor(): TesslCommandExecutor {
     if (args[0] === "eval" && args[1] === "run") {
       evalContext = args[args.indexOf("--context") + 1] as string;
       evalCliInvocation = args.join(" ");
+      evalRuns = Number(args[args.indexOf("--runs") + 1]);
       return result(
         `${JSON.stringify({
           evalRunId: "eval-1",
           agent: "codex",
           model: "model",
-          scenariosCount: 2,
+          scenariosCount: 2 * evalRuns,
           context: {
             definition: { type: "plugin-directory", path: evalContext },
           },
@@ -89,9 +91,9 @@ function executor(): TesslCommandExecutor {
               context: { type: "plugin-directory", path: evalContext },
             },
             metadata: { cliInvocation: evalCliInvocation },
-            scenarios: [
+            scenarios: Array.from({ length: evalRuns }, (_, run) => [
               {
-                fingerprint: "one",
+                fingerprint: `one-${run + 1}`,
                 solutions: [
                   {
                     variant: "baseline",
@@ -110,7 +112,7 @@ function executor(): TesslCommandExecutor {
                 ],
               },
               {
-                fingerprint: "two",
+                fingerprint: `two-${run + 1}`,
                 solutions: [
                   {
                     variant: "baseline",
@@ -128,7 +130,7 @@ function executor(): TesslCommandExecutor {
                   },
                 ],
               },
-            ],
+            ]).flat(),
           },
         },
       }),
@@ -210,6 +212,7 @@ async function fixture(): Promise<Fixture> {
     source: "tessl-evals",
     agent: "codex",
     model: "model",
+    runs: 3,
     executable,
     executor: executor(),
     pollIntervalMs: 1,
@@ -257,7 +260,7 @@ async function fixture(): Promise<Fixture> {
     "--model",
     "model",
     "--runs",
-    "1",
+    "3",
     "tessl-evals",
   ]);
   eligibleEval.result.commandSha256 = tesslCommandDigest(trustedDigest, [
@@ -310,6 +313,60 @@ describe("Tessl release gate", () => {
       issues: [],
     });
     expect(Object.isFrozen(report.scores)).toBe(true);
+  });
+
+  it("rejects internally consistent one-run evidence when the project requires three", async () => {
+    const value = await fixture();
+    const evalFile = join(value.root, value.evalPath);
+    const evaluation = JSON.parse(await readFile(evalFile, "utf8"));
+    const invocation = [
+      "eval",
+      "run",
+      "--json",
+      "--force",
+      "--context",
+      capturedEvalSource(evaluation),
+      "--skill",
+      "incident-summary",
+      "--agent",
+      "codex",
+      "--model",
+      "model",
+      "--runs",
+      "1",
+      "tessl-evals",
+    ];
+    evaluation.runs = 1;
+    evaluation.scenarios = evaluation.scenarios.slice(0, 2);
+    evaluation.start.commandSha256 = tesslCommandDigest(trustedDigest, invocation);
+    await writePrivateJson(evalFile, evaluation);
+
+    const rawStart = JSON.parse(
+      await readFile(join(value.root, evaluation.storagePath, "eval-start.stdout"), "utf8"),
+    );
+    rawStart.scenariosCount = 2;
+    await replaceRawStdout(
+      value,
+      value.evalPath,
+      "start",
+      "eval-start",
+      `${JSON.stringify(rawStart)}\n`,
+    );
+    const rawResult = JSON.parse(
+      await readFile(join(value.root, evaluation.storagePath, "eval-result.stdout"), "utf8"),
+    );
+    rawResult.data.attributes.metadata.cliInvocation = invocation.join(" ");
+    rawResult.data.attributes.scenarios = rawResult.data.attributes.scenarios.slice(0, 2);
+    await replaceRawStdout(
+      value,
+      value.evalPath,
+      "result",
+      "eval-result",
+      `${JSON.stringify(rawResult)}\n`,
+    );
+
+    const report = await gate(value);
+    expect(report.issues.map((entry) => entry.code)).toContain("release.impact.runs");
   });
 
   it("rejects a partial critical score even when normalized Impact remains above threshold", async () => {
@@ -383,7 +440,7 @@ describe("Tessl release gate", () => {
         "incident-summary",
         ...selection,
         "--runs",
-        "1",
+        "3",
         "tessl-evals",
       ];
       evaluation.start.commandSha256 = tesslCommandDigest(trustedDigest, invocation);
@@ -395,7 +452,7 @@ describe("Tessl release gate", () => {
         "eval-start",
         `${JSON.stringify({
           evalRunId: "eval-1",
-          scenariosCount: 2,
+          scenariosCount: evaluation.scenarios.length,
           context: {
             definition: {
               type: "plugin-directory",
@@ -519,7 +576,7 @@ describe("Tessl release gate", () => {
       "--model",
       "model",
       "--runs",
-      "1",
+      "3",
       "tessl-evals",
     ]);
     await writePrivateJson(evalFile, evaluation);
@@ -545,7 +602,7 @@ describe("Tessl release gate", () => {
       "--model",
       "model",
       "--runs",
-      "1",
+      "3",
       "tessl-evals",
     ]);
     await writePrivateJson(evalFile, evaluation);
@@ -817,7 +874,7 @@ describe("Tessl release gate", () => {
       "--model",
       "model",
       "--runs",
-      "1",
+      "3",
       "tessl-evals",
     ]);
     await writePrivateJson(reviewFile, review);
