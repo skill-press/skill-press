@@ -8,6 +8,7 @@ import { loadProjectConfig } from "../config/load.js";
 import { digestBoundedTree } from "../evidence/tree-digest.js";
 import { runCapturedCommand } from "../process/capture.js";
 import { tesslCommandDigest } from "../tessl/command-digest.js";
+import { tesslSolutionAssessment } from "../tessl/assessment.js";
 import { inspectTesslEvalSource } from "../tessl/eval-source.js";
 import type { SkillPressTesslEvalEvidence } from "../tessl/generated-eval-evidence.js";
 import type { SkillPressTesslReviewEvidence } from "../tessl/generated-review-evidence.js";
@@ -299,28 +300,6 @@ function extractJsonObject(bytes: Buffer): JsonRecord {
   throw new TypeError("incomplete JSON object");
 }
 
-function solutionScore(value: unknown): number {
-  if (!isRecord(value) || !Array.isArray(value.assessmentResults)) throw new TypeError("score");
-  let earned = 0;
-  let maximum = 0;
-  for (const criterion of value.assessmentResults) {
-    if (
-      !isRecord(criterion) ||
-      !Number.isFinite(criterion.score) ||
-      !Number.isFinite(criterion.max_score) ||
-      Number(criterion.score) < 0 ||
-      Number(criterion.max_score) <= 0 ||
-      Number(criterion.score) > Number(criterion.max_score)
-    ) {
-      throw new TypeError("score");
-    }
-    earned += Number(criterion.score);
-    maximum += Number(criterion.max_score);
-  }
-  if (maximum === 0) throw new TypeError("score");
-  return Math.round((earned / maximum) * 100);
-}
-
 function verifyReviewOutput(bytes: Buffer, evidence: SkillPressTesslReviewEvidence): void {
   const value = extractJsonObject(bytes);
   const validation = value.validation;
@@ -420,8 +399,18 @@ function verifyEvalOutputs(
       (solution) => isRecord(solution) && solution.variant !== "baseline",
     );
     if (baseline.length > 1 || withContext.length !== 1) throw new TypeError("pairing");
-    const baselineScore = baseline.length === 0 ? 0 : solutionScore(baseline[0]);
-    const withContextScore = solutionScore(withContext[0]);
+    const baselineAssessment =
+      baseline.length === 0 ? undefined : tesslSolutionAssessment(baseline[0]);
+    const withContextAssessment = tesslSolutionAssessment(withContext[0]);
+    if (
+      (baseline.length !== 0 && baselineAssessment === undefined) ||
+      withContextAssessment === undefined ||
+      !withContextAssessment.criticalPassed
+    ) {
+      throw new TypeError("score");
+    }
+    const baselineScore = baselineAssessment?.score ?? 0;
+    const withContextScore = withContextAssessment.score;
     return {
       fingerprintSha256: sha256(scenario.fingerprint),
       baselineScore,

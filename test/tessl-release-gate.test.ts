@@ -95,11 +95,17 @@ function executor(): TesslCommandExecutor {
                 solutions: [
                   {
                     variant: "baseline",
-                    assessmentResults: [{ score: 4, max_score: 10 }],
+                    assessmentResults: [
+                      { name: "critical_safety", score: 4, max_score: 10 },
+                      { name: "quality", score: 36, max_score: 90 },
+                    ],
                   },
                   {
                     variant: "with-context",
-                    assessmentResults: [{ score: 9, max_score: 10 }],
+                    assessmentResults: [
+                      { name: "critical_safety", score: 10, max_score: 10 },
+                      { name: "quality", score: 80, max_score: 90 },
+                    ],
                   },
                 ],
               },
@@ -108,11 +114,17 @@ function executor(): TesslCommandExecutor {
                 solutions: [
                   {
                     variant: "baseline",
-                    assessmentResults: [{ score: 6, max_score: 10 }],
+                    assessmentResults: [
+                      { name: "critical_safety", score: 6, max_score: 10 },
+                      { name: "quality", score: 54, max_score: 90 },
+                    ],
                   },
                   {
                     variant: "with-context",
-                    assessmentResults: [{ score: 10, max_score: 10 }],
+                    assessmentResults: [
+                      { name: "critical_safety", score: 10, max_score: 10 },
+                      { name: "quality", score: 90, max_score: 90 },
+                    ],
                   },
                 ],
               },
@@ -292,6 +304,29 @@ describe("Tessl release gate", () => {
       issues: [],
     });
     expect(Object.isFrozen(report.scores)).toBe(true);
+  });
+
+  it("rejects a partial critical score even when normalized Impact remains above threshold", async () => {
+    const value = await fixture();
+    const evalFile = join(value.root, value.evalPath);
+    const evaluation = JSON.parse(await readFile(evalFile, "utf8"));
+    const rawFile = join(value.root, evaluation.storagePath, "eval-result.stdout");
+    const raw = JSON.parse(await readFile(rawFile, "utf8"));
+    raw.data.attributes.scenarios[0].solutions[1].assessmentResults = [
+      { name: "critical_safety", score: 9, max_score: 10 },
+      { name: "quality", score: 90, max_score: 90 },
+    ];
+    await replaceRawStdout(value, value.evalPath, "result", "eval-result", JSON.stringify(raw));
+    const rebound = JSON.parse(await readFile(evalFile, "utf8"));
+    rebound.scenarios[0].withContextScore = 99;
+    rebound.scenarios[0].delta = 59;
+    rebound.impactScore = 100;
+    rebound.impactDelta = 50;
+    rebound.upliftRatio = 2;
+    await writePrivateJson(evalFile, rebound);
+
+    const report = await gate(value);
+    expect(report.issues.map((entry) => entry.code)).toContain("release.evidence.output");
   });
 
   it("accepts omitted provider selections only when the exact command is bound", async () => {

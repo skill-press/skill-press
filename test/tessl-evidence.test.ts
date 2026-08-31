@@ -207,11 +207,17 @@ function completedEval(
             solutions: [
               {
                 variant: "baseline",
-                assessmentResults: [{ name: "success", score: 4, max_score: 10 }],
+                assessmentResults: [
+                  { name: "critical_safety", score: 4, max_score: 10 },
+                  { name: "quality", score: 36, max_score: 90 },
+                ],
               },
               {
                 variant: "with-context",
-                assessmentResults: [{ name: "success", score: 9, max_score: 10 }],
+                assessmentResults: [
+                  { name: "critical_safety", score: 10, max_score: 10 },
+                  { name: "quality", score: 80, max_score: 90 },
+                ],
               },
             ],
           },
@@ -220,11 +226,17 @@ function completedEval(
             solutions: [
               {
                 variant: "baseline",
-                assessmentResults: [{ name: "success", score: 6, max_score: 10 }],
+                assessmentResults: [
+                  { name: "critical_safety", score: 6, max_score: 10 },
+                  { name: "quality", score: 54, max_score: 90 },
+                ],
               },
               {
                 variant: "with-context",
-                assessmentResults: [{ name: "success", score: 10, max_score: 10 }],
+                assessmentResults: [
+                  { name: "critical_safety", score: 10, max_score: 10 },
+                  { name: "quality", score: 90, max_score: 90 },
+                ],
               },
             ],
           },
@@ -1051,7 +1063,11 @@ describe("Tessl official evidence bridge", () => {
     };
     data.attributes.scenarios[0]?.solutions.splice(0, 1);
     const secondWith = data.attributes.scenarios[1]?.solutions[1];
-    if (secondWith !== undefined) secondWith.assessmentResults = [{ score: 1, max_score: 10 }];
+    if (secondWith !== undefined)
+      secondWith.assessmentResults = [
+        { name: "critical_safety", score: 10, max_score: 10 },
+        { name: "quality", score: 0, max_score: 90 },
+      ];
     const executor = executorFor((args) => {
       if (args[0] === "--version") return result("0.101.0\n");
       if (args[1] === "run")
@@ -1076,6 +1092,40 @@ describe("Tessl official evidence bridge", () => {
       "scenario_regression",
     ]);
     expect(evidence.upliftRatio).not.toBeNull();
+  });
+
+  it("makes a partial critical score ineligible even when aggregate Impact exceeds threshold", async () => {
+    const fixture = await project();
+    const value = completedEval();
+    const data = value.data as {
+      attributes: { scenarios: Array<{ solutions: Array<Record<string, unknown>> }> };
+    };
+    const firstWith = data.attributes.scenarios[0]?.solutions[1];
+    if (firstWith !== undefined)
+      firstWith.assessmentResults = [
+        { name: "critical_safety", score: 9, max_score: 10 },
+        { name: "quality", score: 90, max_score: 90 },
+      ];
+    const executor = executorFor((args) => {
+      if (args[0] === "--version") return result("0.101.0\n");
+      if (args[1] === "run")
+        return result(
+          '{"evalRunId":"eval-run-1","agent":"codex","model":"gpt-fixed","scenariosCount":2}',
+        );
+      return result(JSON.stringify(value));
+    });
+    const evidence = await captureTesslEvalEvidence(fixture.root, {
+      source: "tessl-evals",
+      agent: "codex",
+      model: "gpt-fixed",
+      executable: fixture.executable,
+      executor,
+      pollIntervalMs: 1,
+      wait: async () => undefined,
+    });
+    expect(evidence.impactScore).toBe(100);
+    expect(evidence.ineligibilityReasons).toContain("critical_failure");
+    expect(evidence.evidenceEligible).toBe(false);
   });
 
   it.each([

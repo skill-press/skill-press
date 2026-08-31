@@ -82,7 +82,8 @@
           "source_changed",
           "untrusted_cli",
           "missing_baseline",
-          "scenario_regression"
+          "scenario_regression",
+          "critical_failure"
         ]
       }
     }

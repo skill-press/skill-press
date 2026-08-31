@@ -35,6 +35,11 @@ Press snapshots it under private content-addressed storage and rechecks original
 canonical digests after the provider run. Raw output stays under `.skill-press/tessl/` with private
 permissions. A trusted version string without the signed executable digest is insufficient.
 
+Every weighted checklist totals exactly 100 points and includes a uniquely named `critical_*`
+criterion for its release invariants. Critical requirements are conjunctive: the evaluator assigns
+zero if any listed invariant is violated. A with-context critical criterion must receive full
+credit even when the aggregate Impact score would otherwise pass.
+
 ## Apply the gate
 
 `checkTesslReleaseGate` must receive the exact review evidence, eval evidence, and eval source. It

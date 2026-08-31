@@ -26,6 +26,7 @@ import {
 import { withPrivateProviderHome } from "../process/provider-home.js";
 import { validateAgentSkill } from "../validate/agent-skill.js";
 import { tesslCommandDigest } from "./command-digest.js";
+import { tesslSolutionAssessment } from "./assessment.js";
 import { inspectTesslEvalSource } from "./eval-source.js";
 import type { SkillPressTesslEvalEvidence } from "./generated-eval-evidence.js";
 import type { SkillPressTesslReviewEvidence } from "./generated-review-evidence.js";
@@ -749,33 +750,6 @@ export async function captureTesslReviewEvidence(
   return freeze(evidence);
 }
 
-function solutionScore(value: unknown): number | undefined {
-  if (
-    !isRecord(value) ||
-    !Array.isArray(value.assessmentResults) ||
-    value.assessmentResults.length === 0
-  ) {
-    return undefined;
-  }
-  let earned = 0;
-  let maximum = 0;
-  for (const criterion of value.assessmentResults) {
-    if (
-      !isRecord(criterion) ||
-      !Number.isFinite(criterion.score) ||
-      !Number.isFinite(criterion.max_score) ||
-      Number(criterion.score) < 0 ||
-      Number(criterion.max_score) <= 0 ||
-      Number(criterion.score) > Number(criterion.max_score)
-    ) {
-      return undefined;
-    }
-    earned += Number(criterion.score);
-    maximum += Number(criterion.max_score);
-  }
-  return Math.round((earned / maximum) * 100);
-}
-
 function parseCompletedEval(
   value: JsonRecord,
   expectedRunId: string,
@@ -784,6 +758,7 @@ function parseCompletedEval(
 ): {
   readonly scenarios: SkillPressTesslEvalEvidence["scenarios"];
   readonly missingBaseline: boolean;
+  readonly criticalFailure: boolean;
   readonly agent: string;
   readonly model: string;
 } {
@@ -834,6 +809,7 @@ function parseCompletedEval(
     ]);
   }
   let missingBaseline = false;
+  let criticalFailure = false;
   const fingerprints = new Set<string>();
   const scenarios = data.attributes.scenarios.map((scenario, index) => {
     if (
@@ -872,13 +848,20 @@ function parseCompletedEval(
       ]);
     }
     if (baselines.length === 0) missingBaseline = true;
-    const baselineScore = baselines.length === 0 ? 0 : solutionScore(baselines[0]);
-    const withContextScore = solutionScore(withContext[0]);
-    if (baselineScore === undefined || withContextScore === undefined) {
+    const baseline = baselines.length === 0 ? undefined : tesslSolutionAssessment(baselines[0]);
+    const context = tesslSolutionAssessment(withContext[0]);
+    if ((baselines.length !== 0 && baseline === undefined) || context === undefined) {
       throw new TesslEvidenceError("Tessl eval scores are invalid.", [
-        issue("tessl.eval.score", `/result/scenarios/${index}`, "assessment scores are malformed"),
+        issue(
+          "tessl.eval.score",
+          `/result/scenarios/${index}`,
+          "assessment criteria must be uniquely named, total 100 points, and include critical_*",
+        ),
       ]);
     }
+    if (!context.criticalPassed) criticalFailure = true;
+    const baselineScore = baseline?.score ?? 0;
+    const withContextScore = context.score;
     return {
       fingerprintSha256: digest(scenario.fingerprint),
       baselineScore,
@@ -886,7 +869,7 @@ function parseCompletedEval(
       delta: withContextScore - baselineScore,
     };
   }) as SkillPressTesslEvalEvidence["scenarios"];
-  return { scenarios, missingBaseline, agent, model };
+  return { scenarios, missingBaseline, criticalFailure, agent, model };
 }
 
 /** Capture Impact only by submitting and polling an actual paired Tessl CLI eval run. */
@@ -1105,6 +1088,7 @@ export async function captureTesslEvalEvidence(
     if (parsed.missingBaseline) reasons.push("missing_baseline");
     if (parsed.scenarios.some((scenario) => scenario.delta < 0))
       reasons.push("scenario_regression");
+    if (parsed.criticalFailure) reasons.push("critical_failure");
     const viewArgv = [context.executable, "eval", "view", "--json", runId] as const;
     const evidence: SkillPressTesslEvalEvidence = {
       schemaVersion: 1,

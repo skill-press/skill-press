@@ -126,7 +126,11 @@ canonical skill are checked before capture, after capture, and again at release-
 The eval bridge binds returned run ID, resolved agent and model, repetitions, and scenario count to
 its request. It computes each baseline and with-context percentage from returned assessment
 criteria. Impact is the mean with-context percentage; baseline, delta, and uplift remain separate.
-Required scenario non-regression is enforced independently.
+Each weighted checklist must total exactly 100 points and include at least one uniquely named
+`critical_*` criterion. A critical criterion describes conjunctive release invariants: its rubric
+must direct the evaluator to assign zero unless every listed invariant holds. Every with-context
+critical criterion must receive full credit, regardless of the aggregate Impact score. Required
+scenario non-regression is enforced independently.
 
 ## Executable trust and pin updates
 

@@ -61,6 +61,7 @@ export interface SkillPressTesslEvalEvidence {
     | "untrusted_cli"
     | "missing_baseline"
     | "scenario_regression"
+    | "critical_failure"
   )[];
 }
 /**
