@@ -244,6 +244,9 @@ export async function verifyRegistryRelease(input, fetcher = globalThis.fetch.bi
   }
   const provenanceUrl = canonicalAttestationUrl(attestations?.url, manifest);
   const attestationResult = await request(provenanceUrl, fetcher);
+  if (attestationResult.response.status === 404) {
+    return Object.freeze({ status: "pending", package: manifest.package });
+  }
   if (attestationResult.response.status !== 200) {
     fail(`registry attestation returned HTTP ${attestationResult.response.status}`);
   }

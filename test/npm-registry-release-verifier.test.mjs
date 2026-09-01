@@ -122,6 +122,31 @@ describe("npm registry release verifier", () => {
     });
   });
 
+  it("classifies an exact package whose attestation is still propagating as pending", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(metadata(), { status: 200 }))
+      .mockResolvedValueOnce(new Response("not found", { status: 404 }));
+    await expect(verifyRegistryRelease(manifest, fetcher)).resolves.toEqual({
+      status: "pending",
+      package: manifest.package,
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([400, 401, 403, 429, 500])(
+    "fails closed when an exact package's attestation returns HTTP %i",
+    async (status) => {
+      const fetcher = vi
+        .fn()
+        .mockResolvedValueOnce(new Response(metadata(), { status: 200 }))
+        .mockResolvedValueOnce(new Response("unavailable", { status }));
+      await expect(verifyRegistryRelease(manifest, fetcher)).rejects.toThrow(
+        `registry attestation returned HTTP ${status}`,
+      );
+    },
+  );
+
   it("binds exact metadata and SLSA provenance to tarball, repository, and commit", async () => {
     const fetcher = vi
       .fn()

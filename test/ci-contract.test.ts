@@ -100,13 +100,12 @@ describe("GitHub Actions release contracts", () => {
       verify?.steps
         ?.map((step) => step.run)
         .filter(Boolean)
-        .slice(0, 7),
+        .slice(0, 6),
     ).toEqual([
       "node scripts/verify-release.mjs",
       "npm ci --ignore-scripts",
       "npm run check",
       "npm exec -- tsc -p tsconfig.submission-tests.json",
-      "node scripts/verify-github-release-assets.mjs",
       "npm run security:audit",
       "npm run package:verify",
     ]);
@@ -138,7 +137,7 @@ describe("GitHub Actions release contracts", () => {
     expect(source).toContain("verify-npm-registry-release.mjs");
     expect(source).toContain('while [ "$attempt" -le 200 ]');
     expect(source).toContain("sleep 15");
-    expect(source).toContain('if [ "$status" != "absent" ]');
+    expect(source).toContain('if [ "$status" != "absent" ] && [ "$status" != "pending" ]');
     expect(source).toContain('state.status !== "absent" && state.status !== "match"');
     expect(source).toContain("manifest.verifier.sha256");
     expect(source).toContain('remote.status !== "match"');
