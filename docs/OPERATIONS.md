@@ -405,9 +405,11 @@ developer tool, not Agent Skill releases.
 
 The repository's `.github/workflows/release.yml` responds only to a formal non-prerelease GitHub
 Release whose tag is `v<package-version>`. Its unprivileged verification job checks the exact tag,
-repository identity, release assets, tests, production audit, package inventory, tarball digest,
-and source binding. The protected `publish` job alone receives `id-token: write` and uses npm OIDC
-trusted publishing; no npm write token is stored in GitHub.
+repository identity, tests, production audit, package inventory, tarball digest, and source
+binding. The protected `publish` job alone receives `id-token: write` and uses npm OIDC trusted
+publishing; no npm write token is stored in GitHub. CLI releases do not carry or validate Skill
+archives; [ADR 002](decisions/002-decouple-cli-and-skill-releases.md) defines the independent
+release lifecycles.
 
 The registry requires a package to exist before its Trusted Publisher can be configured. Reserve
 the name once with the tracked, inert `npm/bootstrap-reservation/` package. It is version `0.0.0`,
@@ -530,13 +532,20 @@ Complete this one-time ceremony before the first production release:
    and allowed publish action above. In npm package settings, require 2FA and disallow traditional
    publish tokens; revoke any temporary credential used during the manual exception.
 
-7. Publish the usable `0.1.0` package only by creating the protected `v0.1.0` GitHub Release. The
-   OIDC workflow must create its provenance and move `latest` to `0.1.0`; never publish `0.1.0`
-   manually. Keep `0.0.0` isolated under `bootstrap`.
+7. Publish each usable CLI version only by creating its protected `v<package-version>` GitHub
+   Release. The OIDC workflow must create provenance and move `latest`; never publish a usable CLI
+   version manually. Keep `0.0.0` isolated under `bootstrap`.
 
-Before approval, compare the tag, source commit, current gate evidence, release assets, and npm
-tarball manifest. Environment approval resumes the original attempt and is safe; do not rerun a
-failed workflow for the initial deployment receipt. Both release jobs reject any
+The first usable version, `0.1.0`, reached npm successfully, but its original workflow queried the
+attestation endpoint during the short provenance propagation window and therefore did not emit a
+deployment receipt. Do not rerun or republish it. The exact facts and disposition are preserved in
+[the v0.1.0 provenance incident](incidents/npm-v0.1.0-provenance-propagation.md). Recovery uses the
+new protected `v0.1.1` CLI release while the unchanged Skill remains at its independently versioned
+`0.1.0`.
+
+Before approval, compare the tag, source commit, exact npm tarball manifest, and Trusted Publisher
+binding. Environment approval resumes the original attempt and is safe; do not rerun a failed
+workflow for the initial deployment receipt. Both release jobs reject any
 `github.run_attempt` other than `1` before publishing. The sealed first-deploy verifier accepts only
 `runAttempt: "1"` because GitHub's run-level artifact API cannot prove which rerun produced a
 same-named artifact. Preserve a failed attempt as a release incident, verify exact npm state, and

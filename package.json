@@ -1,6 +1,6 @@
 {
   "name": "@skill-press/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Build, verify, submit, and install trusted agent skills.",
   "license": "MIT",
   "author": "Mushan Yang <mushanyoung@gmail.com>",
