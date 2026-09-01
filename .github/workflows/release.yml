@@ -122,8 +122,8 @@ jobs:
           import { appendFile, readFile } from "node:fs/promises";
           import { join } from "node:path";
           const state = JSON.parse(await readFile(join(process.env.RUNNER_TEMP, "npm-registry-before.json"), "utf8"));
-          if (state.status !== "absent" && state.status !== "match") throw new Error("unexpected registry state");
-          await appendFile(process.env.GITHUB_OUTPUT, `publish_required=${state.status === "absent"}\n`);
+          if (state.status !== "absent") throw new Error("npm version already exists or has ambiguous provenance state");
+          await appendFile(process.env.GITHUB_OUTPUT, "publish_required=true\n");
           NODE
       - name: Publish with npm trusted publishing
         if: steps.registry-before.outputs.publish_required == 'true'

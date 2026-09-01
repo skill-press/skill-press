@@ -138,7 +138,10 @@ describe("GitHub Actions release contracts", () => {
     expect(source).toContain('while [ "$attempt" -le 200 ]');
     expect(source).toContain("sleep 15");
     expect(source).toContain('if [ "$status" != "absent" ] && [ "$status" != "pending" ]');
-    expect(source).toContain('state.status !== "absent" && state.status !== "match"');
+    expect(source).toContain('if (state.status !== "absent")');
+    expect(source).toContain("npm version already exists or has ambiguous provenance state");
+    expect(source).toContain('appendFile(process.env.GITHUB_OUTPUT, "publish_required=true\\n")');
+    expect(source).not.toContain('state.status === "absent"');
     expect(source).toContain("manifest.verifier.sha256");
     expect(source).toContain('remote.status !== "match"');
     expect(source).toContain("npm audit signatures");
