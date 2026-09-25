@@ -185,6 +185,10 @@ try {
       );
       version = (await run(installedBinary, ["--version"], installRoot)).stdout.trim();
       if (version !== packageJson.version) fail("installed CLI returned the wrong version");
+      const discoverHelp = (await run(installedBinary, ["discover", "--help"], installRoot)).stdout;
+      if (!discoverHelp.includes("skpress discover [name-or-namespace] [--json]")) {
+        fail("installed CLI does not expose discovery help");
+      }
     },
   );
 
