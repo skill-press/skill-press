@@ -5,6 +5,9 @@ behavioral and review verification; local structural validation is not a quality
 score or admission decision. Their source folders are under `skills/`, independent
 of the repository's existing self-hosted `skill-press` project configuration.
 
+Use [the author preparation guide](AUTHORING.md) to turn one candidate into its
+own project; do not accidentally package the CLI repository's self-hosted skill.
+
 | Skill | Try it with | Expected useful outcome | Runtime |
 | --- | --- | --- | --- |
 | `release-notes` | Ask for user-facing release notes using `release-changes.md` | Separate actual change from test-only and reverted changes; identify migration uncertainty | Agent text reasoning; Git only for local revision ranges |
