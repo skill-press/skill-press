@@ -2,6 +2,7 @@ import { join } from "node:path";
 
 import { checkProject } from "./check/project.js";
 import type { SkillPressCheckReport } from "./check/types.js";
+import { DISCOVER_HELP, runDiscoverCommand } from "./cli/discovery.js";
 import { ADD_HELP, INSTALL_HELP, runAddCommand, runInstallCommand } from "./cli/install.js";
 import { DOCTOR_HELP, runDoctorCommand, runStatusCommand, STATUS_HELP } from "./cli/inspect.js";
 import { IMPROVE_HELP, runImproveCommand } from "./cli/improve.js";
@@ -55,6 +56,7 @@ Commands:
   tessl              Capture official Tessl Quality and Impact evidence
   package            Create reproducible, provenance-bound release artifacts
   submit             Submit one verified candidate to the canonical Skill Press review pipeline
+  discover           Find published releases and their exact installation commands
   add                Resolve, verify, lock, and install one exact trusted release
   install            Restore every locked release after refreshing current trust
   status             Summarize gates, evidence, package, and submission state
@@ -971,6 +973,13 @@ export async function runCli(args: readonly string[], io: CliIo = defaultIo): Pr
       return (await writeStdout(capturedIo, renderSubmitHelp())) ? 0 : 1;
     }
     return runSubmitCommand(capturedArgs.slice(1), capturedIo);
+  }
+
+  if (capturedArgs[0] === "discover") {
+    if ((capturedArgs[1] === "--help" || capturedArgs[1] === "-h") && capturedArgs.length === 2) {
+      return (await writeStdout(capturedIo, DISCOVER_HELP)) ? 0 : 1;
+    }
+    return runDiscoverCommand(capturedArgs.slice(1), capturedIo);
   }
 
   if (capturedArgs[0] === "add") {
