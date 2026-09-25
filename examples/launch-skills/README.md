@@ -20,3 +20,9 @@ The CSV example has five logical data records, three columns, a width mismatch a
 record 5, a blank second field at record 3, one duplicate record and one potential
 formula cell. The quoted multiline field remains one record. These are fixture
 expectations, not a recorded successful behavioral run.
+
+See [local walkthrough outputs](walkthrough.md) for the root's application of each
+skill to these inputs and the limits of that evidence. The three actual skill
+trees also passed an isolated platform admission/review/publication/install and
+discovery test at CLI commit `092d0d5`; external provider evidence and keys were
+synthetic, so that run does not grant production admission or external scores.
