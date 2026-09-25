@@ -6,7 +6,7 @@ the Skill Press CLI.
 
 ## Current interface boundary
 
-The CLI implements `init`, `check`, `test`, `eval`, `tessl`, `improve`, `package`, `submit`, `add`,
+The CLI implements `init`, `check`, `test`, `eval`, `tessl`, `improve`, `package`, `submit`, `discover`, `add`,
 `install`, `status`, and `doctor`.
 
 `submit` has one production destination, `https://skill-press.com/api/v1`. The production registry
@@ -83,6 +83,18 @@ reports Tessl Quality or Impact.
 
 `test` runs the configured argv on the host without a shell, bounds cwd to the project, and limits
 time and output. Run it only for a repository whose test commands you trust.
+
+A successful command exit is not a count of behavioral tests. For example,
+`node --test` can exit successfully with no test files. Supply actual cases and
+inspect their results before claiming the skill was exercised. Local readiness
+100 is not a Tessl score, human approval or permission to submit remotely.
+
+For a complete brief shape, see the repository's
+[synthetic incident example](../test/fixtures/create/complete-brief.yaml).
+Adapt its identity, namespace, real scenarios and test commands before creating
+your own project. The fixture is a schema example, not a release-ready template.
+The [launch candidates](../examples/launch-skills/README.md) provide actual skill
+content and walkthroughs, but are not published releases or scored submissions.
 
 ## Paired behavioral evaluation
 

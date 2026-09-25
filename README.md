@@ -58,6 +58,27 @@ skpress --help
 The package name is fixed, but this README does not claim that a production npm release is already
 available.
 
+## First installation of a Skill
+
+Once the registry is live, start in the project where your agent will use the skill.
+Discovery and installation do not require an author token.
+
+1. Run `skpress discover` (or `skpress discover <name>`) and choose an exact release.
+2. In a Git project, add `.agents/skills/` to `.gitignore` before installing. Keep
+   this directory untracked; it contains locally derived installed files.
+3. Run the `skpress add namespace/skill@version` command shown by discovery.
+4. Commit `skill-lock.json` and the ignore rule. On another machine or clone, run
+   `skpress install` to restore the locked releases with fresh trust verification.
+
+Installed skills live under `.agents/skills/`. Use an agent that supports discovery
+from that directory, and follow its reload/start-session behavior. Skill Press does
+not launch an agent or prove that an agent has loaded the installed skill.
+
+An empty discovery list means no releases were returned; a connection or integrity
+error is a failed lookup, not an empty registry. A quarantined or revoked release is
+not installable. Do not work around an installation failure by copying mirror files
+into the agent's skill directory: that would bypass the current-trust check.
+
 ## Workflow
 
 Create a project from a complete, strictly validated capability brief:
@@ -161,9 +182,16 @@ version reservation and audit records remain, but it no longer consumes the auth
 Trusted installation uses exact locators and never falls back to a branch or third-party catalog:
 
 ```bash
+skpress discover
+skpress discover <name-or-namespace>
 skpress add <namespace>/<skill>@<exact-version>
 skpress install
 ```
+
+`discover` lists published releases after verifying the complete discovery snapshot.
+Its optional query filters locators without case sensitivity; `--json` returns structured
+results. The feed's trust labels are informational: `add` always checks fresh signed trust
+before installing. Discovery needs no token or project, but requires the registry to be live.
 
 `add` records the immutable artifact and the highest observed signed trust sequence in
 `skill-lock.json`, then installs under `.agents/skills/`. `install` restores every exact lock entry.
