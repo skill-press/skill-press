@@ -3,6 +3,30 @@ import { describe, expect, it } from "vitest";
 import { runCapturedCommand } from "../src/process/capture.js";
 
 describe("bounded captured command runner", () => {
+  it("sends bounded UTF-8 through stdin, not argv", async () => {
+    const result = await runCapturedCommand({
+      argv: [
+        process.execPath,
+        "-e",
+        "process.stdin.pipe(process.stdout);process.stderr.write(JSON.stringify(process.argv))",
+      ],
+      cwd: process.cwd(),
+      timeoutSeconds: 2,
+      stdin: "私有输入\n$HOME; not shell syntax",
+    });
+    expect(result.status).toBe("passed");
+    expect(result.stdout.toString()).toBe("私有输入\n$HOME; not shell syntax");
+    expect(result.stderr.toString()).not.toContain("私有输入");
+    await expect(
+      runCapturedCommand({
+        argv: [process.execPath],
+        cwd: process.cwd(),
+        timeoutSeconds: 2,
+        stdin: "界".repeat(400000),
+      }),
+    ).rejects.toThrow(TypeError);
+  });
+
   it("captures bounded output and an explicit minimal environment without a shell", async () => {
     const result = await runCapturedCommand({
       argv: [

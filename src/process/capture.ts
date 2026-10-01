@@ -17,6 +17,8 @@ export interface CapturedCommand {
   readonly maxOutputBytes?: number;
   readonly env?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
+  /** Optional bounded UTF-8 input; never included in argv or result metadata. */
+  readonly stdin?: string;
 }
 
 export interface CapturedCommandResult {
@@ -70,7 +72,8 @@ export async function runCapturedCommand(command: CapturedCommand): Promise<Capt
     command.timeoutSeconds > 7200 ||
     !Number.isSafeInteger(maxOutputBytes) ||
     maxOutputBytes < 1024 ||
-    maxOutputBytes > 16 * 1024 * 1024
+    maxOutputBytes > 16 * 1024 * 1024 ||
+    (command.stdin !== undefined && Buffer.byteLength(command.stdin, "utf8") > 1024 * 1024)
   ) {
     throw new TypeError("Captured command limits are invalid.");
   }
@@ -104,7 +107,7 @@ export async function runCapturedCommand(command: CapturedCommand): Promise<Capt
       detached,
       env: environment(command.env),
       shell: false,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [command.stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
       windowsHide: true,
     });
   } catch {
@@ -171,5 +174,9 @@ export async function runCapturedCommand(command: CapturedCommand): Promise<Capt
         }),
       );
     });
+    if (command.stdin !== undefined) {
+      child.stdin?.once("error", () => force("failed"));
+      child.stdin?.end(command.stdin);
+    }
   });
 }
