@@ -58,7 +58,7 @@ afterEach(async () => {
 });
 
 describe("inert npm bootstrap reservation", () => {
-  it("keeps the formal package at 0.1.1 and documents the one-time ceremony", async () => {
+  it("keeps the release candidate at 0.1.2 and documents the one-time ceremony", async () => {
     const formalPackage = JSON.parse(
       await readFile(new URL("../package.json", import.meta.url), "utf8"),
     );
@@ -67,9 +67,9 @@ describe("inert npm bootstrap reservation", () => {
     );
     const operations = await readFile(new URL("../docs/OPERATIONS.md", import.meta.url), "utf8");
 
-    expect(formalPackage.version).toBe("0.1.1");
-    expect(formalLock.version).toBe("0.1.1");
-    expect(formalLock.packages[""].version).toBe("0.1.1");
+    expect(formalPackage.version).toBe("0.1.2");
+    expect(formalLock.version).toBe("0.1.2");
+    expect(formalLock.packages[""].version).toBe("0.1.2");
     expect(formalPackage.scripts).toMatchObject({
       "npm:bootstrap:verify": "node scripts/verify-npm-bootstrap-reservation.mjs",
       "npm:bootstrap:prepare":
