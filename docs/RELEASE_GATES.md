@@ -4,7 +4,19 @@ Skill Press keeps local readiness, deterministic tests, paired behavior, officia
 client packaging, submission review, and published-release trust as distinct facts. Passing one
 does not manufacture another.
 
-## Client release gate
+## Native client and server policy
+
+`checkReleaseGate` selects the native path only with `provider: "native"`; CLI users
+select `--native`. See [native evaluation](NATIVE_EVALUATION.md) for the complete
+contract. Policy `skillpress.native-review` v1 requires source-bound complete
+paired measurements, per-criterion score recomputation, success ≥0.9, baseline
+improvement ≥0.1, repetitions ≥3 and age <168 hours. Stricter project limits apply.
+Native failures never fall back to legacy evidence. Server recomputation does
+not prove authors ran their model honestly; curator independent reruns still gate
+acceptance. The sections discussing executable pins/provider JSON below describe
+the legacy protocol only, not requirements of native evaluation.
+
+## Legacy Tessl client release gate
 
 The `checkTesslReleaseGate` library API accepts only explicit review/eval evidence under the
 private `.skill-press/tessl/<run-id>/evidence.json` capture layout and an eval-source directory

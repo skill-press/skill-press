@@ -192,7 +192,7 @@ describe("package CLI orchestration", () => {
     expect(JSON.parse(output.stderr[0] as string)).toMatchObject({
       ok: false,
       code: "release_blocked",
-      message: "Source changed after the Tessl release gate.",
+      message: "Source changed after the release gate.",
       issues: [{ code: "release.configuration", path: "/project" }],
     });
   });

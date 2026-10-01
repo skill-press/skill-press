@@ -45,6 +45,12 @@ export function assessNativeMeasurement(
   if (!validate(value)) return { passed: false, issues: ["native.evidence.schema"] };
   const suite = inputs[suiteName];
   const rubric = inputs.rubric;
+  const categories = new Set(suite.scenarios.map((scenario) => scenario.category));
+  for (const category of suiteName === "training"
+    ? (["positive", "near-miss", "failure", "adversarial"] as const)
+    : (["positive", "near-miss"] as const)) {
+    if (!categories.has(category)) fail("native.scenarios.coverage");
+  }
   if (value.evaluationInputsSha256 !== evaluationInputsSha256(suite, rubric))
     fail("native.inputs.binding");
   if (!value.evidenceEligible || value.ineligibilityReasons.length !== 0)
@@ -100,6 +106,11 @@ export function assessNativeMeasurement(
         ["baseline", run.baseline],
         ["with-skill", run.withSkill],
       ] as const) {
+        const expectedRunId = createHash("sha256")
+          .update(`${value.runId}:${index}:${run.repetition}:${variant}`)
+          .digest("hex");
+        if (leg.runId !== expectedRunId) fail("native.run.binding");
+        if (variant === "baseline" && leg.activated !== false) fail("native.baseline.activation");
         if (runIds.has(leg.runId)) fail("native.run.duplicate");
         runIds.add(leg.runId);
         const score =

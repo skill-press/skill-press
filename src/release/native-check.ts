@@ -13,7 +13,7 @@ import { assessNativeMeasurement } from "./native-measurement.js";
 import { NATIVE_REVIEW_POLICY } from "./native-policy.js";
 
 /** Local native assessment only: does not authorize package, submission or publication. */
-export async function checkNativeEvaluation(
+export async function loadNativeEvaluation(
   projectDirectory: string,
   paths: ImprovementEvidencePaths,
   now: Date = new Date(),
@@ -69,7 +69,7 @@ export async function checkNativeEvaluation(
     )
   )
     issues.push("native.pair.run_reuse");
-  return {
+  const report = {
     schemaVersion: 1 as const,
     reportType: "skillpress.native-evaluation-check" as const,
     policy: NATIVE_REVIEW_POLICY,
@@ -82,4 +82,13 @@ export async function checkNativeEvaluation(
     holdout: holdoutAssessment,
     issues,
   };
+  return { report, config, inputs, training, holdout };
+}
+
+export async function checkNativeEvaluation(
+  projectDirectory: string,
+  paths: ImprovementEvidencePaths,
+  now: Date = new Date(),
+) {
+  return (await loadNativeEvaluation(projectDirectory, paths, now)).report;
 }

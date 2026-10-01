@@ -1,9 +1,9 @@
-# Native evaluation (implementation in progress)
+# Native evaluation and submission
 
 Skill Press is replacing mandatory Tessl evaluation with its own paired evaluation
 and review path. Do not run paid Tessl evaluation for launch preparation.
 
-The first implemented slice is local measurement and consistency checking:
+Run paired measurements and check their consistency locally:
 
 ```sh
 skpress eval --suite training --image <digest-pinned-image> --model <model> -- <adapter-argv...>
@@ -41,8 +41,36 @@ judge scores; hashes do not prove honest execution or judging. In this protocol,
 deterministic rubric criteria measure activation, not transcript quality.
 Independent curator execution and review remain necessary.
 
-`releaseAuthorized` is always `false` in this local report. Package/submission and
-server admission have **not yet migrated** and still use the historical Tessl
-contract. A successful `eval-check` must not bypass those gates. The next slice
-must connect versioned native evidence through those boundaries before the project
-can claim Tessl-independent publication support.
+`releaseAuthorized` is always `false` in this local report. Select the native
+protocol explicitly when packaging or submitting; a failed native check never
+falls back to Tessl:
+
+```sh
+skpress submit --native --dry-run \
+  --review-evidence .skill-press/runs/<training-run>/evidence.json \
+  --eval-evidence .skill-press/runs/<holdout-run>/evidence.json \
+  --eval-source evals
+```
+
+The same evidence flags and `--native` work with `package`, `status` and `doctor`.
+The historical flag names map review → training and eval → holdout. `doctor`
+does not probe Tessl or require its credential in native mode. Omit `--dry-run`
+only when authorized to submit to a deployed compatible registry.
+
+Commit `skill-press.yaml`, the canonical skill and `evals` first. Dirty, untracked
+or ignored files in these inputs block native packaging. The deterministic
+`skillpress.native-evidence` envelope includes source commit/tree hashes, the
+complete parsed config, both evaluation suites, rubric and measurement. Treat
+all these inputs, including fixture text, as publishable: never include secrets
+or private user data. The uploaded scores remain author-supplied claims.
+
+The platform uses versioned `skillpress.native-review` policy v1, independently
+checks the envelope schema and recomputes scores, then requires the existing
+curator corroboration/independent-rerun decision before publication. This does
+not attest that an uploaded model run actually happened. Legacy Tessl evidence
+remains a separate compatibility protocol; mixed evidence is rejected.
+
+Deployment needs the platform's forward `0008_native_review_policy.sql` migration
+to retain historical reviews while admitting the native policy. Local tests use
+synthetic scores and isolated persistence; they do not establish real model
+quality, production migration safety or launch readiness.

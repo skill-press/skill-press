@@ -2,7 +2,8 @@ import { ProjectConfigError } from "../config/errors.js";
 import { diagnoseProject, type DoctorOptions, type DoctorReport } from "../doctor/project.js";
 import { SkillPackageError } from "../package/archive.js";
 import { isSafePathInput } from "../path-safety.js";
-import { TesslReleaseGateError, type TesslReleaseGateOptions } from "../release/tessl-gate.js";
+import { TesslReleaseGateError } from "../release/tessl-gate.js";
+import type { ReleaseGateOptions } from "../release/gate.js";
 import {
   inspectProjectStatus,
   type ProjectStatusOptions,
@@ -12,15 +13,16 @@ import { SubmissionJournalError } from "../submission/journal.js";
 import { SubmissionManifestError } from "../submission/manifest.js";
 import type { CliExitCode, CliIo } from "../cli.js";
 
-export const STATUS_HELP = `Summarize local readiness, Tessl evidence, package, and submission state.
+export const STATUS_HELP = `Summarize local readiness, evaluation evidence, package, and submission state.
 
 Usage:
   skpress status [options]
 
 Options:
+  --native                    Use native evidence; do not probe or invoke Tessl
   --project <directory>       Project root; defaults to the current directory
-  --review-evidence <file>    Private Tessl Quality evidence file
-  --eval-evidence <file>      Private Tessl Impact evidence file
+  --review-evidence <file>    Native training or legacy Tessl Quality evidence
+  --eval-evidence <file>      Native holdout or legacy Tessl Impact evidence
   --eval-source <directory>   Evaluated scenario source inside the project
   --artifacts <directory>     Optional private packaged-artifacts directory
   --submission <file>         Optional private submission journal; requires --artifacts to bind
@@ -37,9 +39,10 @@ Usage:
   skpress doctor [options]
 
 Options:
+  --native                    Use native evidence; do not probe or invoke Tessl
   --project <directory>       Project root; defaults to the current directory
-  --review-evidence <file>    Private Tessl Quality evidence file
-  --eval-evidence <file>      Private Tessl Impact evidence file
+  --review-evidence <file>    Native training or legacy Tessl Quality evidence
+  --eval-evidence <file>      Native holdout or legacy Tessl Impact evidence
   --eval-source <directory>   Evaluated scenario source inside the project
   --tessl-executable <path>   Tessl CLI; defaults to tessl on PATH
   --json                      Emit one stable JSON object
@@ -57,7 +60,7 @@ interface InspectIssue {
 
 interface CommonArguments {
   readonly project: string;
-  readonly evidence?: TesslReleaseGateOptions;
+  readonly evidence?: ReleaseGateOptions;
   readonly json: boolean;
 }
 
@@ -106,6 +109,7 @@ function takeValue(args: readonly string[], index: number, flag: string): string
 function parse(args: readonly string[], doctor: boolean): StatusArguments | DoctorArguments {
   const values = new Map<string, string>();
   let json = false;
+  let native = false;
   const allowed = new Set([
     "--project",
     "--review-evidence",
@@ -115,6 +119,11 @@ function parse(args: readonly string[], doctor: boolean): StatusArguments | Doct
   ]);
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index] as string;
+    if (argument === "--native") {
+      if (native) throw new InspectUsageError("--native may be specified only once.");
+      native = true;
+      continue;
+    }
     if (argument === "--json") {
       if (json) throw new InspectUsageError("--json may be specified only once.");
       json = true;
@@ -133,17 +142,26 @@ function parse(args: readonly string[], doctor: boolean): StatusArguments | Doct
     (entry) => entry !== undefined,
   ).length;
   if (evidenceCount !== 0 && evidenceCount !== 3) {
-    throw new InspectUsageError(
-      "Tessl review evidence, eval evidence, and eval source are all-or-none.",
-    );
+    throw new InspectUsageError("Review evidence, eval evidence, and eval source are all-or-none.");
   }
+  if (native && (evidenceCount !== 3 || values.has("--tessl-executable")))
+    throw new InspectUsageError(
+      "--native requires complete native evidence and cannot select a Tessl executable.",
+    );
   const common: CommonArguments = {
     project: values.get("--project") ?? process.cwd(),
     ...(reviewEvidencePath === undefined ||
     evalEvidencePath === undefined ||
     evalSource === undefined
       ? {}
-      : { evidence: { reviewEvidencePath, evalEvidencePath, evalSource } }),
+      : {
+          evidence: {
+            reviewEvidencePath,
+            evalEvidencePath,
+            evalSource,
+            ...(native ? { provider: "native" as const } : {}),
+          },
+        }),
     json,
   };
   if (!doctor) {
@@ -233,7 +251,7 @@ function statusHuman(report: ProjectStatusReport): string {
   const submission = report.submission?.operationStatus ?? "not supplied";
   const trust = report.submission?.remote?.release?.trust.status ?? "not released";
   const issues = report.issues.map((entry) => `- ${entry.message} [${entry.code}]`).join("\n");
-  return `Local release-input readiness: ${report.ready ? "ready" : "blocked"}\nLocal: ${report.local.score}/${report.local.minimum}\nTessl gate: ${gate}\nPackage: ${packaged}\nSubmission: ${submission}\nSubmission namespace: ${report.submission?.namespace ?? "not supplied"}\nCurrent trust verified: no\nLast observed release trust: ${trust} (cached, not authoritative)\n${issues === "" ? "" : `${issues}\n`}`;
+  return `Local release-input readiness: ${report.ready ? "ready" : "blocked"}\nLocal: ${report.local.score}/${report.local.minimum}\n${report.gate?.gateType === "skillpress.native-release" ? "Native" : "Tessl"} gate: ${gate}\nPackage: ${packaged}\nSubmission: ${submission}\nSubmission namespace: ${report.submission?.namespace ?? "not supplied"}\nCurrent trust verified: no\nLast observed release trust: ${trust} (cached, not authoritative)\n${issues === "" ? "" : `${issues}\n`}`;
 }
 
 function doctorHuman(report: DoctorReport): string {

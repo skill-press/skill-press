@@ -7,12 +7,12 @@ import {
 } from "../package/archive.js";
 import { SkillStagingError, stageCanonicalSkill } from "../package/stage.js";
 import { isSafePathInput } from "../path-safety.js";
+import { TesslReleaseGateError } from "../release/tessl-gate.js";
 import {
-  checkTesslReleaseGate,
-  TesslReleaseGateError,
-  type TesslReleaseGateOptions,
-  type TesslReleaseGateReport,
-} from "../release/tessl-gate.js";
+  checkReleaseGate,
+  type ReleaseGateOptions,
+  type ReleaseGateReport,
+} from "../release/gate.js";
 import { SubmissionJournalError, type SubmissionReceipt } from "../submission/journal.js";
 import { SubmissionManifestError } from "../submission/manifest.js";
 import { runSkillSubmission, SubmissionRunError } from "../submission/run.js";
@@ -24,10 +24,11 @@ Usage:
   skpress submit --review-evidence <file> --eval-evidence <file> --eval-source <directory> [options]
 
 Options:
+  --native                    Use native training/holdout evidence; never invoke Tessl
   --project <directory>       Project root; defaults to the current directory
   --artifacts <directory>     Reuse an exact .skill-press/staging/<run>/artifacts package
-  --review-evidence <file>    Private Tessl Quality evidence file
-  --eval-evidence <file>      Private Tessl Impact evidence file
+  --review-evidence <file>    Native training or legacy Tessl Quality evidence
+  --eval-evidence <file>      Native holdout or legacy Tessl Impact evidence
   --eval-source <directory>   Evaluated scenario source inside the project
   --dry-run                   Prepare and validate locally without contacting Skill Press
   --resume <receipt>          Retry or refresh the exact private submission journal
@@ -48,14 +49,14 @@ interface SubmissionCliIssue {
 interface SubmitArguments {
   readonly project: string;
   readonly artifactsPath?: string;
-  readonly evidence: TesslReleaseGateOptions;
+  readonly evidence: ReleaseGateOptions;
   readonly dryRun: boolean;
   readonly resumeReceiptPath?: string;
   readonly json: boolean;
 }
 
 interface SubmissionCommandOperations {
-  readonly checkGate: typeof checkTesslReleaseGate;
+  readonly checkGate: typeof checkReleaseGate;
   readonly stage: typeof stageCanonicalSkill;
   readonly package: typeof packageStagedSkill;
   readonly load: typeof loadPackagedSkill;
@@ -98,7 +99,7 @@ function parse(args: readonly string[]): SubmitArguments {
   ]);
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index] as string;
-    if (argument === "--json" || argument === "--dry-run") {
+    if (argument === "--json" || argument === "--dry-run" || argument === "--native") {
       if (booleans.has(argument))
         throw new SubmitUsageError(`${argument} may be specified only once.`);
       booleans.add(argument);
@@ -126,6 +127,7 @@ function parse(args: readonly string[]): SubmitArguments {
       ? {}
       : { artifactsPath: values.get("--artifacts") as string }),
     evidence: {
+      ...(booleans.has("--native") ? { provider: "native" as const } : {}),
       reviewEvidencePath: required("--review-evidence"),
       evalEvidencePath: required("--eval-evidence"),
       evalSource: required("--eval-source"),
@@ -139,7 +141,7 @@ function parse(args: readonly string[]): SubmitArguments {
 }
 
 const defaultOperations: SubmissionCommandOperations = Object.freeze({
-  checkGate: checkTesslReleaseGate,
+  checkGate: checkReleaseGate,
   stage: stageCanonicalSkill,
   package: packageStagedSkill,
   load: loadPackagedSkill,
@@ -202,7 +204,9 @@ function isUnavailableStorageError(error: unknown): boolean {
   );
 }
 
-function gateHuman(gate: TesslReleaseGateReport): string {
+function gateHuman(gate: ReleaseGateReport): string {
+  if (gate.gateType === "skillpress.native-release")
+    return `Native release gate: ${gate.passed ? "passed (advisory)" : "blocked"}\nIndependent curator review remains required.\n`;
   return `Tessl release gate: ${gate.passed ? "passed" : "blocked"}\nQuality: ${gate.scores.quality ?? "unavailable"}/${gate.thresholds.quality}\nImpact: ${gate.scores.impact ?? "unavailable"}/${gate.thresholds.impact}\n`;
 }
 
@@ -215,7 +219,7 @@ function receiptHuman(receipt: SubmissionReceipt): string {
 
 async function packageForSubmission(
   parsed: SubmitArguments,
-  gate: TesslReleaseGateReport,
+  gate: ReleaseGateReport,
   operations: SubmissionCommandOperations,
 ): Promise<LoadedSkillPackageArtifacts> {
   if (parsed.artifactsPath !== undefined) {

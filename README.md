@@ -115,34 +115,34 @@ skpress improve --training-evidence <training-evidence.json> \
   --evaluator-command <evaluator>
 ```
 
-Capture current official Tessl evidence with a pinned binary:
+Check native training and holdout evidence without Tessl:
 
 ```bash
-skpress tessl review --project . --workspace <workspace> \
-  --executable <absolute-versioned-tessl-binary>
-skpress tessl eval --project . --source .skill-press/tessl-evals/<set> \
-  --executable <absolute-versioned-tessl-binary>
+skpress eval-check \
+  --training-evidence .skill-press/runs/<training-run>/evidence.json \
+  --holdout-evidence .skill-press/runs/<holdout-run>/evidence.json
 ```
 
-Skill Press currently trusts official Tessl CLI 0.101.0 by executable digest. Tessl is an evidence
-provider, not a publication destination. See the [Tessl evidence contract](docs/TESSL.md).
+See [native evaluation](docs/NATIVE_EVALUATION.md) for backend prerequisites, policy,
+source binding and the independent-review boundary. No paid Tessl evaluation is required.
+Historical Tessl evidence remains a separate compatibility path, not a fallback.
 
 Package an exact candidate only after the release gate passes:
 
 ```bash
-skpress package --project . \
-  --review-evidence <review-evidence.json> \
-  --eval-evidence <eval-evidence.json> \
-  --eval-source .skill-press/tessl-evals/<set>
+skpress package --native --project . \
+  --review-evidence .skill-press/runs/<training-run>/evidence.json \
+  --eval-evidence .skill-press/runs/<holdout-run>/evidence.json \
+  --eval-source evals
 ```
 
 Prepare the canonical submission locally:
 
 ```bash
-skpress submit --project . --artifacts <artifacts-directory> \
-  --review-evidence <review-evidence.json> \
-  --eval-evidence <eval-evidence.json> \
-  --eval-source .skill-press/tessl-evals/<set> \
+skpress submit --native --project . --artifacts <artifacts-directory> \
+  --review-evidence .skill-press/runs/<training-run>/evidence.json \
+  --eval-evidence .skill-press/runs/<holdout-run>/evidence.json \
+  --eval-source evals \
   --dry-run
 ```
 
