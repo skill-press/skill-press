@@ -3,7 +3,11 @@ import { stat } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/process/capture.js", () => ({ runCapturedCommand: vi.fn() }));
-import { runReviewedCodexText, runReviewedTextPair } from "../src/eval/codex-text.js";
+import {
+  runReviewedCodexText,
+  runReviewedTextPair,
+  runReviewedSelectedTextPair,
+} from "../src/eval/codex-text.js";
 import type { SkillPressEvaluationRubric } from "../src/eval/generated-rubric.js";
 import type { Scenario } from "../src/eval/generated-suite.js";
 import { type CapturedCommandResult, runCapturedCommand } from "../src/process/capture.js";
@@ -52,6 +56,51 @@ describe("reviewed Codex text pilot transport (no live calls)", () => {
     name: "quality",
     criteria: [{ id: "accuracy", description: "Factual accuracy", weight: 1, evaluator: "judge" }],
   };
+
+  it.each([true, false])("loads the body only after observed selection %s", async (selected) => {
+    const skill = "---\nname: notes\ndescription: Draft notes.\n---\nPRIVATE INSTRUCTIONS";
+    const judge = JSON.stringify({ criteria: [{ id: "accuracy", score: 1, rationale: "Good." }] });
+    for (const text of [
+      JSON.stringify({ selected, rationale: "Decision." }),
+      "Answer",
+      judge,
+      "Answer",
+      judge,
+    ]) {
+      const stream = events.replace("Reviewed draft.", text.replaceAll('"', '\\"'));
+      run.mockResolvedValueOnce(result("codex-cli 0.160.0")).mockResolvedValueOnce(result(stream));
+    }
+    // Deliberately opposite ground truth: the harness must not copy the label.
+    const pair = await runReviewedSelectedTextPair(
+      { ...scenario, shouldActivate: !selected },
+      rubric,
+      skill,
+    );
+    expect(pair).toMatchObject({
+      modelInvocations: 5,
+      releaseEligible: false,
+      activationMeasurement: "harness-metadata-selection",
+      baseline: { activated: false },
+      withSkill: { activated: selected },
+    });
+    const prompts = run.mock.calls.map(([c]) => c.stdin).filter((s) => s !== undefined);
+    expect(prompts).toHaveLength(5);
+    for (const index of [0, 1, 2, 4]) expect(prompts[index]).not.toContain("PRIVATE INSTRUCTIONS");
+    expect(prompts[3]?.includes("PRIVATE INSTRUCTIONS")).toBe(selected);
+    expect(prompts[3]).not.toContain("Decision.");
+  });
+
+  it("stops on invalid selection before actors and judges", async () => {
+    run.mockResolvedValueOnce(result("codex-cli 0.160.0")).mockResolvedValueOnce(result(events));
+    await expect(
+      runReviewedSelectedTextPair(
+        scenario,
+        rubric,
+        "---\nname: notes\ndescription: Draft notes.\n---\nbody",
+      ),
+    ).rejects.toThrow(/selection response/);
+    expect(run).toHaveBeenCalledTimes(2);
+  });
 
   it("connects four serial fresh invocations without mixing arms or exposing answers to the actor", async () => {
     const judgeText = JSON.stringify({

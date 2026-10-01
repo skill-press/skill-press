@@ -10,7 +10,9 @@ import type { Scenario } from "./generated-suite.js";
 import {
   createTextActorPrompt,
   createTextJudgePrompt,
+  createTextSelectionPrompt,
   parseTextJudgeScores,
+  parseTextSelection,
 } from "./text-evaluation.js";
 
 const DISABLED_FEATURES = [
@@ -140,7 +142,7 @@ export async function runReviewedCodexText(text: string, signal?: AbortSignal) {
 export async function runReviewedTextPair(
   scenario: Scenario,
   rubric: SkillPressEvaluationRubric,
-  skillText: string,
+  skillText: string | null,
   signal?: AbortSignal,
 ) {
   const baselinePrompt = createTextActorPrompt(scenario, null);
@@ -160,5 +162,36 @@ export async function runReviewedTextPair(
     withSkill,
     modelInvocations: 4,
     releaseEligible: false as const,
+  });
+}
+
+/** Five-call reviewed text harness: selection is observed, not copied from scenario labels. */
+export async function runReviewedSelectedTextPair(
+  scenario: Scenario,
+  rubric: SkillPressEvaluationRubric,
+  skillText: string,
+  signal?: AbortSignal,
+) {
+  const selectionPrompt = createTextSelectionPrompt(scenario, skillText);
+  // Validate both possible actor inputs before spending an inference invocation.
+  createTextActorPrompt(scenario, skillText);
+  createTextActorPrompt(scenario, null);
+  const selection = await runReviewedCodexText(selectionPrompt.text, signal);
+  const decision = parseTextSelection(selection.text);
+  const pair = await runReviewedTextPair(
+    scenario,
+    rubric,
+    decision.selected ? skillText : null,
+    signal,
+  );
+  return Object.freeze({
+    ...pair,
+    kind: "skillpress.reviewed-selected-text-pair-pilot" as const,
+    selection: Object.freeze({ ...selection, ...decision }),
+    skillTextSha256: createHash("sha256").update(skillText).digest("hex"),
+    baseline: Object.freeze({ ...pair.baseline, activated: false }),
+    withSkill: Object.freeze({ ...pair.withSkill, activated: decision.selected }),
+    activationMeasurement: "harness-metadata-selection" as const,
+    modelInvocations: 5,
   });
 }

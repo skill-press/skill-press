@@ -8,7 +8,9 @@ import { recomputeRubricScore } from "../src/eval/measurement.js";
 import {
   createTextActorPrompt,
   createTextJudgePrompt,
+  createTextSelectionPrompt,
   parseTextJudgeScores,
+  parseTextSelection,
 } from "../src/eval/text-evaluation.js";
 
 const scenario: Scenario = {
@@ -33,6 +35,56 @@ const encoded = (criteria: unknown[]) => JSON.stringify({ criteria });
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 
 describe("text evaluation actor/judge separation", () => {
+  const skill = "---\nname: notes\ndescription: Draft release notes.\n---\nPRIVATE BODY";
+
+  it("selects from exact metadata without body, rubric or expected activation labels", () => {
+    const result = createTextSelectionPrompt(scenario, skill);
+    const data = JSON.parse(result.text.split("\n\nInput JSON:\n")[1] as string);
+    expect(data).toEqual({
+      task: scenario.prompt,
+      fixture: scenario.fixture,
+      availableSkill: { name: "notes", description: "Draft release notes." },
+    });
+    expect(result.role).toBe("selector");
+    expect(result.sha256).toBe(hash(result.text));
+    expect(result.text).not.toContain("PRIVATE BODY");
+    expect(result.text).not.toContain("shouldActivate");
+    expect(result.text).not.toContain(scenario.id);
+    const { fixture: _fixture, ...withoutFixture } = scenario;
+    expect(createTextSelectionPrompt(withoutFixture, skill).text).toContain('"fixture":null');
+  });
+
+  it.each([
+    "body only",
+    "---\nname: notes\n---\nbody",
+    skill.replace("name: notes", "name: 42"),
+    skill.replace("Draft release notes.", "''"),
+    skill.replace("name: notes", "name: notes\nname: duplicate"),
+  ])("rejects invalid metadata before selection", (text) => {
+    expect(() => createTextSelectionPrompt(scenario, text)).toThrow(/metadata/);
+  });
+
+  it.each([true, false])("preserves actual boolean selection %s", (selected) => {
+    const result = parseTextSelection(JSON.stringify({ selected, rationale: "Scope match." }));
+    expect(result).toEqual({ selected, rationale: "Scope match." });
+    expect(Object.isFrozen(result)).toBe(true);
+  });
+
+  it.each([
+    "not-json",
+    "null",
+    "[]",
+    "true",
+    "{}",
+    '{"selected":"false","rationale":"x"}',
+    '{"selected":true,"rationale":" "}',
+    '{"selected":true,"rationale":1}',
+    '{"selected":true,"rationale":"x","extra":true}',
+    JSON.stringify({ selected: false, rationale: "x".repeat(4097) }),
+  ])("rejects invalid selection responses", (text) => {
+    expect(() => parseTextSelection(text)).toThrow(/selection response/);
+  });
+
   it("keeps answers, activation labels, category and rubric out of both actor arms", () => {
     for (const skill of [null, "Group changes by impact."]) {
       const result = createTextActorPrompt(scenario, skill);
