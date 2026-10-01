@@ -54,6 +54,10 @@
     },
     "skillSha256": { "$ref": "#/definitions/digest" },
     "configSha256": { "$ref": "#/definitions/digest" },
+    "evaluationInputsSha256": {
+      "description": "Digest of the complete selected suite and rubric, including expected and forbidden behavior. Absent in historical evidence, which cannot qualify for native release admission.",
+      "$ref": "#/definitions/digest"
+    },
     "repetitions": { "type": "integer", "minimum": 1, "maximum": 20 },
     "scenarioResults": {
       "type": "array",
@@ -135,6 +139,25 @@
           "anyOf": [{ "type": "number", "minimum": 0, "maximum": 100 }, { "type": "null" }]
         },
         "successful": { "type": "boolean" },
+        "criterionScores": {
+          "description": "Adapter judge scores retained for rubric recomputation; these are advisory judgments, not independently verified facts.",
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "score"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+              },
+              "score": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        },
         "inputSha256": { "$ref": "#/definitions/digest" },
         "transcript": { "$ref": "#/definitions/transcriptEvidence" },
         "engineStdoutSha256": { "$ref": "#/definitions/digest" },

@@ -1,5 +1,7 @@
 export { SKILL_PRESS_PINNED_KEYS } from "./install/production-keys.js";
 export { SERVER_REVIEW_POLICY } from "./release/server-policy.js";
+export { NATIVE_REVIEW_POLICY } from "./release/native-policy.js";
+export { checkNativeEvaluation } from "./release/native-check.js";
 export {
   renderAddHelp,
   renderCheckHelp,

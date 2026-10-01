@@ -7,6 +7,7 @@ import { ADD_HELP, INSTALL_HELP, runAddCommand, runInstallCommand } from "./cli/
 import { DOCTOR_HELP, runDoctorCommand, runStatusCommand, STATUS_HELP } from "./cli/inspect.js";
 import { IMPROVE_HELP, runImproveCommand } from "./cli/improve.js";
 import { PACKAGE_HELP, runPackageCommand } from "./cli/package.js";
+import { NATIVE_CHECK_HELP, runNativeCheckCommand } from "./cli/native-check.js";
 import { runSubmitCommand, SUBMIT_HELP } from "./cli/submission.js";
 import { ProjectConfigError } from "./config/errors.js";
 import { CapabilityBriefError, ProjectCreationError } from "./create/errors.js";
@@ -53,6 +54,7 @@ Commands:
   check              Validate a project and report local readiness
   test               Run deterministic project test commands without a shell
   eval               Run paired baseline/with-skill evaluation in a sandbox
+  eval-check         Assess native training/holdout evidence without Tessl
   tessl              Capture official Tessl Quality and Impact evidence
   package            Create reproducible, provenance-bound release artifacts
   submit             Submit one verified candidate to the canonical Skill Press review pipeline
@@ -952,6 +954,13 @@ export async function runCli(args: readonly string[], io: CliIo = defaultIo): Pr
       return (await writeStdout(capturedIo, renderEvalHelp())) ? 0 : 1;
     }
     return runEval(capturedArgs.slice(1), capturedIo);
+  }
+
+  if (capturedArgs[0] === "eval-check") {
+    if ((capturedArgs[1] === "--help" || capturedArgs[1] === "-h") && capturedArgs.length === 2) {
+      return (await writeStdout(capturedIo, NATIVE_CHECK_HELP)) ? 0 : 1;
+    }
+    return runNativeCheckCommand(capturedArgs.slice(1), capturedIo);
   }
 
   if (capturedArgs[0] === "tessl") {

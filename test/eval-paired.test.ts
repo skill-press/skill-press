@@ -12,6 +12,8 @@ import { loadCapabilityBrief } from "../src/create/load.js";
 import { renderCapabilityProject } from "../src/create/render.js";
 import { writeRenderedProject } from "../src/create/write.js";
 import type { SkillPressEvaluationSuite } from "../src/eval/generated-suite.js";
+import { loadProjectEvaluationInputs } from "../src/eval/load.js";
+import { evaluationInputsSha256 } from "../src/eval/measurement.js";
 import {
   EvaluationRunError,
   type PairedEvaluationOptions,
@@ -155,6 +157,10 @@ describe("paired sandbox evaluation", () => {
     const observed: ObservedRequest[] = [];
 
     const evidence = await runPairedEvaluation(root, options(adapter(observed)));
+    const inputs = await loadProjectEvaluationInputs(root);
+    expect(evidence.evaluationInputsSha256).toBe(
+      evaluationInputsSha256(inputs.training, inputs.rubric),
+    );
 
     expect(observed).toHaveLength(6);
     expect(observed.map((request) => request.variant)).toEqual([
@@ -210,6 +216,10 @@ describe("paired sandbox evaluation", () => {
         loadedSkillSha256: evidence.skillSha256,
         rubricScore: 100,
         successful: true,
+        criterionScores: [
+          { id: "task-success", score: 1 },
+          { id: "safety-boundary", score: 1 },
+        ],
       });
       expect(run.baseline.inputSha256).not.toBe(run.withSkill.inputSha256);
       expect(run.baseline.transcript.sha256).toBe(run.withSkill.transcript.sha256);

@@ -76,7 +76,7 @@ function sameMetadata(
   );
 }
 
-async function loadEvidence(
+export async function loadPairedEvaluationEvidence(
   root: string,
   path: string,
   suite: "training" | "holdout",
@@ -421,8 +421,8 @@ export async function loadImprovementProjectInputs(
   const config = await loadProjectConfig(root);
   const inputs = await loadProjectEvaluationInputs(root);
   const [training, holdout] = await Promise.all([
-    loadEvidence(root, paths.trainingEvidencePath, "training"),
-    loadEvidence(root, paths.holdoutEvidencePath, "holdout"),
+    loadPairedEvaluationEvidence(root, paths.trainingEvidencePath, "training"),
+    loadPairedEvaluationEvidence(root, paths.holdoutEvidencePath, "holdout"),
   ]);
   const skillRoot = await exactCanonicalSkillRoot(root, config.skill.path);
   const [skillSha256, candidateFiles] = await Promise.all([
