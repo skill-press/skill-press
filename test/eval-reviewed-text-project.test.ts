@@ -11,6 +11,8 @@ import { runReviewedSelectedTextPair } from "../src/eval/codex-text.js";
 import { runCli } from "../src/cli.js";
 import { runNativeCheckCommand } from "../src/cli/native-check.js";
 import { checkReviewedTextEvaluation } from "../src/release/reviewed-text-check.js";
+import { prepareReviewedTextEvidence } from "../src/release/reviewed-text-evidence.js";
+import { isReviewedTextEnvelope } from "../src/eval/reviewed-text-schema.js";
 import * as projects from "../src/eval/reviewed-text-project.js";
 import {
   createTextActorPrompt,
@@ -309,6 +311,73 @@ it("retains readiness failure instead of waiving missing licenses", async () => 
   const report = await checkReviewedTextEvaluation(f.root, f.paths);
   expect(report.issues).toEqual(["text.readiness.failed"]);
   expect(report.passed).toBe(false);
+});
+
+it("prepares deterministic text upload bytes without granting admission or running inference", async () => {
+  const f = await evidenceFixture();
+  const first = await prepareReviewedTextEvidence(f.root, f.paths);
+  const second = await prepareReviewedTextEvidence(f.root, f.paths);
+  expect(first.reviewBytes.equals(second.reviewBytes)).toBe(true);
+  expect(first.evaluationBytes.equals(second.evaluationBytes)).toBe(true);
+  for (const [bytes, suite] of [
+    [first.reviewBytes, "training"],
+    [first.evaluationBytes, "holdout"],
+  ] as const) {
+    const value = JSON.parse(bytes.toString("utf8"));
+    expect(isReviewedTextEnvelope(value)).toBe(true);
+    expect(value).toMatchObject({
+      schemaVersion: 1,
+      evidenceType: "skillpress.reviewed-text-evidence",
+      advisory: true,
+      inputs: f.prepared.inputs,
+      measurement: { suite: { suite }, source: f.prepared.source },
+    });
+    value.evidenceType = "skillpress.native-evidence";
+    expect(isReviewedTextEnvelope(value)).toBe(false);
+    value.evidenceType = "skillpress.reviewed-text-evidence";
+    value.schemaVersion = 2;
+    expect(isReviewedTextEnvelope(value)).toBe(false);
+  }
+  expect(first.report).toMatchObject({
+    passed: true,
+    releaseEligible: false,
+    releaseAuthorized: false,
+    admissionIssues: ["text_profile_not_admitted"],
+  });
+  expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
+});
+
+it("does not turn failed readiness into release approval when preparing text evidence", async () => {
+  const f = await evidenceFixture(false);
+  const { report } = await prepareReviewedTextEvidence(f.root, f.paths);
+  expect(report).toMatchObject({
+    passed: false,
+    issues: ["text.readiness.failed"],
+    releaseAuthorized: false,
+  });
+});
+
+it("rejects malformed wire evidence during preparation", async () => {
+  const f = await evidenceFixture();
+  const value = { ...f.training.result, unversionedClaim: "accepted" };
+  await writeFile(join(f.root, f.paths.trainingEvidencePath), JSON.stringify(value));
+  await expect(prepareReviewedTextEvidence(f.root, f.paths)).rejects.toThrow(
+    "versioned upload contract",
+  );
+  expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
+});
+
+it("enforces the upload limit after adding the complete evaluation inputs", async () => {
+  const f = await evidenceFixture();
+  const value = JSON.parse(JSON.stringify(f.training.result));
+  const actor = value.records[0].pair.baseline.actor;
+  const originalSize = Buffer.byteLength(JSON.stringify(value));
+  actor.text = "x".repeat(1048500 - originalSize + actor.text.length);
+  const text = JSON.stringify(value);
+  expect(Buffer.byteLength(text)).toBe(1048500);
+  await writeFile(join(f.root, f.paths.trainingEvidencePath), text);
+  await expect(prepareReviewedTextEvidence(f.root, f.paths)).rejects.toThrow("upload limit");
+  expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
 });
 
 it("refuses reused suite runs and mismatched private storage IDs", async () => {

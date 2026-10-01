@@ -6,6 +6,7 @@ import {
   MAX_CODEX_TRANSCRIPT_BYTES,
 } from "../eval/codex-transcript.js";
 import { evaluationInputsSha256, recomputeRubricScore } from "../eval/measurement.js";
+import { isReviewedTextEvidence } from "../eval/reviewed-text-schema.js";
 import type {
   prepareReviewedTextProject,
   runPreparedReviewedTextSuite,
@@ -64,6 +65,7 @@ export function assessReviewedTextMeasurement(
 ) {
   const issues = new Set<string>();
   try {
+    assert.ok(isReviewedTextEvidence(input));
     // All fields consumed below are checked at runtime; malformed JSON fails closed.
     const value = input as Measurement;
     const { config, inputs, skillText } = prepared;

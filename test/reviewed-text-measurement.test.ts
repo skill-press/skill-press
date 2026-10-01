@@ -13,6 +13,8 @@ import {
   type TextEvaluationPrompt,
 } from "../src/eval/text-evaluation.js";
 import { assessReviewedTextMeasurement } from "../src/release/reviewed-text-measurement.js";
+import { isReviewedTextEvidence } from "../src/eval/reviewed-text-schema.js";
+import { CODE_MODE_DISABLED_DIAGNOSTIC } from "../src/eval/codex-transcript.js";
 
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 const skillText = "---\nname: notes\ndescription: Draft release notes.\n---\nUse supplied sources.";
@@ -277,7 +279,7 @@ it("rejects weaker project policy even when copied consistently", async () => {
   f.prepared.config.evaluation.minimumImpactDelta = 0;
   f.measurement.config.evaluation.minimumImpactDelta = 0;
   expect(assessReviewedTextMeasurement(f.measurement, f.prepared, f.name, now).issues).toEqual([
-    "text.policy.minimums",
+    "text.measurement.inconsistent",
   ]);
 });
 
@@ -286,8 +288,50 @@ it.each(["minimumSuccessRate", "repetitions"] as const)("rejects weakened %s", a
     p.config.evaluation[key] = key === "repetitions" ? 2 : 0.8;
   });
   expect(assessReviewedTextMeasurement(f.measurement, f.prepared, f.name, now).issues).toContain(
-    "text.policy.minimums",
+    "text.measurement.inconsistent",
   );
+});
+
+it.each([
+  ["unexpected", true],
+  ["source.unexpected", true],
+  ["artifact.unexpected", true],
+  ["summary.unexpected", true],
+  ["records.0.unexpected", true],
+  ["records.0.pair.unexpected", true],
+  ["records.0.pair.selection.unexpected", true],
+  ["records.0.pair.baseline.unexpected", true],
+  ["records.0.pair.baseline.actor.unexpected", true],
+  ["records.0.pair.baseline.actor.usage.unexpected", true],
+  ["records.0.pair.baseline.criteria.0.unexpected", true],
+  ["records.0.pair.selection.rationale", "x".repeat(4097)],
+  ["records.0.pair.baseline.actor.usage.inputTokens", 0.5],
+  ["records.0.pair.baseline.actor.text", "x".repeat(1048577)],
+  ["repetitions", 21],
+  ["createdAt", "2026-10-01"],
+])("rejects unversioned fields or invalid wire bounds at %s", async (path, value) => {
+  const f = await fixture();
+  expect(isReviewedTextEvidence(f.measurement)).toBe(true);
+  set(f.measurement, path, value);
+  expect(isReviewedTextEvidence(f.measurement)).toBe(false);
+  expect(assessReviewedTextMeasurement(f.measurement, f.prepared, f.name, now)).toMatchObject({
+    passed: false,
+    issues: ["text.measurement.inconsistent"],
+    releaseAuthorized: false,
+  });
+});
+
+it("keeps structural validity distinct from quality acceptance", async () => {
+  const f = await fixture("holdout", 1, 1);
+  expect(isReviewedTextEvidence(f.measurement)).toBe(true);
+  expect(assessReviewedTextMeasurement(f.measurement, f.prepared, f.name, now).passed).toBe(false);
+});
+
+it("retains the known disabled-code-mode diagnostic in valid historical receipts", async () => {
+  const f = await fixture();
+  set(f.measurement, "records.0.pair.baseline.actor.diagnostics", [CODE_MODE_DISABLED_DIAGNOSTIC]);
+  expect(isReviewedTextEvidence(f.measurement)).toBe(true);
+  expect(assessReviewedTextMeasurement(f.measurement, f.prepared, f.name, now).passed).toBe(true);
 });
 
 it("rejects activation-heavy rubrics with otherwise consistent measurements", async () => {

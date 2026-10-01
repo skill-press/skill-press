@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/skill-press/skill-press/main/schemas/reviewed-text-envelope.schema.json",
+  "title": "SkillPressReviewedTextEnvelope",
+  "description": "Advisory host-text upload contract. Profile admission and independent curator verification are separate requirements.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "evidenceType", "advisory", "inputs", "measurement"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "evidenceType": {
+      "const": "skillpress.reviewed-text-evidence"
+    },
+    "advisory": {
+      "const": true
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["training", "holdout", "rubric"],
+      "properties": {
+        "training": {
+          "$ref": "eval-suite.schema.json"
+        },
+        "holdout": {
+          "$ref": "eval-suite.schema.json"
+        },
+        "rubric": {
+          "$ref": "eval-rubric.schema.json"
+        }
+      }
+    },
+    "measurement": {
+      "$ref": "reviewed-text-evidence.schema.json"
+    }
+  }
+}

@@ -278,6 +278,7 @@ export { VERSION } from "./version.js";
 export { checkReleaseGate } from "./release/gate.js";
 export type { ReleaseGateOptions, ReleaseGateReport } from "./release/gate.js";
 export { checkNativeReleaseGate, prepareNativeEvidence } from "./release/native-evidence.js";
+export { prepareReviewedTextEvidence } from "./release/reviewed-text-evidence.js";
 export type { NativeEvidenceEnvelope, NativeReleaseGateReport } from "./release/native-evidence.js";
 export { validateAgentSkill } from "./validate/agent-skill.js";
 export {

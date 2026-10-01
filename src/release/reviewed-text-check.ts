@@ -20,7 +20,7 @@ function runId(value: unknown): string | null {
 }
 
 /** Local advisory check. Rebuilds a private package; never invokes inference or project commands. */
-export async function checkReviewedTextEvaluation(
+export async function loadReviewedTextEvaluation(
   projectDirectory: string,
   paths: ImprovementEvidencePaths,
   now: Date = new Date(),
@@ -55,7 +55,7 @@ export async function checkReviewedTextEvaluation(
   // Both assessments enforce the same fixed model, effort, authentication and
   // protocol. Pair IDs derive from disjoint suite run IDs, so cannot overlap.
   await verifyReviewedTextProject(root, prepared);
-  return Object.freeze({
+  const report = Object.freeze({
     schemaVersion: 1 as const,
     reportType: "skillpress.reviewed-text-evaluation-check" as const,
     policy: NATIVE_REVIEW_POLICY,
@@ -70,4 +70,13 @@ export async function checkReviewedTextEvaluation(
     holdout: holdoutAssessment,
     issues,
   });
+  return { prepared, training, holdout, report };
+}
+
+export async function checkReviewedTextEvaluation(
+  projectDirectory: string,
+  paths: ImprovementEvidencePaths,
+  now: Date = new Date(),
+) {
+  return (await loadReviewedTextEvaluation(projectDirectory, paths, now)).report;
 }

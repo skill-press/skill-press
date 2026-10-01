@@ -111,3 +111,24 @@ contains `text_profile_not_admitted`. Failed checks return 3; invalid options
 return 2. These results cannot yet feed `submit --native` or replace curator
 corroboration. Self-consistent hashes do not attest actual model execution.
 The host-networked profile is never relabeled as network-none Docker.
+
+### Versioned text wire contract (not yet admitted)
+
+`schemas/reviewed-text-evidence.schema.json` describes complete, source-bound
+text measurements. `schemas/reviewed-text-envelope.schema.json` wraps one
+measurement with both evaluation suites and the rubric, using the distinct
+`skillpress.reviewed-text-evidence` discriminator. Unknown versions, unknown
+fields, incomplete checkpoints and mixed container/text identities are rejected.
+Structural validation does not establish source consistency, quality or execution;
+the receiving side must also recompute those claims and require curator verification.
+
+The exported `prepareReviewedTextEvidence(project, paths, now?)` prepares
+deterministic `reviewBytes` (training) and `evaluationBytes` (holdout), each bounded
+to the existing 1 MiB upload limit including the complete evaluation inputs. It
+uses the same private-file loader, fresh source/package binding and assessment as
+the local command, with Git checks at entry/exit. It performs no model invocation,
+project test execution, network upload or release authorization. Inspect its
+`report`: structurally valid evidence can still fail quality/readiness, and all
+reports retain `text_profile_not_admitted`. Invalid wire structure or excessive
+encoded size throws instead of producing upload bytes. This API prepares the
+contract for server integration; it does not enable `submit` for text evidence.
