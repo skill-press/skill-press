@@ -61,3 +61,27 @@ for those requirements before cleaning. The original CSV is unchanged.
 
 Assessment: the report matches the profiler's measured counts and distinguishes
 successful parsing from a clean or safe-to-import dataset.
+
+### Reproducible isolated profiler check
+
+After `npm run build`, use a locally available digest-pinned Python image:
+
+```sh
+node scripts/verify-launch-csv-sandbox.mjs python@sha256:<locally-available-image-digest>
+```
+
+This optional launch check reuses the existing sandbox runner; it does not pull
+images or change routine CI. It copies only the profiler and synthetic inputs
+into a temporary directory, mounts code/input read-only, and uses an unprivileged
+container with no network and a read-only root. Six actual invocations check the
+sample counts and rejection of malformed CSV, invalid UTF-8, oversize, empty and
+missing files. Exact source/input hashes and per-case results are emitted as JSON;
+temporary files are removed afterward. Exit 0 means all assertions passed,
+including the expected profiler exit 2 for each negative case.
+
+The October 1 local Docker arm64 run passed all six cases using
+`python@sha256:05b2b8b732ecd268fee8727a369f936f022d1321b59befd13c30ede22769dcdc`.
+Inputs remained unchanged and no output artifacts were created. This is script
+execution evidence, not a model's successful tool selection or interpretation,
+paired evaluation, independent judging or release admission. The receipt always
+has `releaseEligible: false`; no model/provider/production operation is involved.
