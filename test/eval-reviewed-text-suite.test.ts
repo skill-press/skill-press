@@ -86,6 +86,27 @@ it("runs every repetition, checkpoints serially and recomputes canonical 0–100
   expect(result.evaluationInputsSha256).toMatch(/^[a-f0-9]{64}$/);
 });
 
+it.each([89, 101, 95.5])("rejects invalid readiness %s", async (readinessMinimum) => {
+  await expect(runReviewedTextSuite({ ...options(), readinessMinimum })).rejects.toThrow(
+    /readiness/,
+  );
+  expect(run).not.toHaveBeenCalled();
+});
+
+it("honors stricter project readiness", async () => {
+  const response = pair();
+  run.mockResolvedValue({
+    ...response,
+    withSkill: {
+      ...response.withSkill,
+      criteria: response.withSkill.criteria.map((c) => ({ ...c, score: 0.95 })),
+    },
+  });
+  const result = await runReviewedTextSuite({ ...options(), readinessMinimum: 99 });
+  expect(result.records[0]).toMatchObject({ withSkillScore: 96 });
+  expect(result.summary).toMatchObject({ readinessMinimum: 99, withSkillSuccessRate: 0 });
+});
+
 it("retains a failed pair, stops without retries, and suppresses incomplete aggregates", async () => {
   const input = options();
   run.mockResolvedValueOnce(pair()).mockRejectedValueOnce(new Error("private-provider-detail"));

@@ -57,7 +57,7 @@ async function git(root: string, args: readonly string[]): Promise<string> {
   return result.stdout.toString("utf8").trim();
 }
 
-async function snapshot(root: string) {
+export async function snapshotNativeSource(root: string) {
   const config = await loadProjectConfig(root);
   const commit = await git(root, ["rev-parse", "--verify", "HEAD"]);
   if (!/^[a-f0-9]{40}$/u.test(commit))
@@ -99,7 +99,7 @@ export async function prepareNativeEvidence(
       "Native evaluation source must be the canonical evals directory.",
     );
   const root = await realpath(resolve(projectDirectory));
-  const source = await snapshot(root);
+  const source = await snapshotNativeSource(root);
   const {
     report: assessment,
     config,
@@ -129,7 +129,7 @@ export async function prepareNativeEvidence(
   const evaluationBytes = Buffer.from(`${JSON.stringify(evaluation)}\n`);
   if (reviewBytes.byteLength > 1024 * 1024 || evaluationBytes.byteLength > 1024 * 1024)
     blocked("native.evidence.size", "Native evidence exceeds the upload limit.");
-  if (JSON.stringify(source) !== JSON.stringify(await snapshot(root)))
+  if (JSON.stringify(source) !== JSON.stringify(await snapshotNativeSource(root)))
     blocked("native.source.changed", "Native release source changed during preparation.");
   const report: NativeReleaseGateReport = {
     schemaVersion: 1,

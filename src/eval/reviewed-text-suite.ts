@@ -28,6 +28,7 @@ export interface ReviewedTextSuiteOptions {
   readonly rubric: SkillPressEvaluationRubric;
   readonly skillText: string;
   readonly repetitions: number;
+  readonly readinessMinimum?: number;
   /** Persist each completed/failed pair before the next inference. Failure stops the run. */
   readonly onResult: (result: PairRecord) => Promise<void>;
   readonly signal?: AbortSignal;
@@ -45,6 +46,9 @@ export async function runReviewedTextSuite(options: ReviewedTextSuiteOptions) {
   const suite = parseEvaluationSuite(structuredClone(options.suite));
   const rubric = parseEvaluationRubric(structuredClone(options.rubric));
   const { skillText, repetitions, onResult, signal } = options;
+  const readinessMinimum = options.readinessMinimum ?? 90;
+  if (!Number.isInteger(readinessMinimum) || readinessMinimum < 90 || readinessMinimum > 100)
+    throw new Error("Text suite readiness must be an integer from 90 to 100.");
   if (typeof onResult !== "function")
     throw new Error("Text suite requires a result persistence callback.");
   if (!Number.isInteger(repetitions) || repetitions < 1 || repetitions > 20)
@@ -108,7 +112,8 @@ export async function runReviewedTextSuite(options: ReviewedTextSuiteOptions) {
   }
   const complete = !stopped && records.length === plannedPairs;
   const successes = (arm: "baselineScore" | "withSkillScore") =>
-    records.filter((record) => record.status === "passed" && record[arm] >= 90).length;
+    records.filter((record) => record.status === "passed" && record[arm] >= readinessMinimum)
+      .length;
   return Object.freeze({
     schemaVersion: 1 as const,
     evidenceType: "skillpress.reviewed-text-suite" as const,
@@ -128,7 +133,7 @@ export async function runReviewedTextSuite(options: ReviewedTextSuiteOptions) {
     // Do not report partial success rates as if the missing/failed runs passed.
     summary: complete
       ? Object.freeze({
-          readinessMinimum: 90,
+          readinessMinimum,
           baselineSuccessRate: successes("baselineScore") / plannedPairs,
           withSkillSuccessRate: successes("withSkillScore") / plannedPairs,
           impactDelta: (successes("withSkillScore") - successes("baselineScore")) / plannedPairs,
