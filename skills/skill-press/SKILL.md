@@ -31,8 +31,9 @@ Read only the references needed for the current request.
    rerun check, test, and training evaluation before testing the unchanged private holdout.
 4. Use paired sandbox evaluation for behavioral evidence. Keep private holdout contents isolated
    from the authoring role.
-5. Capture official Tessl Quality and Impact evidence without inventing scores or replacing them
-   with local readiness.
+5. Use native training and holdout evidence with `skpress eval-check`; select `--native` explicitly
+   for packaging, submission, status and diagnosis. Never invent judge scores or invoke paid Tessl
+   evaluation. Legacy Tessl evidence is a separate compatibility protocol, not a native prerequisite.
 6. Stage only clean tracked canonical files and create deterministic artifacts bound to the exact
    commit, configuration digest, skill digest, checksums, and provenance.
 7. Use `skpress submit --dry-run ...` to prepare the exact canonical request locally. A plain
@@ -58,12 +59,12 @@ skpress improve --project . \
   --evaluator-command <evaluator> --json
 ```
 
-After official evidence passes, prepare without contacting the registry:
+After native evidence passes, prepare without contacting the registry:
 
 ```sh
-skpress submit --project . --dry-run \
-  --review-evidence <review-evidence.json> \
-  --eval-evidence <eval-evidence.json> --eval-source <eval-source> --json
+skpress submit --native --project . --dry-run \
+  --review-evidence <training-evidence.json> \
+  --eval-evidence <holdout-evidence.json> --eval-source evals --json
 ```
 
 ## Trust and authority boundaries
@@ -82,10 +83,11 @@ skpress submit --project . --dry-run \
 
 ## Current interface
 
-The CLI requires Node.js 22+; sandboxed evaluation also requires Docker or Podman. The production
-registry, token issuer, immutable downloads, and verified install are not live. Until they are,
-stop submission at `--dry-run` and do not substitute another publication target.
+The CLI requires Node.js 22+; sandboxed evaluation also requires Docker or Podman and an explicitly
+authorized model/adapter backend. The native submission and verified install commands are implemented,
+but the production registry is not deployed. Until it is, stop submission at `--dry-run` and do not
+substitute another publication target. Synthetic test adapters do not establish real model quality.
 
-Commands: `init`, `check`, `test`, `eval`, `tessl`, `improve`, `package`, `submit`, `add`, `install`,
+Commands: `init`, `check`, `test`, `eval`, `eval-check`, `tessl`, `improve`, `package`, `submit`, `add`, `install`,
 `status`, and `doctor`. Use `<command> --help` for advanced flags. Typed exports provide the same
 lower-level validation, evaluation, packaging, and submission contracts.

@@ -5,8 +5,8 @@
 Create an advanced reusable package explicitly when needed:
 
 ```sh
-skpress package --project . --review-evidence <review-evidence.json> \
-  --eval-evidence <eval-evidence.json> --eval-source <eval-source> --json
+skpress package --native --project . --review-evidence <training-evidence.json> \
+  --eval-evidence <holdout-evidence.json> --eval-source evals --json
 ```
 
 Or let `submit` package after the same gate. Staging accepts only clean tracked canonical files and
@@ -28,19 +28,20 @@ const packaged = await packageStagedSkill(projectRoot, staged);
 Prepare locally without network mutation:
 
 ```sh
-skpress submit --project . --dry-run \
-  --review-evidence <review-evidence.json> \
-  --eval-evidence <eval-evidence.json> --eval-source <eval-source> --json
+skpress submit --native --project . --dry-run \
+  --review-evidence <training-evidence.json> \
+  --eval-evidence <holdout-evidence.json> --eval-source evals --json
 ```
 
 After reviewing the exact plan, a plain invocation submits only to Skill Press:
 
 ```sh
-SKILL_PRESS_TOKEN=<token> skpress submit --project . \
-  --review-evidence <review-evidence.json> \
-  --eval-evidence <eval-evidence.json> --eval-source <eval-source> --json
+skpress submit --native --project . \
+  --review-evidence <training-evidence.json> \
+  --eval-evidence <holdout-evidence.json> --eval-source evals --json
 ```
 
+Supply `SKILL_PRESS_TOKEN` through the approved secret mechanism, not literal shell history.
 The production origin is fixed at `https://skill-press.com`; neither repository configuration nor
 CLI flags can redirect the bearer token. The request uses one deterministic manifest and one
 idempotency key. It includes the exact canonical archive, provenance, checksums, and advisory
@@ -65,10 +66,10 @@ Before its mutating request, submit persists a mode-0600 journal under:
 On an interrupted or failed run, reuse the exact artifacts and receipt:
 
 ```sh
-skpress submit --project . --artifacts <artifacts-directory> \
+skpress submit --native --project . --artifacts <artifacts-directory> \
   --resume .skill-press/submissions/<idempotency-key>/receipt.json \
-  --review-evidence <review-evidence.json> \
-  --eval-evidence <eval-evidence.json> --eval-source <eval-source> --json
+  --review-evidence <training-evidence.json> \
+  --eval-evidence <holdout-evidence.json> --eval-source evals --json
 ```
 
 Resume rechecks the release gate, package inventory, manifest digest, source commit, config and skill

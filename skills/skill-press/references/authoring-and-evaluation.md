@@ -55,11 +55,16 @@ commands are trusted; validation finding a bundled script is not authorization t
 Use a digest-pinned Docker or Podman image and a compatible adapter:
 
 ```sh
-skpress eval --project . --image <image@sha256:digest> --model <model> -- <adapter-argv...>
+skpress eval --project . --suite training --image <image@sha256:digest> --model <model> -- <adapter-argv...>
+skpress eval --project . --suite holdout --image <same-image> --model <same-model> -- <same-adapter-argv...>
 ```
 
 Run baseline and with-skill attempts against the same scenario and preserve their bindings. A
 mutable local image requires the explicit unsafe override and creates ineligible evidence.
+Use only an explicitly authorized backend; these commands neither provide a model/adapter nor
+authorize billing. Do not substitute paid Tessl or synthetic fixture outputs for real measurements.
+After the isolated holdout run, check both evidence files with `skpress eval-check`; read the
+evidence-and-release-gates reference linked from SKILL.md for native policy and claim limits.
 
 The controller-owned matrix must include positive, near-miss/non-activation, missing-input failure,
 and adversarial cases across training and private holdout. Show authors only opaque holdout IDs,
