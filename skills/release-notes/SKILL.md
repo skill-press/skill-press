@@ -1,6 +1,6 @@
 ---
 name: release-notes
-description: Draft user-facing release notes from a specified Git revision range or supplied diffs, distinguishing shipped behavior, migration needs, and internal changes. Use for changelogs and release summaries, not release publishing or generic repository reviews.
+description: Draft user-facing release notes, changelogs, and release summaries, distinguishing shipped behavior, migration needs, and internal changes. Applies even when the revision range or change records are missing; first ask for the needed source material. Not for release publishing or generic repository reviews.
 license: MIT
 ---
 
