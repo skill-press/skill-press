@@ -7,6 +7,7 @@ import { runCapturedCommand } from "../process/capture.js";
 import { MAX_CODEX_TRANSCRIPT_BYTES, parseCodexTextResponse } from "./codex-transcript.js";
 import type { SkillPressEvaluationRubric } from "./generated-rubric.js";
 import type { Scenario } from "./generated-suite.js";
+import { parseEvaluationRubric, parseEvaluationSuite } from "./load.js";
 import {
   createTextActorPrompt,
   createTextJudgePrompt,
@@ -39,6 +40,16 @@ const DISABLED_FEATURES = [
   "remote_plugin",
   "unbounded_connection_retries",
 ] as const;
+
+function validatePairInputs(scenario: Scenario, rubric: SkillPressEvaluationRubric): void {
+  parseEvaluationSuite({
+    schemaVersion: 1,
+    suite: "training",
+    skill: "reviewed-text",
+    scenarios: [scenario],
+  });
+  parseEvaluationRubric(rubric);
+}
 
 /**
  * Operator-reviewed text pilot only, NOT an arbitrary/untrusted skill sandbox.
@@ -145,6 +156,7 @@ export async function runReviewedTextPair(
   skillText: string | null,
   signal?: AbortSignal,
 ) {
+  validatePairInputs(scenario, rubric);
   const baselinePrompt = createTextActorPrompt(scenario, null);
   const skillPrompt = createTextActorPrompt(scenario, skillText);
   const leg = async (actorPrompt: string) => {
@@ -172,6 +184,7 @@ export async function runReviewedSelectedTextPair(
   skillText: string,
   signal?: AbortSignal,
 ) {
+  validatePairInputs(scenario, rubric);
   const selectionPrompt = createTextSelectionPrompt(scenario, skillText);
   // Validate both possible actor inputs before spending an inference invocation.
   createTextActorPrompt(scenario, skillText);

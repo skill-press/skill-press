@@ -192,7 +192,10 @@ function suiteSemanticIssues(value: SkillPressEvaluationSuite): EvaluationInputI
 }
 
 export async function loadEvaluationSuite(path: string): Promise<SkillPressEvaluationSuite> {
-  const value = await loadInput(path);
+  return parseEvaluationSuite(await loadInput(path));
+}
+
+export function parseEvaluationSuite(value: unknown): SkillPressEvaluationSuite {
   if (!validateSuite(value)) {
     throw new EvaluationInputError(
       "Evaluation suite does not match schema version 1.",
@@ -207,7 +210,10 @@ export async function loadEvaluationSuite(path: string): Promise<SkillPressEvalu
 }
 
 export async function loadEvaluationRubric(path: string): Promise<SkillPressEvaluationRubric> {
-  const value = await loadInput(path);
+  return parseEvaluationRubric(await loadInput(path));
+}
+
+export function parseEvaluationRubric(value: unknown): SkillPressEvaluationRubric {
   if (!validateRubric(value)) {
     throw new EvaluationInputError(
       "Evaluation rubric does not match schema version 1.",

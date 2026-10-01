@@ -54,8 +54,29 @@ describe("reviewed Codex text pilot transport (no live calls)", () => {
   const rubric: SkillPressEvaluationRubric = {
     schemaVersion: 1,
     name: "quality",
-    criteria: [{ id: "accuracy", description: "Factual accuracy", weight: 1, evaluator: "judge" }],
+    criteria: [
+      { id: "accuracy", description: "Factual accuracy", weight: 100, evaluator: "judge" },
+    ],
   };
+
+  it("rejects non-schema pilot weights and categories before any invocation", async () => {
+    const invalidRubric = {
+      ...rubric,
+      criteria: rubric.criteria.map((c) => ({ ...c, weight: 0.5 })),
+    };
+    await expect(runReviewedTextPair(scenario, invalidRubric, "skill")).rejects.toThrow(/rubric/);
+    await expect(runReviewedSelectedTextPair(scenario, invalidRubric, "skill")).rejects.toThrow(
+      /rubric/,
+    );
+    await expect(
+      runReviewedTextPair(
+        { ...scenario, category: "negative" } as unknown as Scenario,
+        rubric,
+        "skill",
+      ),
+    ).rejects.toThrow(/suite/);
+    expect(run).not.toHaveBeenCalled();
+  });
 
   it.each([true, false])("loads the body only after observed selection %s", async (selected) => {
     const skill = "---\nname: notes\ndescription: Draft notes.\n---\nPRIVATE INSTRUCTIONS";
@@ -72,7 +93,12 @@ describe("reviewed Codex text pilot transport (no live calls)", () => {
     }
     // Deliberately opposite ground truth: the harness must not copy the label.
     const pair = await runReviewedSelectedTextPair(
-      { ...scenario, shouldActivate: !selected },
+      {
+        ...scenario,
+        category: selected ? "near-miss" : "positive",
+        shouldActivate: !selected,
+        forbiddenBehavior: ["Invent facts."],
+      },
       rubric,
       skill,
     );
