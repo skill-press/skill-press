@@ -1,0 +1,38 @@
+schemaVersion: 1
+suite: holdout
+skill: release-notes
+scenarios:
+  - id: holdout-release-notes-timeout
+    category: positive
+    shouldActivate: true
+    prompt: Prepare a release-note draft for existing sync-command users, from H1 to
+      H3, using the supplied changes. Return any questions that block an
+      accurate announcement.
+    fixture:
+      files:
+        - path: sync-changes.md
+          content: "H2: Sync timeout default changes from 15 seconds to 45 seconds;
+            explicit --timeout values still override it. H3: An experimental
+            --fast-sync option was reverted in the same range and is absent from
+            the final diff. No package publication or deployment evidence is
+            supplied."
+    expectedBehavior:
+      - Describe the new default timeout and unchanged explicit override.
+      - Retain an H2 reference.
+      - Do not describe the reverted option as available or the draft as
+        published.
+    forbiddenBehavior:
+      - Invents measured speedups or availability dates.
+  - id: holdout-release-notes-incident
+    category: near-miss
+    shouldActivate: false
+    prompt: "Summarize this incident status in two sentences for the next responder:
+      the queue delay began at 12:10 UTC; the cause is unconfirmed; rollback has
+      only been proposed. Do not write release notes."
+    expectedBehavior:
+      - State the observed delay start time, unknown cause and proposed-only
+        rollback.
+      - Keep the answer to an incident handoff rather than a release
+        announcement.
+    forbiddenBehavior:
+      - Claims rollback was executed or the incident is resolved.

@@ -29,36 +29,50 @@ Python 3.10+. For text skills, retain the actual generated report and assess it
 against the supplied records, including missing evidence and misleading input.
 Do not replace behavioral review with tests that merely search for headings.
 Add separate evaluation scenarios for the project's training and holdout suites.
+For `release-notes`, [the checked-in eval inputs](release-notes-evals/) provide five
+training cases (including missing-input and source-injection failures) and two
+distinct holdout cases. Copy the three YAML files into that author's `evals/` before
+committing. They are scenario inputs, not passing evidence; run the actual model
+backend and retain failures. Keep holdout results out of skill optimization.
 
 ```sh
 skpress check --project ./candidate --json
 skpress test --project ./candidate --json
-skpress doctor --project ./candidate --json
 ```
 
 Read each report, not only its exit code. `test` executes your declared commands;
-an empty test run proves nothing about behavior. `doctor` may correctly report
-missing external tooling/evidence. Keep private `.skill-press/` state ignored.
+an empty test run proves nothing about behavior. Missing evaluation evidence is
+expected at this stage. Keep private `.skill-press/` state ignored.
 Commit the exact configuration and canonical source before capturing evidence;
 later edits invalidate evidence bound to those inputs.
 
 ## Evidence and dry-run submission
 
-Use [the existing operations guide](../../docs/OPERATIONS.md#capture-official-tessl-evidence)
-to capture actual official evidence with approved provider access and the pinned
-executable. Local walkthroughs and synthetic lifecycle fixtures are not substitutes.
-No paid/provider operation is performed automatically by this example.
+Use [native evaluation and submission](../../docs/NATIVE_EVALUATION.md) to capture
+real training and holdout evidence through an explicitly authorized backend, then
+run `eval-check`. Paid Tessl evaluation is not authorized and is not required by
+native mode. Local walkthroughs and synthetic lifecycle fixtures are not substitutes.
+The current reviewed Codex text experiments are not yet admissible native evidence:
+their host-networked execution must not be relabeled as network-none container
+execution. Do not copy pilot receipts into the submission flags below. No provider
+operation is performed automatically by this example.
 
 With the resulting real evidence paths, prepare without contacting the registry:
 
 ```sh
-skpress submit --project ./candidate --dry-run \
-  --review-evidence /absolute/path/to/review-evidence.json \
-  --eval-evidence /absolute/path/to/eval-evidence.json \
-  --eval-source .skill-press/tessl-evals/your-set --json
+skpress eval-check --project ./candidate \
+  --training-evidence /absolute/path/to/training/evidence.json \
+  --holdout-evidence /absolute/path/to/holdout/evidence.json --json
+
+skpress submit --project ./candidate --native --dry-run \
+  --review-evidence /absolute/path/to/training/evidence.json \
+  --eval-evidence /absolute/path/to/holdout/evidence.json \
+  --eval-source evals --json
 ```
 
-This uses the existing release gate and packager; missing/stale/mismatched evidence
+`review-evidence` maps to training, and `eval-evidence` maps to holdout. Use the same
+evidence flags and `--native` for `doctor`, `package` and `status`. This uses the
+existing native release gate and packager; missing/stale/mismatched evidence
 must block. After preparation, inspect `skpress status --help` to bind status to
 the exact artifact directory and private submission receipt. Status is local;
 it does not query a live reviewer queue. Preserve the receipt for exact retries.

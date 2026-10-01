@@ -8,10 +8,37 @@ import { parse, stringify } from "yaml";
 import { validateAgentSkill } from "../src/validate/agent-skill.js";
 import { stageCanonicalSkill } from "../src/package/stage.js";
 import { packageStagedSkill, loadPackagedSkill } from "../src/package/archive.js";
+import { loadEvaluationSuite, loadEvaluationRubric } from "../src/eval/load.js";
 
 const profiler = resolve("skills/csv-quality-check/scripts/profile.py");
 
 describe("launch skill source candidates", () => {
+  it("ships canonical release-note evaluation inputs and Tessl-independent author instructions", async () => {
+    const base = "examples/launch-skills/release-notes-evals";
+    const training = await loadEvaluationSuite(`${base}/training.yaml`);
+    const holdout = await loadEvaluationSuite(`${base}/holdout.yaml`);
+    const rubric = await loadEvaluationRubric(`${base}/rubric.yaml`);
+    expect(training.skill).toBe("release-notes");
+    expect(holdout.skill).toBe(training.skill);
+    expect(new Set(training.scenarios.map((s) => s.category))).toEqual(
+      new Set(["positive", "near-miss", "failure", "adversarial"]),
+    );
+    expect(new Set(holdout.scenarios.map((s) => s.category))).toEqual(
+      new Set(["positive", "near-miss"]),
+    );
+    expect(
+      rubric.criteria.filter((c) => c.evaluator === "judge").reduce((sum, c) => sum + c.weight, 0),
+    ).toBeGreaterThanOrEqual(65);
+    for (const scenario of holdout.scenarios) {
+      expect(
+        training.scenarios.some((s) => s.id === scenario.id || s.prompt === scenario.prompt),
+      ).toBe(false);
+    }
+    const guide = await readFile("examples/launch-skills/AUTHORING.md", "utf8");
+    expect(guide).toContain("--native --dry-run");
+    expect(guide).toContain("--eval-source evals");
+    expect(guide).not.toContain(".skill-press/tessl-evals");
+  });
   it.each(["release-notes", "incident-handoff", "csv-quality-check"])(
     "stages and packages actual %s source in a separate author project",
     async (name) => {
