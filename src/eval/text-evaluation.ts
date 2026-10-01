@@ -42,10 +42,9 @@ function prompt(
 }
 
 /** Metadata-only selection by our harness, not Codex's native skill loader. */
-export function createTextSelectionPrompt(
-  scenario: Scenario,
+export function textSkillMetadata(
   skillText: string,
-): TextEvaluationPrompt {
+): Readonly<{ name: string; description: string }> {
   bounded(skillText);
   const diagnostics = new DiagnosticCollector();
   const parsed = parseAgentSkillFrontmatter(skillText, diagnostics);
@@ -59,6 +58,14 @@ export function createTextSelectionPrompt(
     !description.value.trim()
   )
     throw new Error("Selection requires valid skill name and description metadata.");
+  return Object.freeze({ name: name.value, description: description.value });
+}
+
+export function createTextSelectionPrompt(
+  scenario: Scenario,
+  skillText: string,
+): TextEvaluationPrompt {
+  const metadata = textSkillMetadata(skillText);
   return prompt(
     "selector",
     "Decide whether the available skill applies to the user's task, using its name and description. " +
@@ -69,7 +76,7 @@ export function createTextSelectionPrompt(
     {
       task: scenario.prompt,
       fixture: scenario.fixture ?? null,
-      availableSkill: { name: name.value, description: description.value },
+      availableSkill: metadata,
     },
   );
 }
