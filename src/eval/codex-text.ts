@@ -93,6 +93,8 @@ export async function runReviewedCodexText(text: string, signal?: AbortSignal) {
         "-c",
         "project_doc_max_bytes=0",
         "-c",
+        "suppress_unstable_features_warning=true",
+        "-c",
         "agents.enabled=false",
         "-c",
         "mcp_servers={}",

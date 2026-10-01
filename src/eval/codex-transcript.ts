@@ -1,11 +1,12 @@
 /**
- * Decode the bounded text-only protocol observed with Codex CLI 0.159.3.
+ * Decode the bounded text-only protocol observed with Codex CLI 0.159.3/0.160.0.
  * This is not a sandbox, a model-identity attestation, or release evidence.
  * Rejecting a tool event cannot undo a tool call: callers must prevent tools
  * before execution and separately enforce process/time/output limits.
  */
 export interface CodexTextResponse {
   readonly text: string;
+  readonly diagnostics: readonly string[];
   readonly usage: {
     readonly inputTokens: number;
     readonly cachedInputTokens: number;
@@ -15,6 +16,8 @@ export interface CodexTextResponse {
 }
 
 export const MAX_CODEX_TRANSCRIPT_BYTES = 1024 * 1024;
+export const CODE_MODE_DISABLED_DIAGNOSTIC =
+  "Code Mode is unavailable because code-mode host is disabled. Code mode will fail closed; enable `features.code_mode_host` and install `codex-code-mode-host`.";
 
 function invalid(): never {
   // Never echo a provider error, model output, thread ID or credential.
@@ -37,7 +40,7 @@ export function parseCodexTextResponse(stdout: string, exitCode: number | null):
   const lines = stdout.trim().split(/\r?\n/u);
   // A single successful text turn: thread, turn, one message, completion.
   // Unknown/new events require explicit adapter review rather than silent acceptance.
-  if (lines.length !== 4) invalid();
+  if (lines.length !== 4 && lines.length !== 5) invalid();
   const events = lines.map((line) => {
     let value: unknown;
     try {
@@ -47,6 +50,19 @@ export function parseCodexTextResponse(stdout: string, exitCode: number | null):
     }
     return record(value);
   });
+  const diagnostics: string[] = [];
+  if (events.length === 5) {
+    const diagnostic = record(events[1]);
+    const item = record(diagnostic.item);
+    if (
+      diagnostic.type !== "item.completed" ||
+      item.type !== "error" ||
+      item.message !== CODE_MODE_DISABLED_DIAGNOSTIC
+    )
+      invalid();
+    diagnostics.push(CODE_MODE_DISABLED_DIAGNOSTIC);
+    events.splice(1, 1);
+  }
   const [thread, turn, message, completion] = events as [
     Record<string, unknown>,
     Record<string, unknown>,
@@ -72,6 +88,7 @@ export function parseCodexTextResponse(stdout: string, exitCode: number | null):
   if (cachedInputTokens > inputTokens) invalid();
   return Object.freeze({
     text: item.text,
+    diagnostics: Object.freeze(diagnostics),
     usage: Object.freeze({ inputTokens, cachedInputTokens, outputTokens }),
     releaseEligible: false,
   });

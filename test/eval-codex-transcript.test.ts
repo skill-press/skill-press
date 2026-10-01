@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CODE_MODE_DISABLED_DIAGNOSTIC,
   MAX_CODEX_TRANSCRIPT_BYTES,
   parseCodexTextResponse,
 } from "../src/eval/codex-transcript.js";
@@ -22,10 +23,49 @@ function encode(value: unknown[]): string {
 }
 
 describe("Codex text-only response decoding", () => {
+  const diagnostic = {
+    type: "item.completed",
+    item: { type: "error", message: CODE_MODE_DISABLED_DIAGNOSTIC },
+  };
+
+  it("retains the exact known pre-turn disabled-host diagnostic", () => {
+    const stream = events();
+    stream.splice(1, 0, diagnostic);
+    const result = parseCodexTextResponse(encode(stream), 0);
+    expect(result.diagnostics).toEqual([CODE_MODE_DISABLED_DIAGNOSTIC]);
+    expect(Object.isFrozen(result.diagnostics)).toBe(true);
+  });
+
+  it.each([0, 2, 3, 4])("rejects the diagnostic at position %s", (index) => {
+    const stream = events();
+    stream.splice(index, 0, diagnostic);
+    expect(() => parseCodexTextResponse(encode(stream), 0)).toThrow(/Invalid/);
+  });
+
+  it.each([
+    { type: "error", item: diagnostic.item },
+    { type: "item.completed", item: { ...diagnostic.item, message: "other error" } },
+    { type: "item.completed", item: { ...diagnostic.item, type: "command_execution" } },
+    { type: "item.completed", item: null },
+    { type: "item.completed", item: [] },
+    { type: "item.completed" },
+  ])("rejects unrecognized diagnostic shapes", (value) => {
+    const stream = events();
+    stream.splice(1, 0, value);
+    expect(() => parseCodexTextResponse(encode(stream), 0)).toThrow(/Invalid/);
+  });
+
+  it("rejects duplicate diagnostics", () => {
+    const stream = events();
+    stream.splice(1, 0, diagnostic, diagnostic);
+    expect(() => parseCodexTextResponse(encode(stream), 0)).toThrow(/Invalid/);
+  });
+
   it("retains text and usage, not thread IDs or release eligibility", () => {
     const result = parseCodexTextResponse(encode(events()), 0);
     expect(result).toEqual({
       text: "Draft only. 草稿。",
+      diagnostics: [],
       usage: { inputTokens: 100, cachedInputTokens: 50, outputTokens: 12 },
       releaseEligible: false,
     });
