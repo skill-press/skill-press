@@ -61,16 +61,17 @@ With the resulting real evidence paths, prepare without contacting the registry:
 
 ```sh
 skpress eval-check --project ./candidate \
-  --training-evidence /absolute/path/to/training/evidence.json \
-  --holdout-evidence /absolute/path/to/holdout/evidence.json --json
+  --training-evidence ".skill-press/runs/<training-run>/evidence.json" \
+  --holdout-evidence ".skill-press/runs/<holdout-run>/evidence.json" --json
 
 skpress submit --project ./candidate --native --dry-run \
-  --review-evidence /absolute/path/to/training/evidence.json \
-  --eval-evidence /absolute/path/to/holdout/evidence.json \
+  --review-evidence ".skill-press/runs/<training-run>/evidence.json" \
+  --eval-evidence ".skill-press/runs/<holdout-run>/evidence.json" \
   --eval-source evals --json
 ```
 
-`review-evidence` maps to training, and `eval-evidence` maps to holdout. Use the same
+Replace run placeholders with actual run IDs; paths are relative to the candidate
+project. `review-evidence` maps to training, and `eval-evidence` maps to holdout. Use the same
 evidence flags and `--native` for `doctor`, `package` and `status`. This uses the
 existing native release gate and packager; missing/stale/mismatched evidence
 must block. After preparation, inspect `skpress status --help` to bind status to

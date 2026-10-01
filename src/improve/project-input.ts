@@ -76,11 +76,12 @@ function sameMetadata(
   );
 }
 
-export async function loadPairedEvaluationEvidence(
+/** Shared bounded private-file ingestion; profile validation belongs to its caller. */
+export async function loadPrivateEvaluationJson(
   root: string,
   path: string,
   suite: "training" | "holdout",
-): Promise<SkillPressPairedEvaluationEvidence> {
+): Promise<unknown> {
   const match = EVIDENCE_PATH.exec(path);
   if (match === null) {
     throw new ImprovementWorkflowError("Paired evaluation evidence path is invalid.", [
@@ -132,11 +133,30 @@ export async function loadPairedEvaluationEvidence(
   const after = await lstat(absolute);
   let parsed: unknown;
   try {
-    parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    if (sameMetadata(before, after) && bytes.byteLength <= MAX_EVIDENCE_BYTES)
+      parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
   } catch {
     parsed = undefined;
   }
-  if (!sameMetadata(before, after) || !validateEvidence(parsed) || parsed.suite !== suite) {
+  if (parsed === undefined) {
+    throw new ImprovementWorkflowError("Paired evaluation evidence is invalid.", [
+      issue(
+        "improve.evidence.schema",
+        `/${suite}EvidencePath`,
+        "evidence must remain stable and match its suite and versioned schema",
+      ),
+    ]);
+  }
+  return parsed;
+}
+
+export async function loadPairedEvaluationEvidence(
+  root: string,
+  path: string,
+  suite: "training" | "holdout",
+): Promise<SkillPressPairedEvaluationEvidence> {
+  const parsed = await loadPrivateEvaluationJson(root, path, suite);
+  if (!validateEvidence(parsed) || parsed.suite !== suite) {
     throw new ImprovementWorkflowError("Paired evaluation evidence is invalid.", [
       issue(
         "improve.evidence.schema",

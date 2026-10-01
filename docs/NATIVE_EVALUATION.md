@@ -15,7 +15,7 @@ skpress eval-check \
 
 Use an existing explicitly authorized execution backend. These commands do not
 install a model, provide an adapter, authorize provider billing or call Tessl.
-`eval-check` itself only reads local files. Adapter fixtures used in automated
+Default `eval-check` only reads local files. Adapter fixtures used in automated
 tests are synthetic protocol tests, not real model-quality evidence.
 
 New runs retain an `evaluationInputsSha256` digest over UTF-8
@@ -79,3 +79,35 @@ The npm build retains JavaScript, runtime source maps and TypeScript declaration
 Declaration maps are not generated: their TypeScript sources are not distributed.
 This keeps the expanded client within the existing 512-file package inventory
 limit without changing that integrity boundary.
+
+## Reviewed text experiments: local assessment only
+
+For an operator-reviewed first-party text project, `eval-check --reviewed-text`
+can assess the two source-bound manifests produced by the reviewed text harness:
+
+```sh
+skpress eval-check --reviewed-text --project ./candidate \
+  --training-evidence ".skill-press/runs/<training-run>/evidence.json" \
+  --holdout-evidence ".skill-press/runs/<holdout-run>/evidence.json" --json
+```
+
+Replace each run placeholder with the manifest's 64-character run ID. Paths are
+relative to the project, not the shell directory. Each JSON file is at most 1 MiB;
+use private directories (0700) and files (0600) on Unix. Complete training and
+holdout manifests are separate files, not the combined experiment archive.
+Commit the configuration, canonical skill and evals before measuring them.
+
+The command reconstructs a private package under `.skill-press/staging/`, checks
+current source at entry and exit, and verifies both suites against that package
+and the current evaluation inputs. It invokes no models or project test commands.
+Supported source content is SKILL.md and an optional LICENSE only; LICENSE is
+bound into the full archive but treated as distribution metadata, not model
+guidance. Scripts and reference resources require a different execution profile.
+Normal project readiness still requires project and canonical-skill licenses.
+
+An exit code of 0 means the advisory checks passed, not release admission:
+`releaseEligible` and `releaseAuthorized` remain false, and `admissionIssues`
+contains `text_profile_not_admitted`. Failed checks return 3; invalid options
+return 2. These results cannot yet feed `submit --native` or replace curator
+corroboration. Self-consistent hashes do not attest actual model execution.
+The host-networked profile is never relabeled as network-none Docker.

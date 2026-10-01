@@ -26,9 +26,14 @@ export async function prepareReviewedTextProject(projectDirectory: string) {
   const config = await loadProjectConfig(root);
   const inputs = await loadProjectEvaluationInputs(root);
   const staged = await stageCanonicalSkill(root);
-  // A text-only profile must not silently omit a script, reference or other resource.
-  if (staged.files.length !== 1 || staged.files[0]?.path !== "SKILL.md")
-    throw new Error("Reviewed text projects support only a standalone SKILL.md.");
+  // LICENSE is distribution metadata, not task guidance. Keep it in the full
+  // source/archive binding; reject executable or instructional resources.
+  const document = staged.files.find((file) => file.path === "SKILL.md");
+  if (
+    document === undefined ||
+    staged.files.some((file) => !["SKILL.md", "LICENSE"].includes(file.path))
+  )
+    throw new Error("Reviewed text projects support SKILL.md and an optional LICENSE only.");
   if (
     staged.sourceCommit !== source.commit ||
     staged.skillSha256 !== source.skillSha256 ||
@@ -46,7 +51,7 @@ export async function prepareReviewedTextProject(projectDirectory: string) {
     verified.sourceCommit !== source.commit ||
     verified.skillSha256 !== source.skillSha256 ||
     verified.projectConfigSha256 !== source.projectConfigSha256 ||
-    digest(skillText) !== staged.files[0]?.sha256
+    digest(skillText) !== document.sha256
   )
     throw new Error("Reviewed text source or artifact binding failed.");
   return freeze({
