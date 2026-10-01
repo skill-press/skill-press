@@ -82,6 +82,9 @@ function paths(result) {
     "dist/index.js",
     "package.json",
     "schemas/skill-press.schema.json",
+    "schemas/native-evidence.schema.json",
+    "dist/release/native-evidence.js",
+    "dist/release/native-evidence.d.ts",
     "schemas/package-provenance.schema.json",
     "schemas/submission-manifest.schema.json",
     "schemas/submission-resource.schema.json",
@@ -188,6 +191,10 @@ try {
       const discoverHelp = (await run(installedBinary, ["discover", "--help"], installRoot)).stdout;
       if (!discoverHelp.includes("skpress discover [name-or-namespace] [--json]")) {
         fail("installed CLI does not expose discovery help");
+      }
+      const submitHelp = (await run(installedBinary, ["submit", "--help"], installRoot)).stdout;
+      if (!submitHelp.includes("--native")) {
+        fail("installed CLI does not expose native submission");
       }
     },
   );

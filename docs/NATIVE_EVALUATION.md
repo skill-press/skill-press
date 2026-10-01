@@ -74,3 +74,8 @@ Deployment needs the platform's forward `0008_native_review_policy.sql` migratio
 to retain historical reviews while admitting the native policy. Local tests use
 synthetic scores and isolated persistence; they do not establish real model
 quality, production migration safety or launch readiness.
+
+The npm build retains JavaScript, runtime source maps and TypeScript declarations.
+Declaration maps are not generated: their TypeScript sources are not distributed.
+This keeps the expanded client within the existing 512-file package inventory
+limit without changing that integrity boundary.
