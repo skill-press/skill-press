@@ -73,7 +73,10 @@ export function parseToolActorAction(text: string): ToolActorAction {
   throw new Error("Invalid tool action.");
 }
 
-function actorPrompt(input: ReviewedToolActorInput, steps: readonly ToolActorStep[]) {
+export function createReviewedToolActorPrompt(
+  input: ReviewedToolActorInput,
+  steps: readonly ToolActorStep[],
+) {
   const data = {
     task: input.scenario.prompt,
     files: (input.scenario.fixture?.files ?? []).map((file) => ({
@@ -149,7 +152,7 @@ export function validateReviewedToolActorInput(input: ReviewedToolActorInput): v
     inputs: files,
     skillFiles: input.skillFiles,
   });
-  actorPrompt(input, []); // Reject oversized input before spending a model call.
+  createReviewedToolActorPrompt(input, []); // Reject oversized input before spending a model call.
 }
 
 export async function runReviewedToolActor(
@@ -181,7 +184,7 @@ export async function runReviewedToolActor(
   });
   for (let index = 0; index <= TOOL_LIMIT; index++) {
     if (signal?.aborted) return result("failed", null, "aborted");
-    const prompt = actorPrompt(input, steps);
+    const prompt = createReviewedToolActorPrompt(input, steps);
     let response: ModelReceipt;
     try {
       response = await runReviewedCodexText(prompt.text, signal, "tool-action-v1");
@@ -222,6 +225,13 @@ export async function runReviewedToolActor(
       return result("failed", null, "tool_failed");
     }
     const healthy =
+      // The text transcript must losslessly represent raw executor output. Preserve
+      // raw-byte hashes and the failed receipt; never continue with replacement text.
+      (["stdout", "stderr"] as const).every(
+        (stream) =>
+          Buffer.byteLength(tool.execution[`${stream}Text`]) === tool.execution[`${stream}Bytes`] &&
+          hash(tool.execution[`${stream}Text`]) === tool.execution[`${stream}Sha256`],
+      ) &&
       tool.execution.signal === null &&
       ((tool.execution.status === "passed" && tool.execution.exitCode === 0) ||
         (tool.execution.status === "failed" && [1, 2].includes(tool.execution.exitCode ?? -1))) &&

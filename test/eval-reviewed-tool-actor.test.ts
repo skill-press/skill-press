@@ -42,24 +42,56 @@ const receipt = (text: string) =>
   ({ text, inputSha256: "a".repeat(64), outputSha256: hash(text) }) as Awaited<
     ReturnType<typeof runReviewedCodexText>
   >;
-const outcome = (status = "passed", extra = {}) =>
-  ({
+const outcome = (status = "passed", extra: Record<string, unknown> = {}) => {
+  const stdoutText = (extra.stdoutText ?? '{"rows":1}') as string;
+  const stderrText = (extra.stderrText ?? "") as string;
+  return {
     execution: {
       status,
       exitCode: status === "passed" ? 0 : 2,
       signal: null,
-      stdoutText: '{"rows":1}',
-      stderrText: "",
+      stdoutText,
+      stderrText,
+      stdoutBytes: Buffer.byteLength(stdoutText),
+      stderrBytes: Buffer.byteLength(stderrText),
+      stdoutSha256: hash(stdoutText),
+      stderrSha256: hash(stderrText),
       cleanupAttempted: false,
       cleanupOk: false,
       ...extra,
     },
     releaseEligible: false,
-  }) as Awaited<ReturnType<typeof runReviewedPythonTool>>;
+  } as Awaited<ReturnType<typeof runReviewedPythonTool>>;
+};
 const wire = (action: unknown) => JSON.stringify({ action });
 const python = wire({ kind: "python", code: "print('observed')" });
 const answer = wire({ kind: "answer", text: "One data record." });
 afterEach(() => vi.resetAllMocks());
+
+it.each(["stdout", "stderr"])(
+  "retains non-UTF-8 %s output and stops before another model call",
+  async (stream) => {
+    const raw = Buffer.from([0xff]);
+    model.mockResolvedValue(receipt(python));
+    const observed = outcome("passed", {
+      [`${stream}Text`]: raw.toString("utf8"),
+      [`${stream}Bytes`]: raw.length,
+      [`${stream}Sha256`]: createHash("sha256").update(raw).digest("hex"),
+    });
+    tool.mockResolvedValue(observed);
+    const checkpoint = vi.fn();
+    const result = await runReviewedToolActor(input(), checkpoint);
+    expect(result).toMatchObject({
+      status: "failed",
+      failure: "tool_failed",
+      modelInvocations: 1,
+      toolInvocations: 1,
+    });
+    expect(result.steps[0].tool).toEqual(observed);
+    expect(checkpoint).toHaveBeenCalledTimes(1);
+    expect(model).toHaveBeenCalledTimes(1);
+  },
+);
 
 it.each([false, true])(
   "records actual requested tool transitions without expected-answer leakage (skill=%s)",
