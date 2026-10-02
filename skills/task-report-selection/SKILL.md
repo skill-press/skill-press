@@ -12,6 +12,20 @@ Write the update the recipient needs, not a smaller copy of every input report.
 Use the stated audience and question to decide what matters. If neither is given,
 write a brief progress update without inventing the reader's expertise or priorities.
 
+Example of selecting meaning for a routine progress update (not a template):
+
+Input: “培训报名表已上线，确认邮件模板已校对，讲义排版和练习题检查已完成。
+本轮调整了六处格式，重新导出了两次 PDF。讲师时间和教室尚未确认；主办方
+已决定明天先和讲师定时间，再据此订教室。这两项确认后即可安排开课。”
+
+Update: “培训内容和报名准备已完成，确认讲师时间和教室后就能安排开课。
+下一步明天先定讲师时间，再订教室。”
+
+The update groups finished work, retains the actual remaining conditions and
+next action, and drops evidence of effort. It does not shorten every original
+sentence in turn. An execution handoff might need the omitted file details;
+select according to that request, rather than copying this example's shape.
+
 First select which tasks belong in the answer. When the reader asks about one
 deliverable, leave out other workstreams unless they change that deliverable's
 status or the reader's next action. A task does not deserve a sentence merely
