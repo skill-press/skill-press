@@ -52,7 +52,27 @@ commands are trusted; validation finding a bundled script is not authorization t
 
 ## Paired behavioral evaluation
 
-Use a digest-pinned Docker or Podman image and a compatible adapter:
+First identify existing evidence. Do not rerun complete measurements merely to change
+protocol flags; use the matching checker in the evidence reference. Evidence belongs
+to the exact author-project source, not the CLI revision used to read it.
+
+For new reviewed first-party text-only measurements (SKILL.md and optional LICENSE),
+preview each suite using `skpress eval-text --project . --suite training --dry-run --json`
+and then `--suite holdout`. For reviewed scripts/resources, use `eval-tool` instead.
+Both previews prepare local artifacts but invoke no models or containers. Review all
+inputs before replacing `--dry-run` with `--reviewed-inputs --max-model-calls <preview-count>`.
+Use the count for that suite, not a copied constant. Retain each returned `evidencePath`.
+
+These public evaluators use the reviewed ChatGPT-entitled Codex backend, fixed
+`gpt-6.1-sol`/medium, with serial calls and no paid API/Tessl fallback. The host model
+is networked; tool Python runs in the fixed reviewed Docker image without network.
+Do not feed unreviewed third-party inputs. Failed runs retain private checkpoints;
+there is no automatic retry or resume. Preserve unchanged quality failures instead
+of repeatedly running them to obtain a pass. After substantive source changes,
+commit and collect new evidence; never attach old receipts to the new source.
+
+For the separate container-native profile, use a digest-pinned Docker or Podman
+image and a compatible authorized adapter:
 
 ```sh
 skpress eval --project . --suite training --image <image@sha256:digest> --model <model> -- <adapter-argv...>

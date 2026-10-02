@@ -3,6 +3,14 @@
 Skill Press is replacing mandatory Tessl evaluation with its own paired evaluation
 and review path. Do not run paid Tessl evaluation for launch preparation.
 
+Choose the producer's protocol before using the commands below: container `eval`
+uses default `eval-check` and `--native` downstream; `eval-text` uses
+`--reviewed-text`; `eval-tool` uses `--reviewed-tool` (and an explicit reviewed
+`--image` for its local checker). These are distinct receipts, not interchangeable
+flags. For scripts/resources, start with [public tool evaluation](#public-tool-evaluation)
+and [tool submission](#reviewed-tool-submission). Existing complete evidence can
+be checked without running a model again.
+
 Run paired measurements and check their consistency locally:
 
 ```sh
@@ -80,10 +88,11 @@ Declaration maps are not generated: their TypeScript sources are not distributed
 This keeps the expanded client within the existing 512-file package inventory
 limit without changing that integrity boundary.
 
-## Reviewed text experiments: local assessment only
+## Reviewed execution profiles
 
 The internal `runReviewedPythonTool` primitive prepares the script-assisted CSV
-path, but is not yet a public model evaluator or admissible evidence protocol.
+path. It is used by the public `eval-tool` evaluator and separate reviewed-tool
+admission described below; calling this primitive alone is not qualifying evidence.
 It stages only supplied text bytes, never caller-provided host paths, and executes
 Python through the existing pinned Docker runner. `/skill` and `/input` are
 read-only; `/tmp` and `/output` each have an 8 MiB tmpfs limit, with no writable
@@ -132,9 +141,12 @@ retry. A persistence callback receives isolated copies and can stop the run by
 failing. Abort signals reach model calls and stop subsequent tool requests; an
 already-running container still relies on its timeout. This is harness-mediated
 tool use, not native Codex tool execution or a claim that host inference is offline.
-Source-bound project trajectories, paired scoring and explicit admission support
-remain unfinished. Text-v1 evidence
+Source-bound trajectories, paired scoring and explicit reviewed-tool admission
+are implemented in the current candidate, as described below. This does not
+establish qualifying real quality or production availability. Text-v1 evidence
 continues to reject script-bearing skills.
+
+### Reviewed text evaluation
 
 Generate receipts with the public `eval-text` command after committing and reviewing
 the first-party skill, both suites and rubric. Preview does not invoke models:
@@ -280,6 +292,20 @@ blocked/incomplete. Both suites and independent curator acceptance are still nee
 No submission, publication or deployment is performed by this command.
 
 ## Reviewed tool submission
+
+Check existing source-bound tool evidence locally before submission preparation:
+
+```bash
+skpress eval-check --reviewed-tool --project ./candidate \
+  --image python@sha256:05b2b8b732ecd268fee8727a369f936f022d1321b59befd13c30ede22769dcdc \
+  --training-evidence .skill-press/runs/<training-run>/evidence.json \
+  --holdout-evidence .skill-press/runs/<holdout-run>/evidence.json --json
+```
+
+This does not run or pull the image. It checks the reviewed digest rather than
+inferring it from uploaded receipts. Keep source and receipts unchanged; source
+updates require new evidence, not changing the recorded source ID. A training
+impact failure remains blocking even when readiness and holdout pass.
 
 For reviewed first-party tool measurements, `package`, `submit`, `status` and
 `doctor` accept `--reviewed-tool` instead of `--native` or `--reviewed-text`.

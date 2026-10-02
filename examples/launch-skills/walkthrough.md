@@ -1,5 +1,43 @@
 # Local skill walkthrough — 2026-09-25
 
+## Source-derived invited-author task — 2026-10-02
+
+This additional task was selected by a user-requested independent product pass
+from the actual retained CSV author project and failed measurements. It is not
+an external-user interview, new model evaluation or unseen holdout. The prompt
+below is a reconstruction; `./candidate` replaces the original private temporary
+path and does not claim a copy exists there. Old measurements remain unchanged.
+
+> I have a CSV skill author project at `./candidate`, source revision `3c2de33`,
+> with `skill-press.yaml`, `skills/csv-quality-check/{SKILL.md,LICENSE,scripts/profile.py}`
+> and complete private training/holdout receipts. I use CLI candidate `08f4ed9`
+> (not assumed published to npm). The guide says the tool bridge is unavailable
+> and the bundled Skill says to use `--native`. Which protocol and local commands
+> should I use, why am I blocked, and what is next? Explain only: no inference,
+> upload, evidence regeneration or source edits.
+>
+> Receipts use the host-networked-model-isolated-python profile. Training run is
+> `be06951a75904ceea50f06677fa73ee3e5458bc9fa96b3c990390636c2b4b846`;
+> holdout is `7d9ab139435cdfa9739592041b3b1eace3f6c53fc3529a0cc71b10f094098ffe`.
+> Each is at `.skill-press/runs/<run-id>/evidence.json`. Readiness is 100;
+> training baseline and skill both succeed 15/15; holdout improves 5/6 to 6/6.
+> Minimum success is 0.9 and minimum absolute gain 0.1. The recorded checker
+> exits 3 with `training:tool.impact.failed`. No curator corroboration or deployed
+> service exists. Do not lower thresholds or repeat unchanged failed evaluations.
+
+Expected useful answer: use the reviewed-tool commands in
+[author preparation](AUTHORING.md), retaining training/holdout flag mapping and
+the explicit fixed image on `eval-check` only. `submit --reviewed-tool --dry-run`
+must remain blocked by zero training gain; readiness and holdout do not override
+it. No new measurement is needed to inspect these existing receipts. A future
+substantive author-source improvement requires a new committed source and new
+measurements, with `eval-tool --dry-run` first to preview each suite's maximum.
+Updating the CLI or correcting documentation does not update the author's source,
+qualify the CSV skill, or authorize submission/publication. This case is public
+regression material and must not be repurposed as an independent holdout.
+
+## Original synthetic walkthroughs
+
 Coco read each skill and applied it to the supplied synthetic example. These are
 root-authored walkthrough outputs, not a blind independent evaluation, Tessl
 score or curator approval. CSV aggregates below came from the actual bundled

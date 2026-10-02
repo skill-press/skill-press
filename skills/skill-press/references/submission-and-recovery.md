@@ -1,5 +1,24 @@
 # Submission and recovery
 
+Use the protocol matching the actual receipts throughout preparation, status and
+retries: `--native` for container paired evidence, `--reviewed-text` for reviewed
+host-text evidence, or `--reviewed-tool` for reviewed host-model/isolated-Python
+evidence. Never combine them. The examples below show container-native; substitute
+the matching reviewed flag without changing the training/holdout mapping.
+Reviewed-tool admission fixes the image internally; `--image` belongs only to its
+local `eval-check`, not to `submit`. See the evidence reference linked from SKILL.md.
+
+For an existing reviewed-tool project, prepare without models, containers or upload:
+
+```sh
+skpress submit --reviewed-tool --project . --dry-run \
+  --review-evidence <training-evidence.json> \
+  --eval-evidence <holdout-evidence.json> --eval-source evals --json
+```
+
+Quality failures must still block this dry-run. Do not rebuild evidence, switch
+protocols or remove `--dry-run` to bypass the reported reason.
+
 ## Deterministic package boundary
 
 Create an advanced reusable package explicitly when needed:

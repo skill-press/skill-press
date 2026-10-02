@@ -12,7 +12,34 @@
 
 One class never substitutes for another.
 
-## Native evaluation (default workflow)
+## Select the evidence protocol
+
+| Actual evidence producer | `eval-check` options | `package`, `submit`, `status`, `doctor` |
+| --- | --- | --- |
+| Container paired `eval` | No profile flag | `--native` |
+| Reviewed host `eval-text` | `--reviewed-text` | `--reviewed-text` |
+| Reviewed host-model/isolated-Python `eval-tool` | `--reviewed-tool --image <reviewed-digest>` | `--reviewed-tool` |
+
+Never infer a profile from passing scores or relabel evidence. For tool admission,
+the fixed reviewed digest is
+`python@sha256:05b2b8b732ecd268fee8727a369f936f022d1321b59befd13c30ede22769dcdc`.
+The local tool checker requires that image explicitly; downstream gates fix it
+without an `--image` option. Checking existing receipts runs no model or container.
+
+```sh
+skpress eval-check --reviewed-tool --project . \
+  --image python@sha256:05b2b8b732ecd268fee8727a369f936f022d1321b59befd13c30ede22769dcdc \
+  --training-evidence <training-evidence.json> \
+  --holdout-evidence <holdout-evidence.json> --json
+```
+
+All profiles keep source/configuration/artifact and suite bindings. The two reviewed
+profiles require private evidence files/directories (0600/0700 on Unix), rebuild a
+local package and verify source at entry/exit. Text supports only SKILL.md and optional
+LICENSE; scripts/resources require the tool profile. Local checks remain advisory,
+and a downstream release gate plus independent curator corroboration are still needed.
+
+## Container-native evaluation
 
 Use complete source-bound training and holdout measurements from the paired sandbox runner:
 
@@ -34,13 +61,19 @@ that a run happened or was honestly judged. The platform independently checks co
 requires curator corroboration through independent execution/review before publication. Activation
 checks alone are not task-quality evidence. Synthetic test adapters only test the protocol.
 
-Select `--native` for `package`, `submit`, `status` and `doctor`; their historical evidence flags
+For container-native receipts select `--native` for `package`, `submit`, `status` and `doctor`; their historical evidence flags
 map `--review-evidence` to training and `--eval-evidence` to holdout. `--eval-source evals` binds
 the source suite tree. Native failures never fall back to Tessl. Commit configuration, canonical
 skill and evaluation inputs first; dirty/untracked/ignored release inputs block packaging. The
 upload includes both suites and the rubric, including fixture text: use publishable synthetic
 scenarios, never secrets or private user data. Holdout isolation protects evaluation, not eventual
 submission confidentiality.
+
+The same quality minima apply to reviewed text/tool admission. Readiness 100 or a
+passing holdout cannot override training impact below 0.1. Report the actual issue
+(for example `training:tool.impact.failed`), retain the failed evidence and improve
+the underlying task capability before new measurements. Neither higher mean scores
+nor successful parsing prove the required success-rate gain.
 
 ## Legacy Tessl compatibility only
 
@@ -94,8 +127,8 @@ When deciding if submission can proceed, lead with `ELIGIBLE` or `BLOCKED`, then
 1. freeze one clean source commit and pass deterministic checks;
 2. capture current paired training/holdout measurements and pass native checking;
 3. deterministically package the same commit and retain provenance and digests;
-4. run `skpress submit --native --dry-run` to bind the canonical manifest without a remote mutation;
-5. obtain separate authority for `skpress submit --native`, authenticate only to Skill Press, and
+4. run `skpress submit --dry-run` with the matching protocol flag to bind the canonical manifest without a remote mutation;
+5. obtain separate authority for real submission with that same protocol, authenticate only to Skill Press, and
    persist its exact private retry journal;
 6. report the server's review state without calling it published;
 7. after publication, verify the immutable version, artifact digest, canonical URL, attestation,

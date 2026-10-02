@@ -37,7 +37,9 @@ backend and retain failures. Keep holdout results out of skill optimization.
 For `incident-handoff`, [its separate eval inputs](incident-handoff-evals/) provide
 five training cases and two held-out tasks, including an observation-cutoff case.
 Use only the chosen skill's directory; do not combine the suites. These inputs
-are synthetic and have not yet produced recorded behavioral measurements.
+are synthetic, developer-visible regression cases. Real measurements have been
+recorded, but neither text candidate has qualified; do not treat these as unseen
+holdout tasks or passing evidence.
 
 ```sh
 skpress check --project ./candidate --json
@@ -58,7 +60,8 @@ run `eval-check`. Paid Tessl evaluation is not authorized and is not required by
 native mode. Local walkthroughs and synthetic lifecycle fixtures are not substitutes.
 Choose the protocol that actually produced your evidence. Source-bound, complete
 reviewed host-text receipts use `--reviewed-text`; network-none container paired
-evidence uses `--native`. Never relabel one as the other. Text admission supports
+evidence uses `--native`; host-model/isolated-Python receipts use `--reviewed-tool`.
+Never relabel one as another. Text admission supports
 only SKILL.md and optional LICENSE, so it cannot evaluate `csv-quality-check`'s
 Python script. No provider operation is performed automatically by this example.
 
@@ -68,8 +71,9 @@ against the real profiler, including malformed input, multiline records,
 semicolon/BOM handling and embedded instructions. This does not establish model
 behavior: the actor must actually choose and use available tools, and baseline
 must receive equivalent general computation access without the bundled skill.
-The model-to-sandbox bridge is not implemented yet; neither `eval-text` nor the
-script smoke test qualifies CSV for release. These developer-visible holdout
+The public `eval-tool` command implements that bridge for reviewed first-party
+inputs; neither `eval-text` nor the script smoke test qualifies CSV for release.
+These developer-visible holdout
 fixtures are regression inputs, not proof of an independently unseen evaluation.
 
 For the two text-only skills, `skpress eval-text --project ./candidate --suite
@@ -79,6 +83,15 @@ After reviewing the first-party inputs, use `--reviewed-inputs --max-model-calls
 linked guide for backend requirements, private checkpoints and cancellation limits.
 Keep both returned `evidencePath` values. A quality failure remains a failure;
 the command neither submits nor approves a release.
+
+For a new reviewed CSV measurement, preview both suites using `skpress eval-tool
+--project ./candidate --suite training --dry-run --json` and `--suite holdout`.
+Use each preview's maximum with `--reviewed-inputs --max-model-calls <count>` only
+after reviewing all resources/fixtures. The command fixes the reviewed Python
+image and uses the ChatGPT-entitled host backend; it does not accept a custom
+image. Preview runs no model or container, but prepares a local package. If you
+already have complete evidence for the unchanged author source, check it below;
+do not rerun a failed evaluation just to follow this guide.
 
 With the resulting real evidence paths, prepare without contacting the registry:
 
@@ -95,7 +108,24 @@ skpress submit --project ./candidate --reviewed-text --dry-run \
   --eval-source evals --json
 ```
 
-For container-native paired evidence (including executable skills):
+For reviewed tool receipts (`csv-quality-check`):
+
+```sh
+skpress eval-check --reviewed-tool --project ./candidate \
+  --image python@sha256:05b2b8b732ecd268fee8727a369f936f022d1321b59befd13c30ede22769dcdc \
+  --training-evidence ".skill-press/runs/<training-run>/evidence.json" \
+  --holdout-evidence ".skill-press/runs/<holdout-run>/evidence.json" --json
+
+skpress submit --project ./candidate --reviewed-tool --dry-run \
+  --review-evidence ".skill-press/runs/<training-run>/evidence.json" \
+  --eval-evidence ".skill-press/runs/<holdout-run>/evidence.json" \
+  --eval-source evals --json
+```
+
+Use that explicit image for `eval-check`; downstream tool admission fixes it
+internally and takes no `--image`. These commands do not run models or containers.
+
+For separate container-native paired evidence (including executable skills):
 
 ```sh
 skpress eval-check --project ./candidate \
@@ -110,7 +140,7 @@ skpress submit --project ./candidate --native --dry-run \
 
 Replace run placeholders with actual run IDs; paths are relative to the candidate
 project. `review-evidence` maps to training, and `eval-evidence` maps to holdout. Use the same
-evidence flags and selected `--native` or `--reviewed-text` protocol for `doctor`,
+evidence flags and selected `--native`, `--reviewed-text` or `--reviewed-tool` protocol for `doctor`,
 `package` and `status`. This uses the corresponding release gate and existing
 packager; missing/stale/mismatched or quality-failed evidence
 must block. After preparation, inspect `skpress status --help` to bind status to
@@ -130,7 +160,14 @@ platform lifecycle tests actual source bytes with synthetic provider inputs.
 The sample `init`, local `check`, test-command execution and missing-evidence
 dry-run rejection have also been exercised. Complete source-bound release-notes
 text measurements have run, but training gain was zero and the real dry-run is
-blocked. Do not retry unchanged inputs until a pass appears, lower thresholds or
-treat synthetic passing scores as permission to submit. The other candidates'
-real behavioral qualification and independent corroboration remain unfinished.
+blocked. Incident-handoff and CSV measurements also remain below the required
+incremental gain. The retained CSV author revision `3c2de33` has readiness 100,
+training 15/15 versus 15/15 (delta zero), and holdout 5/6 versus 6/6. Its actual
+tool checker and submission dry-run return exit 3 for `training:tool.impact.failed`.
+A passing holdout does not override failed training. CLI updates do not update
+that author's source; applying newer profiler changes requires a new committed
+author revision and fresh measurements, not relabeling old receipts.
+Do not retry unchanged inputs until a pass appears, lower thresholds or treat
+synthetic passing scores as permission to submit. Actual qualifying gain and
+independent corroboration remain unfinished for all three candidates.
 Production deployment/admission is not established by local or CI success.

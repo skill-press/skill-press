@@ -15,6 +15,12 @@ const documents = [
   "docs/SECURITY.md",
   "docs/REGISTRIES.md",
   "docs/TESSL.md",
+  "docs/NATIVE_EVALUATION.md",
+  "examples/launch-skills/AUTHORING.md",
+  "skills/skill-press/SKILL.md",
+  "skills/skill-press/references/authoring-and-evaluation.md",
+  "skills/skill-press/references/evidence-and-release-gates.md",
+  "skills/skill-press/references/submission-and-recovery.md",
 ];
 
 async function source(path: string): Promise<string> {
