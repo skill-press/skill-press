@@ -49,6 +49,13 @@ what those observations establish; do not add a favorable transition such as
 decision to stop or redirect work, that decision outranks routine check results
 in a progress update.
 
+For a routine progress update, completed work followed by the remaining
+conditions can communicate status without opening with a refusal or warning.
+When supported by the source, "after these conditions are met, we can proceed"
+preserves the limit without repeating "not ready yet". Do not imply that a
+partial list is sufficient, hide a blocker or turn a conditional statement into
+approval. Use this framing when it fits the reader, not as a fixed report order.
+
 Draft from the selected takeaways, not from the sequence of input reports.
 For each takeaway, bring together its outcome, necessary qualification and
 recorded next action. In a brief update, do not introduce that takeaway in an
@@ -65,7 +72,9 @@ Before sending, remove sentences whose only purpose is to demonstrate diligence,
 recite resolved hiccups or list things that did not happen. Keep them when the
 reader requested that evidence or when omission would change a decision. Do not
 append unrelated caveats to prove caution; attach necessary limits to the claim
-they qualify. If a later paragraph restates a takeaway, move any new essential
+they qualify. Routine progress reporting need not repeat an approval procedure
+unless the reader must make that decision now or could mistake the update for
+authorization. If a later paragraph restates a takeaway, move any new essential
 detail to its first occurrence and remove the repetition. Stop when the reader's
 question is answered.
 
