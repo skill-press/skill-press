@@ -47,63 +47,69 @@ describe("launch skill source candidates", () => {
       expect(guide).not.toContain(".skill-press/tessl-evals");
     },
   );
-  it.each(["release-notes", "incident-handoff", "csv-quality-check", "ci-revision-triage"])(
-    "stages and packages actual %s source in a separate author project",
-    async (name) => {
-      const root = await mkdtemp(join(tmpdir(), "launch-author-"));
-      try {
-        await mkdir(join(root, "skills"));
-        await cp(resolve("skills", name), join(root, "skills", name), { recursive: true });
-        const config = parse(await readFile("skill-press.yaml", "utf8"));
-        config.project.name = name;
-        config.project.description = `Local author preparation for ${name}.`;
-        config.skill.name = name;
-        config.skill.path = `skills/${name}`;
-        await writeFile(join(root, "skill-press.yaml"), stringify(config));
-        await writeFile(join(root, ".gitignore"), ".skill-press/\n");
-        for (const args of [
-          ["init", "--quiet"],
-          ["add", "."],
-          [
-            "-c",
-            "user.name=Local Test",
-            "-c",
-            "user.email=test@example.invalid",
-            "-c",
-            "commit.gpgsign=false",
-            "commit",
-            "--quiet",
-            "-m",
-            "Synthetic author project",
-          ],
-        ]) {
-          const result = spawnSync("git", args, { cwd: root, encoding: "utf8" });
-          expect(result.status, result.stderr).toBe(0);
-        }
-        const staged = await stageCanonicalSkill(root);
-        const packaged = await packageStagedSkill(root, staged);
-        const loaded = await loadPackagedSkill(root, packaged.artifactsPath);
-        expect(loaded.skillArchive).toBe(`${name}-0.1.0.skill`);
-        expect(loaded.skillSha256).toBe(staged.skillSha256);
-        expect(loaded.artifactSha256).toBe(packaged.artifactSha256);
-        expect(staged.files.length).toBe(name === "csv-quality-check" ? 2 : 1);
-      } finally {
-        await rm(root, { recursive: true, force: true });
+  it.each([
+    "release-notes",
+    "incident-handoff",
+    "csv-quality-check",
+    "ci-revision-triage",
+    "task-report-selection",
+  ])("stages and packages actual %s source in a separate author project", async (name) => {
+    const root = await mkdtemp(join(tmpdir(), "launch-author-"));
+    try {
+      await mkdir(join(root, "skills"));
+      await cp(resolve("skills", name), join(root, "skills", name), { recursive: true });
+      const config = parse(await readFile("skill-press.yaml", "utf8"));
+      config.project.name = name;
+      config.project.description = `Local author preparation for ${name}.`;
+      config.skill.name = name;
+      config.skill.path = `skills/${name}`;
+      await writeFile(join(root, "skill-press.yaml"), stringify(config));
+      await writeFile(join(root, ".gitignore"), ".skill-press/\n");
+      for (const args of [
+        ["init", "--quiet"],
+        ["add", "."],
+        [
+          "-c",
+          "user.name=Local Test",
+          "-c",
+          "user.email=test@example.invalid",
+          "-c",
+          "commit.gpgsign=false",
+          "commit",
+          "--quiet",
+          "-m",
+          "Synthetic author project",
+        ],
+      ]) {
+        const result = spawnSync("git", args, { cwd: root, encoding: "utf8" });
+        expect(result.status, result.stderr).toBe(0);
       }
-    },
-  );
+      const staged = await stageCanonicalSkill(root);
+      const packaged = await packageStagedSkill(root, staged);
+      const loaded = await loadPackagedSkill(root, packaged.artifactsPath);
+      expect(loaded.skillArchive).toBe(`${name}-0.1.0.skill`);
+      expect(loaded.skillSha256).toBe(staged.skillSha256);
+      expect(loaded.artifactSha256).toBe(packaged.artifactSha256);
+      expect(staged.files.length).toBe(name === "csv-quality-check" ? 2 : 1);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 
-  it.each(["release-notes", "incident-handoff", "csv-quality-check", "ci-revision-triage"])(
-    "validates the complete %s skill tree",
-    async (name) => {
-      expect(
-        await validateAgentSkill(resolve("skills", name), { expectedName: name }),
-      ).toMatchObject({
+  it.each([
+    "release-notes",
+    "incident-handoff",
+    "csv-quality-check",
+    "ci-revision-triage",
+    "task-report-selection",
+  ])("validates the complete %s skill tree", async (name) => {
+    expect(await validateAgentSkill(resolve("skills", name), { expectedName: name })).toMatchObject(
+      {
         ok: true,
         diagnostics: [],
-      });
-    },
-  );
+      },
+    );
+  });
 
   it("profiles quoted multiline records without modifying the example", async () => {
     const file = resolve("examples/launch-skills/import.csv");

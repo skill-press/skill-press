@@ -14,14 +14,20 @@ own project; do not accidentally package the CLI repository's self-hosted skill.
 | `incident-handoff` | Ask for a shift handoff at 10:15 UTC from `incident-records.md` | Preserve conflicting health observations, unconfirmed cause and unassigned work | Agent text reasoning only |
 | `csv-quality-check` | Ask whether `import.csv` is ready for a spreadsheet import | Detect malformed width, blanks, exact duplicate and formula-like content without rewriting | Python 3.10+ standard library and an agent |
 | `ci-revision-triage` | Diagnose the source-derived case in `ci-revision-triage.json` | Locate stale revision/configuration copies and propose the minimal repair without weakening CI | Agent text reasoning; optional read-only Git/CI access |
+| `task-report-selection` | Summarize the records for each reader/request in `task-report-selection.json` | Keep decision-relevant outcomes, omit unnecessary process and common knowledge, preserve requested evidence detail | Agent text reasoning only |
 
 The first three examples are synthetic. The CI case reconstructs an actual
 repository incident with normalized source facts; it is not an external-user
 interview or unseen holdout. The first three candidates failed incremental-gain
-qualification and remain preserved. CI triage is the first replacement candidate,
-not yet evaluated or qualified; the quality thresholds are unchanged. Its input
+qualification and remain preserved. CI triage's one diagnostic pair had both
+arms pass, with no binary success-rate gain; it is not qualified. Its input
 and expected outcome are explicit so usefulness can be checked before investing
 in complete paired suites. Do not feed the expected outcome to either actor.
+
+Task-report selection follows the owner's explicit communication need. Its
+three reader-specific examples reuse source-derived task records; the sample
+answer is author-written preference guidance, not a model evaluation result.
+No behavioral qualification exists and quality thresholds remain unchanged.
 
 No external account, network or production resources
 are needed. They are portable skill folders for an agent supporting `SKILL.md`;

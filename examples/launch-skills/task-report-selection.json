@@ -1,0 +1,90 @@
+{
+  "provenance": "Reconstructed from actual Skill Press task records at coordination commit 81b0a1e plus Mushan's subsequent explicit request for task-report information selection. Names and local paths are omitted. This is a developer-visible preference example, not an unseen holdout or independent user test.",
+  "records": [
+    {
+      "id": "R1",
+      "task": "CI candidate",
+      "order": 1,
+      "text": "Implemented ci-revision-triage; structural and packaging tests pass. Full checks pass 2,190 tests across 115 files in 176.75 seconds, with coverage gates unchanged. Dependency audit reports zero findings. Signed and pushed CLI 3d45bc5. Remote CI is pending."
+    },
+    {
+      "id": "R2",
+      "task": "CI candidate",
+      "order": 2,
+      "text": "Exact CI37022186891 at CLI 3d45bc5 completed successfully on Node22/24/26, including Node26 dependency audit and packed CLI verification."
+    },
+    {
+      "id": "R3",
+      "task": "CI diagnostic pilot",
+      "order": 3,
+      "text": "Five serial model calls completed in 89.86 seconds. Baseline scored 94.75 and with-skill 98.5; both exceed 90, so observed binary success-rate gain is zero. Both correctly identify the stale fixture pin and missing switch. Do not invest in full suites or repeat this unchanged sample. This is one diagnostic task, not proof that every possible CI task has no value."
+    },
+    {
+      "id": "R4",
+      "task": "CI diagnostic pilot",
+      "order": 4,
+      "text": "The recording script used the wrong criterion field after saving all model responses. Offline collection recovered the summary from the original responses; no inference rerun or score edit. Source and response hashes verified. Raw result, runner and corrected collector saved in Git."
+    },
+    {
+      "id": "R5",
+      "task": "Lockfile baseline",
+      "order": 5,
+      "text": "Initial preflight rejected a file larger than the existing per-file fixture limit, before any model call. Original bytes were losslessly split with an ordered hash manifest; no content was withheld and no evaluator limit changed."
+    },
+    {
+      "id": "R6",
+      "task": "Lockfile baseline",
+      "order": 6,
+      "text": "Four model calls and three isolated Python calls completed in 92.02 seconds. Baseline correctly described all 27 changed package entries, dependency routes and override, and did not claim audit or deployment success. Root found no compelling unmet task, so no dependency-analysis Skill or full paired suite was created. This was an unscored baseline-only diagnostic."
+    },
+    {
+      "id": "R7",
+      "task": "Work preservation",
+      "order": 7,
+      "text": "Both investigations and their raw evidence are committed and pushed. No production operation occurred. Existing branches and candidates remain intact."
+    },
+    {
+      "id": "R8",
+      "task": "Next product direction",
+      "order": 8,
+      "text": "The owner now supplies a real need: select information from combined task reports to produce human-like clear, concise communication, without overexplaining common knowledge. The quality threshold stays unchanged. Next work is to prepare and validate a candidate for this need; no behavior result exists yet."
+    }
+  ],
+  "cases": [
+    {
+      "id": "owner-progress",
+      "task": "把这些任务报告汇总给项目负责人，用中文说清这一轮得到了什么结论、后续投入有什么变化。清晰简明，常识不用解释，不要逐条复述过程。",
+      "expectedMeaning": [
+        "Both investigated directions have not demonstrated a compelling reason for further skill investment in these samples; full evaluation is not proceeding.",
+        "Results and evidence are saved; transition to the owner's explicit report-selection need, without claiming that the new candidate already works.",
+        "Do not report CI as still pending or the recovered recording error as a current blocker."
+      ],
+      "illustrativeAnswer": "CI 定位和依赖分析这两个方向，都还没显示出值得做成 Skill 的额外价值，先停止投入。相关改动和评估记录已保存。下一步转向你提出的“任务报告信息取舍”，验证它能否稳定生成清晰、简明的总结。",
+      "unnecessaryHere": [
+        "test counts and durations",
+        "all commit and run identifiers",
+        "routine explanation of CI or baseline evaluation",
+        "resolved preflight and recording incidents"
+      ]
+    },
+    {
+      "id": "engineer-evidence-handoff",
+      "task": "我要接手核对 CI candidate 的交付证据。用中文简要列出具体 revision、对应的 CI run、覆盖范围，以及行为试验能说明和不能说明什么。不要把我需要定位证据的编号删掉。",
+      "expectedMeaning": [
+        "Retain 3d45bc5 and CI37022186891 with Node22/24/26 and the Node26 audit/package scope.",
+        "Distinguish green implementation CI from the pilot's 94.75/98.5 scores, both passing 90 and zero binary gain on one task.",
+        "Do not promote the baseline-only lockfile review to paired evidence or generalize the CI pilot to all CI tasks."
+      ]
+    },
+    {
+      "id": "explicit-audit-trail",
+      "task": "只整理两次试验中的记录和输入处理异常，供复盘。请保留发生时点、影响和处理方式，不要压成一句‘都已解决’，不要加入一般性的排障教程。",
+      "expectedMeaning": [
+        "Preserve the post-inference CI recording error, saved original responses and offline recovery without rerunning models or altering scores.",
+        "Preserve the pre-inference lockfile size rejection and lossless chunking without dropped content or changed limits.",
+        "Respect the requested audit detail instead of forcing the owner-progress summary format."
+      ]
+    }
+  ],
+  "evaluationBoundary": "Only task and records go to either actor. Keep expectedMeaning, illustrativeAnswer and unnecessaryHere out of actor prompts. Judge information selection and factual meaning, not exact wording, a fixed length or required headings. These are author-visible examples for preference calibration, not passing release evidence."
+}
