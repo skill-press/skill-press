@@ -127,6 +127,21 @@ See [native evaluation](docs/NATIVE_EVALUATION.md) for backend prerequisites, po
 source binding and the independent-review boundary. No paid Tessl evaluation is required.
 Historical Tessl evidence remains a separate compatibility path, not a fallback.
 
+For reviewed first-party host-model/isolated-Python receipts, use the explicit
+tool profile and the interpreter digest you reviewed before measurement:
+
+```bash
+skpress eval-check --reviewed-tool --image python@sha256:<reviewed-digest> \
+  --project . \
+  --training-evidence .skill-press/runs/<training-run>/evidence.json \
+  --holdout-evidence .skill-press/runs/<holdout-run>/evidence.json --json
+```
+
+The files must be private (0600), under private real directories (0700), and
+bound to the current committed project. This performs no inference, image pull,
+container execution or network submission. Exit 0 means the local advisory checks
+passed; exit 3 means blocked. Tool-profile submission/admission is not enabled yet.
+
 Package an exact candidate only after the release gate passes:
 
 ```bash

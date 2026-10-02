@@ -1,5 +1,24 @@
 import { isReviewedToolEnvelope } from "../eval/reviewed-tool-schema.js";
 import { assessReviewedToolMeasurement } from "./reviewed-tool-measurement.js";
+import { loadReviewedToolEvaluation } from "./reviewed-tool-check.js";
+import type { ImprovementEvidencePaths } from "../improve/project-input.js";
+
+/** Local private-file ingestion and source verification; never sends upload bytes. */
+export async function prepareReviewedToolEvidence(
+  projectDirectory: string,
+  paths: ImprovementEvidencePaths,
+  image: string,
+  now = new Date(),
+) {
+  const { prepared, training, holdout, report } = await loadReviewedToolEvaluation(
+    projectDirectory,
+    paths,
+    image,
+    now,
+  );
+  const encoded = encodeReviewedToolEvidence(prepared, training, holdout, now);
+  return { ...encoded, report, source: prepared.source, artifacts: prepared.artifacts };
+}
 
 /** Encode already size-bounded parsed receipts against trusted prepared inputs.
  * Caller owns source/artifact entry/exit verification. No inference, file/network
