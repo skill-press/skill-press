@@ -79,6 +79,9 @@ export async function verifyReviewedTextProject(
   if (
     !same(source, prepared.source) ||
     !same(artifacts, prepared.artifacts) ||
+    artifacts.sourceCommit !== source.commit ||
+    artifacts.skillSha256 !== source.skillSha256 ||
+    artifacts.projectConfigSha256 !== source.projectConfigSha256 ||
     !same(config, prepared.config) ||
     !same(inputs, prepared.inputs) ||
     digest(prepared.skillText) !== prepared.skillTextSha256 ||

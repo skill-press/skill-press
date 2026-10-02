@@ -319,6 +319,38 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
+it("rejects old artifact provenance combined with a new eval-only commit before inference", async () => {
+  const root = await fixture();
+  const old = await prepareReviewedTextProject(root);
+  const path = join(root, "evals/training.yaml");
+  const suite = parse(await readFile(path, "utf8"));
+  suite.scenarios[0].prompt += " Preserve supplied references.";
+  await writeFile(path, stringify(suite));
+  execFileSync("git", ["add", "evals/training.yaml"], { cwd: root });
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.invalid",
+      "-c",
+      "commit.gpgsign=false",
+      "commit",
+      "--quiet",
+      "-m",
+      "Update synthetic evaluation inputs",
+    ],
+    { cwd: root },
+  );
+  const current = structuredClone(await prepareReviewedTextProject(root));
+  current.artifacts = old.artifacts;
+  await expect(
+    runPreparedReviewedTextSuite(root, current, "training", async () => {}),
+  ).rejects.toThrow("changed after preparation");
+  expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
+});
+
 it("binds reviewed text, full source, config, suites and a verified release archive without inference", async () => {
   const root = await fixture();
   const prepared = await prepareReviewedTextProject(root);
