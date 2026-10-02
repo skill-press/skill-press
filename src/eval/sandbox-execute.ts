@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 
 import { isGenuineSandboxInvocation, type SandboxInvocation } from "./sandbox.js";
+import { runCapturedCommand } from "../process/capture.js";
 
 export type SandboxExecutionStatus =
   | "passed"
@@ -41,13 +42,13 @@ const clientEnvironmentSnapshot = Object.freeze({
   ComSpec: process.env.ComSpec,
 });
 
-function clientEnvironment(): NodeJS.ProcessEnv {
+function clientEnvironment(): Record<string, string> {
   const entries = Object.entries(clientEnvironmentSnapshot).filter(
     (entry): entry is [string, string] => entry[1] !== undefined,
   );
   return Object.assign(Object.create(null), Object.fromEntries(entries), {
     SKILL_PRESS: "1",
-  }) as NodeJS.ProcessEnv;
+  }) as Record<string, string>;
 }
 
 function terminateClient(child: ChildProcess, detached: boolean): void {
@@ -177,7 +178,29 @@ export async function executeSandboxInvocation(
     child.once("close", async (exitCode, signal) => {
       clearTimeout(timeout);
       const status = forcedStatus ?? (exitCode === 0 ? "passed" : "failed");
-      const cleanupOk = cleanupRequested ? await removeContainer(invocation) : false;
+      let cleanupOk = cleanupRequested ? await removeContainer(invocation) : false;
+      if (cleanupRequested && !cleanupOk && invocation.executable === "docker") {
+        // --rm can win the race with explicit removal. Verify absence through a
+        // successful bounded engine query; an unavailable engine is not success.
+        const remaining = await runCapturedCommand({
+          argv: [
+            invocation.executable,
+            "container",
+            "ls",
+            "--all",
+            "--filter",
+            `name=^/${invocation.containerName}$`,
+            "--format",
+            "{{.Names}}",
+          ],
+          cwd: process.cwd(),
+          env: clientEnvironment(),
+          timeoutSeconds: 5,
+          maxOutputBytes: 1024,
+        });
+        cleanupOk =
+          remaining.status === "passed" && remaining.stdout.toString("utf8").trim() === "";
+      }
       resolveResult(
         fixedResult(
           status,

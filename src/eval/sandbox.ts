@@ -32,6 +32,8 @@ export interface SandboxRunRequest {
   readonly network: SandboxNetwork;
   readonly policy?: SandboxResourcePolicy;
   readonly allowUnpinnedImage?: boolean;
+  /** Ephemeral tools can use bounded container memory instead of a writable host mount. */
+  readonly outputStorage?: "bind" | "tmpfs";
 }
 
 export interface SandboxInvocation {
@@ -138,18 +140,18 @@ function validatePolicy(policy: SandboxResourcePolicy): SandboxPolicyIssue[] {
   return issues;
 }
 
-function validateMounts(mounts: readonly SandboxMount[]): SandboxPolicyIssue[] {
+function validateMounts(mounts: readonly SandboxMount[], ephemeral: boolean): SandboxPolicyIssue[] {
   const issues: SandboxPolicyIssue[] = [];
-  if (mounts.length !== 3) {
+  if (mounts.length !== (ephemeral ? 2 : 3)) {
     issues.push(
-      issue("sandbox.mount.count", "/mounts", "sandbox requires exactly three explicit mounts"),
+      issue("sandbox.mount.count", "/mounts", "sandbox mount count must match output storage"),
     );
   }
   let writableCount = 0;
-  const expectedTargets = new Map([
+  const expectedTargets = new Map<string, string>([
     ["/skill", "read-only"],
     ["/input", "read-only"],
-    ["/output", "read-write"],
+    ...(!ephemeral ? [["/output", "read-write"] as const] : []),
   ] as const);
   for (let index = 0; index < mounts.length; index += 1) {
     const mount = mounts[index] as SandboxMount;
@@ -182,7 +184,7 @@ function validateMounts(mounts: readonly SandboxMount[]): SandboxPolicyIssue[] {
         issue(
           "sandbox.mount.topology",
           `/mounts/${index}`,
-          "mounts must be read-only /skill and /input plus writable /output",
+          "mounts must be read-only /skill and /input, plus /output only for bind storage",
         ),
       );
     }
@@ -199,12 +201,12 @@ function validateMounts(mounts: readonly SandboxMount[]): SandboxPolicyIssue[] {
       }
     }
   }
-  if (writableCount !== 1) {
+  if (writableCount !== (ephemeral ? 0 : 1)) {
     issues.push(
       issue(
         "sandbox.mount.writable",
         "/mounts",
-        "sandbox requires exactly one writable output mount",
+        "writable host mounts must match the output storage policy",
       ),
     );
   }
@@ -222,7 +224,10 @@ function mountArgument(mount: SandboxMount): string {
  */
 export function createSandboxInvocation(request: SandboxRunRequest): SandboxInvocation {
   const policy = request.policy ?? DEFAULT_SANDBOX_RESOURCE_POLICY;
-  const issues = [...validatePolicy(policy), ...validateMounts(request.mounts)];
+  const ephemeral = request.outputStorage === "tmpfs";
+  const issues = [...validatePolicy(policy), ...validateMounts(request.mounts, ephemeral)];
+  if (request.outputStorage !== undefined && request.outputStorage !== "bind" && !ephemeral)
+    issues.push(issue("sandbox.output_storage", "/outputStorage", "unknown output storage"));
   if (request.backend !== "docker" && request.backend !== "podman") {
     issues.push(issue("sandbox.backend", "/backend", "sandbox backend must be docker or podman"));
   }
@@ -293,6 +298,9 @@ export function createSandboxInvocation(request: SandboxRunRequest): SandboxInvo
     "--stop-timeout=1",
     "--log-driver=none",
     `--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=${policy.tmpfsMib}m,mode=1777`,
+    ...(ephemeral
+      ? [`--tmpfs=/output:rw,noexec,nosuid,nodev,size=${policy.tmpfsMib}m,mode=1777`]
+      : []),
     "--env=HOME=/tmp",
     "--env=TMPDIR=/tmp",
     "--env=NO_COLOR=1",

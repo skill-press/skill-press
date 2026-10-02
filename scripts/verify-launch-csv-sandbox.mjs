@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { executeSandboxInvocation } from "../dist/eval/sandbox-execute.js";
+import { runReviewedPythonTool } from "../dist/eval/reviewed-python-tool.js";
 import { createSandboxInvocation, DEFAULT_SANDBOX_RESOURCE_POLICY } from "../dist/eval/sandbox.js";
 
 // Explicit locally available pinned image only. No pull, provider call or credentials.
@@ -111,6 +112,61 @@ try {
   assert.equal(sha256(await readFile(join(skill, "profile.py"))), sourceBefore);
   assert.equal(sha256(await readFile(source)), sourceBefore);
   assert.equal(sha256(await readFile(fixture)), fixtureBefore);
+  const toolInput = [{ path: "import.csv", content: await readFile(fixture, "utf8") }];
+  const toolSkill = [{ path: "scripts/profile.py", content: await readFile(source, "utf8") }];
+  const toolProfile = await runReviewedPythonTool({
+    image,
+    inputs: toolInput,
+    skillFiles: toolSkill,
+    python:
+      "import subprocess\nsubprocess.run(['python3', '-I', '-B', '/skill/scripts/profile.py', '/input/import.csv'], check=True)\n",
+  });
+  assert.equal(toolProfile.execution.status, "passed");
+  assert.deepEqual(JSON.parse(toolProfile.execution.stdoutText), results[0].report);
+  const toolProbe = await runReviewedPythonTool({
+    image,
+    inputs: toolInput,
+    skillFiles: [],
+    python: `import os, socket, json
+assert os.getuid() == 65532
+assert not os.listdir('/skill')
+for path in ['/input/import.csv', '/etc/skillpress-probe']:
+    try:
+        open(path, 'w').close()
+        raise AssertionError('read-only boundary failed')
+    except OSError:
+        pass
+try:
+    socket.create_connection(('1.1.1.1', 443), timeout=0.25)
+    raise AssertionError('network boundary failed')
+except OSError:
+    pass
+for directory in ['/tmp', '/output']:
+    written = 0
+    try:
+        with open(directory + '/probe', 'wb', buffering=0) as output:
+            for _ in range(10):
+                written += output.write(b'x' * 1048576)
+    except OSError:
+        pass
+    assert 0 < written <= 8 * 1048576
+    os.remove(directory + '/probe')
+print(json.dumps({'readOnly': True, 'networkNone': True, 'boundedTmpfs': True, 'emptyBaselineSkill': True}))
+`,
+  });
+  assert.equal(toolProbe.execution.status, "passed");
+  assert.equal(JSON.parse(toolProbe.execution.stdoutText).boundedTmpfs, true);
+  const toolLimit = await runReviewedPythonTool({
+    image,
+    inputs: [],
+    skillFiles: [],
+    python: "print('x' * 1048576)",
+  });
+  assert.equal(toolLimit.execution.status, "output_limit");
+  assert.equal(toolLimit.execution.cleanupAttempted, true);
+  assert.equal(toolLimit.execution.cleanupOk, true);
+  assert.equal(sha256(await readFile(source)), sourceBefore);
+  assert.equal(sha256(await readFile(fixture)), fixtureBefore);
   console.log(
     JSON.stringify({
       schemaVersion: 1,
@@ -125,6 +181,13 @@ try {
       user: "65532:65532",
       readOnlyRoot: true,
       results,
+      toolSmoke: {
+        profile: toolProfile.execution.status,
+        boundaries: JSON.parse(toolProbe.execution.stdoutText),
+        outputLimit: toolLimit.execution.status,
+        forcedCleanup: toolLimit.execution.cleanupOk,
+        releaseEligible: false,
+      },
       releaseEligible: false,
       modelCalls: 0,
       productionMutation: false,

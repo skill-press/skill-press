@@ -82,6 +82,24 @@ limit without changing that integrity boundary.
 
 ## Reviewed text experiments: local assessment only
 
+The internal `runReviewedPythonTool` primitive prepares the script-assisted CSV
+path, but is not yet a public model evaluator or admissible evidence protocol.
+It stages only supplied text bytes, never caller-provided host paths, and executes
+Python through the existing pinned Docker runner. `/skill` and `/input` are
+read-only; `/tmp` and `/output` each have an 8 MiB tmpfs limit, with no writable
+host bind. Each call is stateless, runs as UID 65532 without network, and has a
+30-second execution timeout and 64 KiB output limit. The timeout does not cover
+all staging/cleanup time and does not implement caller-requested cancellation.
+The trusted caller must choose a reviewed image digest and check execution status
+and forced-cleanup results; image-name validation is not a trust allowlist.
+
+The existing CSV sandbox smoke script now exercises this primitive's real profiler,
+empty baseline skill mount, read-only/network boundaries, tmpfs capacity and output
+overflow cleanup. It uses fixed test Python, not model-generated actions, so it
+does not establish model tool use. The model request loop, source-bound trajectory,
+paired scoring and explicit admission support remain unfinished. Text-v1 evidence
+continues to reject script-bearing skills.
+
 Generate receipts with the public `eval-text` command after committing and reviewing
 the first-party skill, both suites and rubric. Preview does not invoke models:
 

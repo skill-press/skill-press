@@ -12,11 +12,16 @@ const originalPath = process.env.PATH;
 let fakeRoot = "";
 let fakeDocker = "";
 let cleanupLog = "";
+let cleanupMode = "";
 let executeSandboxInvocation: typeof import("../src/eval/sandbox-execute.js").executeSandboxInvocation;
 
-function invocation(command: string, policy?: SandboxResourcePolicy) {
+function invocation(
+  command: string,
+  policy?: SandboxResourcePolicy,
+  backend: "docker" | "podman" = "docker",
+) {
   return createSandboxInvocation({
-    backend: "docker",
+    backend,
     runId: "0123456789abcdef",
     image: `example/agent@sha256:${"a".repeat(64)}`,
     command: [command],
@@ -34,12 +39,19 @@ beforeAll(async () => {
   fakeRoot = await mkdtemp(join(temporaryRoot, "skillpress-fake-docker-"));
   fakeDocker = join(fakeRoot, "docker");
   cleanupLog = join(fakeRoot, "cleanup.log");
+  cleanupMode = join(fakeRoot, "cleanup-mode");
   const source = `#!${process.execPath}
-const { appendFileSync } = require("node:fs");
+const { appendFileSync, readFileSync, existsSync } = require("node:fs");
 const args = process.argv.slice(2);
+const mode = existsSync(${JSON.stringify(cleanupMode)}) ? readFileSync(${JSON.stringify(cleanupMode)}, 'utf8') : '';
 if (args[0] === "rm") {
   appendFileSync(${JSON.stringify(cleanupLog)}, args.join(" ") + "\\n");
-  process.exit(0);
+  process.exit(mode ? 1 : 0);
+}
+if (args[0] === "container") {
+  appendFileSync(${JSON.stringify(cleanupLog)}, args.join(" ") + "\\n");
+  if (mode === 'present') process.stdout.write('skill-press-0123456789abcdef\\n');
+  process.exit(mode === 'unavailable' ? 1 : 0);
 }
 const command = args.at(-1);
 if (command === "pass") {
@@ -60,6 +72,7 @@ if (command === "pass") {
 }
 `;
   await writeFile(fakeDocker, source, { mode: 0o700 });
+  await writeFile(join(fakeRoot, "podman"), source, { mode: 0o700 });
   await chmod(fakeDocker, 0o700);
   process.env.PATH = fakeRoot;
   ({ executeSandboxInvocation } = await import("../src/eval/sandbox-execute.js"));
@@ -71,6 +84,37 @@ afterAll(async () => {
 });
 
 describe("sandbox executor", () => {
+  it("keeps Podman failed removal unverified without assuming Docker filter semantics", async () => {
+    await writeFile(cleanupMode, "absent");
+    try {
+      const result = await executeSandboxInvocation(
+        invocation("overflow", { ...invocation("pass").policy, maxOutputBytes: 1024 }, "podman"),
+      );
+      expect(result.cleanupAttempted).toBe(true);
+      expect(result.cleanupOk).toBe(false);
+    } finally {
+      await rm(cleanupMode);
+    }
+  });
+  it.each(["absent", "present", "unavailable"])(
+    "verifies container state when explicit removal reports %s",
+    async (mode) => {
+      await writeFile(cleanupMode, mode);
+      try {
+        const result = await executeSandboxInvocation(
+          invocation("overflow", { ...invocation("pass").policy, maxOutputBytes: 1024 }),
+        );
+        expect(result.status).toBe("output_limit");
+        expect(result.cleanupAttempted).toBe(true);
+        expect(result.cleanupOk).toBe(mode === "absent");
+        expect(await readFile(cleanupLog, "utf8")).toContain(
+          "container ls --all --filter name=^/skill-press-0123456789abcdef$ --format {{.Names}}",
+        );
+      } finally {
+        await rm(cleanupMode);
+      }
+    },
+  );
   it("captures bounded engine output and a successful exit", async () => {
     const result = await executeSandboxInvocation(invocation("pass"));
 
