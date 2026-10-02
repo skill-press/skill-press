@@ -109,9 +109,18 @@ It reuses the existing rubric parser and weighted-score calculation, with at mos
 response is checkpointed before continuing; malformed output is retained and
 neither provider nor persistence failures are retried. `runReviewedToolSuite`
 applies the configured repetitions/readiness, suppresses partial-run aggregates
-and reports a separate tool-profile manifest. These internal helpers still lack
-prepared-project artifact binding and server admission; do not submit their
+and reports a separate tool-profile manifest. These internal helpers alone do not
+establish prepared-project artifact binding or server admission; do not submit their
 results as text-v1 or infer release eligibility from their scores.
+`prepareReviewedToolProject` now stages the complete canonical skill tree,
+preserves exact UTF-8 resource bytes, and binds configuration, both suites,
+rubric and verified release archive. `runPreparedReviewedToolSuite` snapshots
+that reviewed preparation and verifies source/resources/artifacts at entry and
+exit, not between individual calls. Missing, added or changed prepared resources
+are rejected against a fresh canonical staging. This removes the missing-artifact
+binding flag only after exit verification; tool-profile admission remains absent.
+The selected pinned Python image is a reviewed caller input, not a trusted-image
+allowlist. Binary resources are unsupported by this byte-staged text interface.
 See [Codex structured outputs](https://learn.chatgpt.com/docs/non-interactive-mode).
 It permits at most three tool requests/four model attempts, records each prompt,
 response and actual tool result, and never sends expected/forbidden behaviors to
