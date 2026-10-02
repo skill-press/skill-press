@@ -62,6 +62,16 @@ evidence uses `--native`. Never relabel one as the other. Text admission support
 only SKILL.md and optional LICENSE, so it cannot evaluate `csv-quality-check`'s
 Python script. No provider operation is performed automatically by this example.
 
+`csv-quality-check-evals/` supplies five training cases, two holdout cases and a
+rubric for script-assisted evaluation. Their aggregate expectations are checked
+against the real profiler, including malformed input, multiline records,
+semicolon/BOM handling and embedded instructions. This does not establish model
+behavior: the actor must actually choose and use available tools, and baseline
+must receive equivalent general computation access without the bundled skill.
+The model-to-sandbox bridge is not implemented yet; neither `eval-text` nor the
+script smoke test qualifies CSV for release. These developer-visible holdout
+fixtures are regression inputs, not proof of an independently unseen evaluation.
+
 For the two text-only skills, `skpress eval-text --project ./candidate --suite
 training --dry-run --json` previews the model call count without inference.
 After reviewing the first-party inputs, use `--reviewed-inputs --max-model-calls

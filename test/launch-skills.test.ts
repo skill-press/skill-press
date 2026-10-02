@@ -13,7 +13,7 @@ import { loadEvaluationSuite, loadEvaluationRubric } from "../src/eval/load.js";
 const profiler = resolve("skills/csv-quality-check/scripts/profile.py");
 
 describe("launch skill source candidates", () => {
-  it.each(["release-notes", "incident-handoff"])(
+  it.each(["release-notes", "incident-handoff", "csv-quality-check"])(
     "ships canonical %s evaluation inputs and Tessl-independent author instructions",
     async (name) => {
       const base = `examples/launch-skills/${name}-evals`;
@@ -124,6 +124,78 @@ describe("launch skill source candidates", () => {
     });
     expect(await readFile(file)).toEqual(before);
     expect(result.stdout).not.toContain("Ada");
+  });
+
+  it("checks CSV evaluation expectations against the real profiler without changing fixture bytes", async () => {
+    const root = await mkdtemp(join(tmpdir(), "launch-csv-evals-"));
+    try {
+      const base = "examples/launch-skills/csv-quality-check-evals";
+      const training = await loadEvaluationSuite(`${base}/training.yaml`);
+      const holdout = await loadEvaluationSuite(`${base}/holdout.yaml`);
+      const expected: Record<string, object> = {
+        "csv-import-structure": {
+          ok: true,
+          dataRecords: 5,
+          columns: 3,
+          emptyHeaderPositions: [],
+          duplicateHeaderCount: 0,
+          widthMismatchRecords: [5],
+          blankCellsByColumn: [0, 2, 0],
+          duplicateRecords: 1,
+          possibleFormulaCells: 1,
+        },
+        "csv-cell-injection": {
+          ok: true,
+          dataRecords: 3,
+          columns: 2,
+          emptyHeaderPositions: [],
+          duplicateHeaderCount: 0,
+          widthMismatchRecords: [],
+          blankCellsByColumn: [0, 0],
+          duplicateRecords: 0,
+          possibleFormulaCells: 2,
+        },
+        "holdout-csv-semicolon": {
+          ok: true,
+          dataRecords: 3,
+          columns: 3,
+          emptyHeaderPositions: [3],
+          duplicateHeaderCount: 1,
+          widthMismatchRecords: [],
+          blankCellsByColumn: [0, 1, 2],
+          duplicateRecords: 1,
+          possibleFormulaCells: 1,
+        },
+      };
+      for (const scenario of [...training.scenarios, ...holdout.scenarios].filter(
+        (s) => s.shouldActivate,
+      )) {
+        const fixture = scenario.fixture?.files?.[0];
+        expect(fixture).toBeDefined();
+        if (fixture === undefined) throw new Error("Missing CSV fixture");
+        const path = join(root, fixture.path);
+        await writeFile(path, fixture.content);
+        const before = await readFile(path);
+        const result = spawnSync(
+          "python3",
+          [profiler, path, "--delimiter", scenario.id === "holdout-csv-semicolon" ? ";" : ","],
+          { encoding: "utf8" },
+        );
+        if (scenario.id === "csv-malformed-input") {
+          expect(result.status).toBe(2);
+          expect(result.stdout).toBe("");
+          expect(JSON.parse(result.stderr)).toMatchObject({ ok: false });
+        } else {
+          expect(result.status).toBe(0);
+          expect(JSON.parse(result.stdout)).toEqual(expected[scenario.id]);
+          expect(result.stderr).toBe("");
+        }
+        expect(result.stdout + result.stderr).not.toContain("FAKE-CSV-SECRET-DO-NOT-REPEAT");
+        expect(await readFile(path)).toEqual(before);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("supports BOM and alternate delimiter, and rejects invalid inputs without raw data", async () => {
