@@ -29,7 +29,10 @@ import { runNativeCheckCommand } from "../src/cli/native-check.js";
 import * as checks from "../src/check/project.js";
 import { TOOL_REVIEW_POLICY } from "../src/release/tool-policy.js";
 import { checkReleaseGate } from "../src/release/gate.js";
-import { prepareSkillSubmission } from "../src/submission/manifest.js";
+import {
+  prepareSkillSubmission,
+  type PreparedSubmissionPayload,
+} from "../src/submission/manifest.js";
 import { diagnoseProject } from "../src/doctor/project.js";
 import { runSkillSubmission } from "../src/submission/run.js";
 import type { SkillPressSubmissionResource } from "../src/submission/generated-resource.js";
@@ -480,10 +483,10 @@ it("diagnoses tool submission readiness without inference or network", async () 
 it("sends tool envelopes through submission orchestration without granting publication", async () => {
   const f = await fixture();
   const options = releaseOptions(f);
-  const payload = await prepareSkillSubmission(f.root, f.prepared.artifacts, options);
   const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected network"));
   const date = new Date().toISOString();
-  const remote: SkillPressSubmissionResource = {
+  let remote: SkillPressSubmissionResource;
+  const receive = (payload: PreparedSubmissionPayload): SkillPressSubmissionResource => ({
     schemaVersion: 1,
     resourceType: "skillpress.submission",
     id: "submission_12345678",
@@ -497,14 +500,17 @@ it("sends tool envelopes through submission orchestration without granting publi
     url: "https://skill-press.com/api/v1/submissions/submission_12345678",
     receivedAt: date,
     updatedAt: date,
-  };
+  });
   const client = {
     checkSession: vi.fn(async () => ({
       schemaVersion: 1 as const,
       sessionType: "skillpress.session" as const,
       authenticated: true as const,
     })),
-    submit: vi.fn(async () => remote),
+    submit: vi.fn(async (payload: PreparedSubmissionPayload) => {
+      remote = receive(payload);
+      return remote;
+    }),
     getSubmission: vi.fn(async () => remote),
   };
   const receipt = await runSkillSubmission(f.root, f.prepared.artifacts, {
@@ -514,8 +520,20 @@ it("sends tool envelopes through submission orchestration without granting publi
   expect(receipt.operationStatus).toBe("submitted");
   expect(receipt.remote?.status).toBe("received");
   expect(receipt.remote?.release).toBeUndefined();
-  expect(client.submit).toHaveBeenCalledExactlyOnceWith(payload);
-  expect(client.getSubmission).toHaveBeenCalledExactlyOnceWith(remote.id);
+  expect(client.submit).toHaveBeenCalledTimes(1);
+  const payload = client.submit.mock.calls[0][0];
+  expect(payload.manifest.source.commit).toBe(f.prepared.source.commit);
+  expect(payload.manifest.package.artifact.sha256).toBe(f.prepared.artifacts.artifactSha256);
+  for (const [bytes, path] of [
+    [payload.reviewEvidenceBytes, f.paths.trainingEvidencePath],
+    [payload.evalEvidenceBytes, f.paths.holdoutEvidencePath],
+  ] as const) {
+    const envelope = JSON.parse(bytes.toString());
+    expect(envelope.evidenceType).toBe("skillpress.reviewed-tool-evidence");
+    expect(envelope.inputs).toEqual(f.prepared.inputs);
+    expect(envelope.measurement).toEqual(JSON.parse(await readFile(join(f.root, path), "utf8")));
+  }
+  expect(client.getSubmission).toHaveBeenCalledExactlyOnceWith("submission_12345678");
   expect(fetch).not.toHaveBeenCalled();
   expect(runReviewedCodexText).not.toHaveBeenCalled();
 });
