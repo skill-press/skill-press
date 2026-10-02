@@ -3,6 +3,7 @@ import { isSafePathInput } from "../path-safety.js";
 import { checkNativeEvaluation } from "../release/native-check.js";
 import { checkReviewedTextEvaluation } from "../release/reviewed-text-check.js";
 import { checkReviewedToolEvaluation } from "../release/reviewed-tool-check.js";
+import { evaluationIssuesHuman } from "./release-output.js";
 
 export const NATIVE_CHECK_HELP = `Assess native training/holdout evidence without Tessl.
 
@@ -118,7 +119,7 @@ export async function runNativeCheckCommand(
     await io.stdout(
       json
         ? `${JSON.stringify(report)}\n`
-        : `${reviewedTool ? "Reviewed tool" : reviewedText ? "Reviewed text" : "Native"} evaluation: ${report.passed ? "passed (advisory)" : "blocked"}\n${report.issues.join("\n")}${report.issues.length === 0 ? "" : "\n"}${reviewedText ? "Use --reviewed-text for the separate submission gate. " : ""}Independent review and release admission remain required.\n`,
+        : `${reviewedTool ? "Reviewed tool" : reviewedText ? "Reviewed text" : "Native"} evaluation: ${report.passed ? "passed (advisory)" : "blocked"}\n${evaluationIssuesHuman(report.issues.map((code) => ({ code })))}${reviewedTool ? "Use --reviewed-tool for the separate submission gate. " : reviewedText ? "Use --reviewed-text for the separate submission gate. " : ""}Independent review and release admission remain required.\n`,
     );
     return report.passed ? 0 : 3;
   } catch {

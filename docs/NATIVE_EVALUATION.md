@@ -306,6 +306,10 @@ This does not run or pull the image. It checks the reviewed digest rather than
 inferring it from uploaded receipts. Keep source and receipts unchanged; source
 updates require new evidence, not changing the recorded source ID. A training
 impact failure remains blocking even when readiness and holdout pass.
+Without `--json`, `eval-check`, `package` and `submit` retain the issue codes in
+their output; reviewed text/tool impact failures also explain that the measured
+success-rate gain is insufficient and that unchanged retries are not a remedy.
+`--json` retains the existing machine-readable reports and exit codes.
 
 For reviewed first-party tool measurements, `package`, `submit`, `status` and
 `doctor` accept `--reviewed-tool` instead of `--native` or `--reviewed-text`.

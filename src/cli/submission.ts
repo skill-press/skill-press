@@ -17,6 +17,7 @@ import { SubmissionJournalError, type SubmissionReceipt } from "../submission/jo
 import { SubmissionManifestError } from "../submission/manifest.js";
 import { runSkillSubmission, SubmissionRunError } from "../submission/run.js";
 import type { CliExitCode, CliIo } from "../cli.js";
+import { gateHuman } from "./release-output.js";
 
 export const SUBMIT_HELP = `Submit one verified candidate to the canonical Skill Press review pipeline.
 
@@ -217,16 +218,6 @@ function isUnavailableStorageError(error: unknown): boolean {
     typeof error.code === "string" &&
     ["EACCES", "ELOOP", "ENOENT", "ENOTDIR", "EPERM"].includes(error.code)
   );
-}
-
-function gateHuman(gate: ReleaseGateReport): string {
-  if (gate.gateType === "skillpress.reviewed-tool-release")
-    return `Reviewed tool release gate: ${gate.passed ? "passed (advisory)" : "blocked"}\nServer validation and independent curator review remain required.\n`;
-  if (gate.gateType === "skillpress.reviewed-text-release")
-    return `Reviewed text release gate: ${gate.passed ? "passed (advisory)" : "blocked"}\nServer validation and independent curator review remain required.\n`;
-  if (gate.gateType === "skillpress.native-release")
-    return `Native release gate: ${gate.passed ? "passed (advisory)" : "blocked"}\nIndependent curator review remains required.\n`;
-  return `Tessl release gate: ${gate.passed ? "passed" : "blocked"}\nQuality: ${gate.scores.quality ?? "unavailable"}/${gate.thresholds.quality}\nImpact: ${gate.scores.impact ?? "unavailable"}/${gate.thresholds.impact}\n`;
 }
 
 function receiptHuman(receipt: SubmissionReceipt): string {

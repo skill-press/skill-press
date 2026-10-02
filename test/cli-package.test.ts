@@ -159,6 +159,9 @@ describe("package CLI orchestration", () => {
     expect(output.stdout.join("")).toContain("Tessl release gate: blocked");
     expect(output.stdout.join("")).toContain("Quality: unavailable/90");
     expect(output.stdout.join("")).toContain("Impact: unavailable/90");
+    expect(output.stdout.join("")).toContain(
+      "- [release.score.quality] quality threshold was not reached",
+    );
   });
 
   it.each([

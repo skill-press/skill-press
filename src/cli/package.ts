@@ -11,8 +11,9 @@ import {
 } from "../package/stage.js";
 import { isSafePathInput } from "../path-safety.js";
 import { TesslReleaseGateError } from "../release/tessl-gate.js";
-import { checkReleaseGate, type ReleaseGateReport } from "../release/gate.js";
+import { checkReleaseGate } from "../release/gate.js";
 import type { CliExitCode, CliIo } from "../cli.js";
+import { gateHuman } from "./release-output.js";
 
 export const PACKAGE_HELP = `Create reproducible release artifacts after the selected evaluation gate passes.
 
@@ -183,16 +184,6 @@ function gateOptions(args: GateArguments) {
     evalEvidencePath: args.evalEvidencePath,
     evalSource: args.evalSource,
   };
-}
-
-function gateHuman(gate: ReleaseGateReport): string {
-  if (gate.gateType === "skillpress.reviewed-tool-release")
-    return `Reviewed tool release gate: ${gate.passed ? "passed (advisory)" : "blocked"}\nServer validation and independent curator review remain required.\n`;
-  if (gate.gateType === "skillpress.reviewed-text-release")
-    return `Reviewed text release gate: ${gate.passed ? "passed (advisory)" : "blocked"}\nServer validation and independent curator review remain required.\n`;
-  if (gate.gateType === "skillpress.native-release")
-    return `Native release gate: ${gate.passed ? "passed (advisory)" : "blocked"}\nIndependent curator review remains required.\n`;
-  return `Tessl release gate: ${gate.passed ? "passed" : "blocked"}\nQuality: ${gate.scores.quality ?? "unavailable"}/${gate.thresholds.quality}\nImpact: ${gate.scores.impact ?? "unavailable"}/${gate.thresholds.impact}\n`;
 }
 
 function knownIssues(error: unknown): readonly ReleaseIssue[] | undefined {

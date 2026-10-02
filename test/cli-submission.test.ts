@@ -303,6 +303,17 @@ describe("submission CLI orchestration", () => {
     });
   });
 
+  it("shows the failed gate reason in human output without packaging or submitting", async () => {
+    const result = capture();
+    const ops = operations({
+      checkGate: vi.fn(async () => gate({ passed: false, issues: [issue] })),
+    });
+    expect(await runSubmitCommand(requiredArgs("--dry-run"), result.io, ops)).toBe(3);
+    expect(result.stdout.join("")).toContain("- [test.blocked] blocked");
+    expect(ops.stage).not.toHaveBeenCalled();
+    expect(ops.submit).not.toHaveBeenCalled();
+  });
+
   it.each([
     {
       name: "the final gate becomes blocked",
