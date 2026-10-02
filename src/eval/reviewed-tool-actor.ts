@@ -115,19 +115,18 @@ function actorPrompt(input: ReviewedToolActorInput, steps: readonly ToolActorSte
     "\n";
   if (Buffer.byteLength(text) > 1024 * 1024)
     throw new Error("Tool prompt exceeds the input limit.");
-  return Object.freeze({ version: "skillpress.tool-actor.v2" as const, text, sha256: hash(text) });
+  return Object.freeze({
+    version: "skillpress.tool-actor.v2" as const,
+    text,
+    sha256: hash(text),
+  });
 }
 
 /** Bounded first-party experiment. Not a release receipt or source-bound project evaluator.
  * Existing host ChatGPT calls request actions; only the isolated Python primitive executes code.
  * Abort stops subsequent requests; a running container still relies on its 30-second bound.
  */
-export async function runReviewedToolActor(
-  options: ReviewedToolActorInput,
-  onStep: (step: ToolActorStep) => void | Promise<void>,
-  signal?: AbortSignal,
-) {
-  const input = structuredClone(options);
+export function validateReviewedToolActorInput(input: ReviewedToolActorInput): void {
   parseEvaluationSuite({
     schemaVersion: 1,
     suite: "training",
@@ -151,6 +150,16 @@ export async function runReviewedToolActor(
     skillFiles: input.skillFiles,
   });
   actorPrompt(input, []); // Reject oversized input before spending a model call.
+}
+
+export async function runReviewedToolActor(
+  options: ReviewedToolActorInput,
+  onStep: (step: ToolActorStep) => void | Promise<void>,
+  signal?: AbortSignal,
+) {
+  const input = structuredClone(options);
+  validateReviewedToolActorInput(input);
+  const files = input.scenario.fixture?.files ?? [];
   const steps: ToolActorStep[] = [];
   let toolAttempts = 0;
   const record = async (step: ToolActorStep) => {
