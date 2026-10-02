@@ -5,6 +5,8 @@ import { runReviewedCodexText } from "../src/eval/codex-text.js";
 import { CODE_MODE_DISABLED_DIAGNOSTIC } from "../src/eval/codex-transcript.js";
 import { loadProjectConfig } from "../src/config/load.js";
 import { runReviewedToolSuite } from "../src/eval/reviewed-tool-suite.js";
+import { createReviewedToolActorPrompt } from "../src/eval/reviewed-tool-actor.js";
+import { createToolJudgePrompt } from "../src/eval/reviewed-tool-pair.js";
 import { TOOL_ACTION_SCHEMA_JSON } from "../src/eval/tool-action-schema.js";
 import { assessReviewedToolMeasurement } from "../src/release/reviewed-tool-measurement.js";
 import { encodeReviewedToolEvidence } from "../src/release/reviewed-tool-evidence.js";
@@ -142,6 +144,80 @@ async function fixture(
   return { prepared, measurement, name };
 }
 afterEach(() => vi.resetAllMocks());
+function useLegacyProtocol(
+  f: Awaited<ReturnType<typeof fixture>>,
+  recordCount = Infinity,
+  arms: readonly ("baseline" | "withSkill")[] = ["baseline", "withSkill"],
+) {
+  for (const record of f.measurement.records.slice(0, recordCount)) {
+    if (record.status !== "passed") throw new Error("Expected completed synthetic pair.");
+    const scenario = f.prepared.inputs[f.name].scenarios.find((s) => s.id === record.scenarioId);
+    if (!scenario) throw new Error("Missing fixture scenario.");
+    for (const arm of arms) {
+      const leg = record.pair[arm];
+      const active = arm === "withSkill" && record.pair.selection.selected;
+      leg.actor.kind = "skillpress.reviewed-tool-actor.v2";
+      for (const step of leg.actor.steps) {
+        step.prompt = createReviewedToolActorPrompt(
+          {
+            scenario,
+            image: f.prepared.image,
+            skillText: active ? f.prepared.skillText : null,
+            skillFiles: active ? f.prepared.skillFiles : [],
+          },
+          leg.actor.steps.slice(0, step.index),
+          "skillpress.tool-actor.v2",
+        );
+        if (!step.response) throw new Error("Missing fixture response.");
+        step.response.inputSha256 = step.prompt.sha256;
+      }
+      leg.judgePrompt = createToolJudgePrompt(scenario, f.prepared.inputs.rubric, leg.actor);
+      leg.judge.inputSha256 = leg.judgePrompt.sha256;
+    }
+  }
+}
+it("accepts fully legacy measurements without changing derived quality", async () => {
+  const f = await fixture();
+  const original = assessReviewedToolMeasurement(f.measurement, f.prepared, f.name, now);
+  expect(original.passed).toBe(true);
+  useLegacyProtocol(f);
+  expect(assessReviewedToolMeasurement(f.measurement, f.prepared, f.name, now)).toEqual(original);
+});
+it("rejects otherwise consistent protocol mixing between records", async () => {
+  const f = await fixture();
+  useLegacyProtocol(f, 1);
+  expect(assessReviewedToolMeasurement(f.measurement, f.prepared, f.name, now).passed).toBe(false);
+});
+it("rejects otherwise consistent protocol mixing between pair arms", async () => {
+  const f = await fixture();
+  useLegacyProtocol(f, Infinity, ["baseline"]);
+  expect(assessReviewedToolMeasurement(f.measurement, f.prepared, f.name, now).passed).toBe(false);
+});
+it("rejects a complete legacy judge prompt and receipt bound to a new actor", async () => {
+  const f = await fixture();
+  const record = f.measurement.records[0];
+  if (record.status !== "passed") throw new Error("Expected completed synthetic pair.");
+  const leg = record.pair.baseline;
+  leg.judgePrompt = createToolJudgePrompt(
+    f.prepared.inputs.training.scenarios[0],
+    f.prepared.inputs.rubric,
+    {
+      ...leg.actor,
+      kind: "skillpress.reviewed-tool-actor.v2",
+    },
+  );
+  leg.judge.inputSha256 = leg.judgePrompt.sha256;
+  expect(assessReviewedToolMeasurement(f.measurement, f.prepared, f.name, now).passed).toBe(false);
+});
+it("rejects individually valid training and holdout from different protocols", async () => {
+  const t = await fixture();
+  const h = await fixture("holdout");
+  useLegacyProtocol(h);
+  const result = encodeReviewedToolEvidence(t.prepared, t.measurement, h.measurement, now);
+  expect(result.report.training.passed).toBe(true);
+  expect(result.report.holdout.passed).toBe(true);
+  expect(result.report.issues).toEqual(["tool.pair.protocol_mismatch"]);
+});
 it("retains holdout failures and accepts the known benign diagnostic", async () => {
   const t = await fixture();
   const h = await fixture("holdout", 1, 1);

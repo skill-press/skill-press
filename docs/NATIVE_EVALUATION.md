@@ -263,6 +263,18 @@ remain failures. A passing synthetic lifecycle is not actual launch-skill qualit
 
 ## Public tool evaluation
 
+New tool runs use actor protocol v3 and judge protocol v2. Answers follow the
+language explicitly requested by the task, or otherwise the task's language;
+code, commands and quoted source text retain their original language. Historical
+actor v2 / judge v1 receipts keep their exact English prompts and hashes. One
+measurement, both paired arms, and its training/holdout set must use the same
+protocol generation. Do not relabel old evidence or combine generations.
+
+This change applies to the tool profile only; the existing text-only v1 profile
+still uses its original English instruction. A platform consumer must adopt this
+schema and semantic validation before accepting new v3 tool receipts. Older
+consumers reject the new generation; rollback does not convert its receipts.
+
 `eval-tool` exposes the existing reviewed first-party tool evaluator. Preview
 before executing; review every skill resource, both suites and the rubric.
 

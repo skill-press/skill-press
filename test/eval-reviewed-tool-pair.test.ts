@@ -44,7 +44,7 @@ const input = () => ({
 });
 const receipt = (text: string) => ({ text }) as Awaited<ReturnType<typeof runReviewedCodexText>>;
 const answer = () => ({
-  kind: "skillpress.reviewed-tool-actor.v2" as const,
+  kind: "skillpress.reviewed-tool-actor.v3" as const,
   status: "complete" as const,
   answer: "One record.",
   steps: [],
@@ -62,6 +62,42 @@ function setup(selected = true) {
   actor.mockResolvedValue(answer());
 }
 afterEach(() => vi.resetAllMocks());
+
+it("preserves the historical judge hash while new judges follow task language", () => {
+  const scenario = {
+    id: "count",
+    category: "positive" as const,
+    shouldActivate: true,
+    prompt: "Count input records.",
+    expectedBehavior: ["One record."],
+    fixture: { files: [{ path: "data.csv", content: "id\n1\n" }] },
+  };
+  const rubric = {
+    schemaVersion: 1 as const,
+    name: "quality",
+    criteria: [
+      { id: "task", description: "Correct facts", weight: 100, evaluator: "judge" as const },
+    ],
+  };
+  const legacy = createToolJudgePrompt(scenario, rubric, {
+    ...answer(),
+    kind: "skillpress.reviewed-tool-actor.v2",
+  });
+  expect(legacy.version).toBe("skillpress.tool-judge.v1");
+  expect(legacy.sha256).toBe("6db6add6f15be25fb627fe673b9f6d496062624c900d7715b8c6021dd59461e8");
+  const current = createToolJudgePrompt(scenario, rubric, answer());
+  expect(current.version).toBe("skillpress.tool-judge.v2");
+  expect(current.text).toContain("language explicitly requested in the task");
+  expect(current.sha256).not.toBe(legacy.sha256);
+});
+it("rejects an unknown actor generation before creating a judge prompt", () => {
+  expect(() =>
+    createToolJudgePrompt(input().scenario, input().rubric, {
+      ...answer(),
+      kind: "skillpress.reviewed-tool-actor.v4" as ReturnType<typeof answer>["kind"],
+    }),
+  ).toThrow("Unknown tool actor version");
+});
 
 it.each([true, false])(
   "observes selection %s and gives baseline equal tools without skill files",
@@ -259,7 +295,7 @@ it("judge sees observed code and output, not fabricated execution or the other a
   expect(prompt.text).toContain("print(1)");
   expect(prompt.text).toContain("observed-1");
   expect(prompt.text).toContain("untrusted data");
-  expect(prompt.version).toBe("skillpress.tool-judge.v1");
+  expect(prompt.version).toBe("skillpress.tool-judge.v2");
   expect(() =>
     createToolJudgePrompt(input().scenario, input().rubric, {
       ...value,

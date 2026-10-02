@@ -11,7 +11,10 @@ import {
   type ImprovementEvidencePaths,
 } from "../improve/project-input.js";
 import { NATIVE_REVIEW_POLICY } from "./native-policy.js";
-import { assessReviewedToolMeasurement } from "./reviewed-tool-measurement.js";
+import {
+  assessReviewedToolMeasurement,
+  reviewedToolMeasurementActorKind,
+} from "./reviewed-tool-measurement.js";
 
 function runId(value: unknown): string | null {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
@@ -53,8 +56,10 @@ export async function loadReviewedToolEvaluation(
   )
     issues.push("holdout:tool.storage.binding");
   if (trainingId !== null && trainingId === holdoutId) issues.push("tool.pair.run_reuse");
-  // Both assessments enforce the same fixed model, effort, authentication and
-  // protocol. Pair IDs derive from disjoint suite run IDs, so cannot overlap.
+  if (reviewedToolMeasurementActorKind(training) !== reviewedToolMeasurementActorKind(holdout))
+    issues.push("tool.pair.protocol_mismatch");
+  // Each assessment enforces a single actor/judge version across all records;
+  // both suites must also match. Fixed model/effort/authentication remain unchanged.
   await verifyReviewedToolProject(root, prepared);
   const report = Object.freeze({
     schemaVersion: 1 as const,

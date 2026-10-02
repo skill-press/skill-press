@@ -23,7 +23,10 @@ export function assessReviewedToolTrajectory(value: unknown, input: ReviewedTool
   try {
     validateReviewedToolActorInput(input);
     const actor = value as Actor;
-    assert.equal(actor.kind, "skillpress.reviewed-tool-actor.v2");
+    assert.ok(
+      actor.kind === "skillpress.reviewed-tool-actor.v2" ||
+        actor.kind === "skillpress.reviewed-tool-actor.v3",
+    );
     assert.equal(actor.status, "complete");
     assert.equal(actor.failure, undefined);
     assert.equal(actor.releaseEligible, false);
@@ -33,7 +36,13 @@ export function assessReviewedToolTrajectory(value: unknown, input: ReviewedTool
     for (const [index, step] of actor.steps.entries()) {
       assert.equal(step.index, index);
       assert.equal(step.failure, undefined);
-      const prompt = createReviewedToolActorPrompt(input, actor.steps.slice(0, index));
+      const prompt = createReviewedToolActorPrompt(
+        input,
+        actor.steps.slice(0, index),
+        actor.kind === "skillpress.reviewed-tool-actor.v2"
+          ? "skillpress.tool-actor.v2"
+          : "skillpress.tool-actor.v3",
+      );
       assert.deepEqual(step.prompt, prompt);
       const response = step.response;
       assert.ok(response);

@@ -1,5 +1,8 @@
 import { isReviewedToolEnvelope } from "../eval/reviewed-tool-schema.js";
-import { assessReviewedToolMeasurement } from "./reviewed-tool-measurement.js";
+import {
+  assessReviewedToolMeasurement,
+  reviewedToolMeasurementActorKind,
+} from "./reviewed-tool-measurement.js";
 import { loadReviewedToolEvaluation } from "./reviewed-tool-check.js";
 import type { ImprovementEvidencePaths } from "../improve/project-input.js";
 
@@ -59,6 +62,8 @@ export function encodeReviewedToolEvidence(
   // when individual suites have independently consistent derived pair IDs.
   if ((training as { runId: string }).runId === (holdout as { runId: string }).runId)
     issues.push("tool.pair.run_reuse");
+  if (reviewedToolMeasurementActorKind(training) !== reviewedToolMeasurementActorKind(holdout))
+    issues.push("tool.pair.protocol_mismatch");
   return {
     reviewBytes,
     evaluationBytes,

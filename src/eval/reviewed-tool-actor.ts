@@ -21,10 +21,14 @@ export type ToolActorAction =
   | { readonly kind: "answer"; readonly text: string };
 type ModelReceipt = Awaited<ReturnType<typeof runReviewedCodexText>>;
 type ToolReceipt = Awaited<ReturnType<typeof runReviewedPythonTool>>;
+export type ToolActorKind =
+  | "skillpress.reviewed-tool-actor.v2"
+  | "skillpress.reviewed-tool-actor.v3";
+export type ToolActorPromptVersion = "skillpress.tool-actor.v2" | "skillpress.tool-actor.v3";
 export interface ToolActorStep {
   readonly index: number;
   readonly prompt: {
-    readonly version: "skillpress.tool-actor.v2";
+    readonly version: ToolActorPromptVersion;
     readonly text: string;
     readonly sha256: string;
   };
@@ -76,7 +80,10 @@ export function parseToolActorAction(text: string): ToolActorAction {
 export function createReviewedToolActorPrompt(
   input: ReviewedToolActorInput,
   steps: readonly ToolActorStep[],
+  version: ToolActorPromptVersion = "skillpress.tool-actor.v3",
 ) {
+  if (version !== "skillpress.tool-actor.v2" && version !== "skillpress.tool-actor.v3")
+    throw new Error("Unknown tool actor prompt version.");
   const data = {
     task: input.scenario.prompt,
     files: (input.scenario.fixture?.files ?? []).map((file) => ({
@@ -100,7 +107,10 @@ export function createReviewedToolActorPrompt(
     })),
   };
   const text =
-    "Complete the user's task in English. You have one harness tool: Python 3 standard library. " +
+    (version === "skillpress.tool-actor.v2"
+      ? "Complete the user's task in English. "
+      : "Complete the user's task. Use the language explicitly requested in the task; if none is specified, use the task's language. Preserve code, commands and quoted source text in their original language. ") +
+    "You have one harness tool: Python 3 standard library. " +
     "This is a JSON request protocol, not permission to use native Codex tools. " +
     'Return exactly one JSON object: {"action":{"kind":"python","code":"Python source"}} to request execution, ' +
     'or {"action":{"kind":"answer","text":"your final answer"}}. No Markdown fences or other fields. ' +
@@ -119,7 +129,7 @@ export function createReviewedToolActorPrompt(
   if (Buffer.byteLength(text) > 1024 * 1024)
     throw new Error("Tool prompt exceeds the input limit.");
   return Object.freeze({
-    version: "skillpress.tool-actor.v2" as const,
+    version,
     text,
     sha256: hash(text),
   });
@@ -171,7 +181,7 @@ export async function runReviewedToolActor(
     await onStep(structuredClone(step));
   };
   const result = (status: "complete" | "failed", answer: string | null, failure?: string) => ({
-    kind: "skillpress.reviewed-tool-actor.v2" as const,
+    kind: "skillpress.reviewed-tool-actor.v3" as ToolActorKind,
     status,
     answer,
     ...(failure === undefined ? {} : { failure }),

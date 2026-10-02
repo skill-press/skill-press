@@ -5,6 +5,7 @@ import {
   createReviewedToolActorPrompt,
   type ReviewedToolActorInput,
   type ToolActorStep,
+  type ToolActorPromptVersion,
 } from "../src/eval/reviewed-tool-actor.js";
 import { DEFAULT_SANDBOX_RESOURCE_POLICY } from "../src/eval/sandbox.js";
 import { TOOL_ACTION_SCHEMA_JSON } from "../src/eval/tool-action-schema.js";
@@ -23,11 +24,16 @@ const input = (active = false): ReviewedToolActorInput => ({
     fixture: { files: [{ path: "data.csv", content: "id\n1\n" }] },
   },
 });
-function fixture(count = 1, active = false, error = false) {
+function fixture(
+  count = 1,
+  active = false,
+  error = false,
+  version: ToolActorPromptVersion = "skillpress.tool-actor.v3",
+) {
   const expected = input(active);
   const steps: ToolActorStep[] = [];
   for (let index = 0; index <= count; index++) {
-    const prompt = createReviewedToolActorPrompt(expected, steps);
+    const prompt = createReviewedToolActorPrompt(expected, steps, version);
     const action =
       index === count
         ? { kind: "answer" as const, text: "One record." }
@@ -86,7 +92,10 @@ function fixture(count = 1, active = false, error = false) {
   return {
     expected,
     actor: {
-      kind: "skillpress.reviewed-tool-actor.v2",
+      kind:
+        version === "skillpress.tool-actor.v2"
+          ? "skillpress.reviewed-tool-actor.v2"
+          : "skillpress.reviewed-tool-actor.v3",
       status: "complete",
       steps,
       answer: "One record.",
@@ -96,6 +105,41 @@ function fixture(count = 1, active = false, error = false) {
     },
   };
 }
+it("preserves the historical actor prompt hash and validates legacy trajectories", () => {
+  const f = fixture(1, false, false, "skillpress.tool-actor.v2");
+  expect(f.actor.steps[0].prompt.sha256).toBe(
+    "e7e16e5fe7ab1b6b91fc364e0b75593af2d4010dd9e6db7901e7721ad87934eb",
+  );
+  expect(assessReviewedToolTrajectory(f.actor, f.expected).consistent).toBe(true);
+});
+it("uses the requested task language in new prompts without forcing English", () => {
+  const expected = input();
+  expected.scenario.prompt = "请用中文统计输入记录。";
+  const prompt = createReviewedToolActorPrompt(expected, []);
+  expect(prompt.version).toBe("skillpress.tool-actor.v3");
+  expect(prompt.text).toContain("Use the language explicitly requested in the task");
+  expect(prompt.text).not.toContain("Complete the user's task in English");
+});
+it.each(["skillpress.reviewed-tool-actor.v2", "skillpress.reviewed-tool-actor.v4"])(
+  "rejects a relabeled actor protocol %s",
+  (kind) => {
+    const f = fixture();
+    f.actor.kind = kind;
+    expect(assessReviewedToolTrajectory(f.actor, f.expected).consistent).toBe(false);
+  },
+);
+it("rejects mixed step protocols even with self-consistent prompt hashes", () => {
+  const f = fixture();
+  const step = f.actor.steps[1];
+  step.prompt = createReviewedToolActorPrompt(
+    f.expected,
+    f.actor.steps.slice(0, 1),
+    "skillpress.tool-actor.v2",
+  );
+  if (!step.response) throw new Error("Missing fixture response.");
+  step.response.inputSha256 = step.prompt.sha256;
+  expect(assessReviewedToolTrajectory(f.actor, f.expected).consistent).toBe(false);
+});
 it.each(["stdout", "stderr"])("rejects a complete trajectory with non-UTF-8 %s", (stream) => {
   const f = fixture();
   const raw = Buffer.from([0xff]);

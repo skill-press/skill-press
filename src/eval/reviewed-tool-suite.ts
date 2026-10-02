@@ -48,7 +48,7 @@ export async function runReviewedToolSuite(options: ReviewedToolSuiteOptions) {
   for (const scenario of suite.scenarios) {
     validateReviewedToolActorInput({ scenario, image, skillText, skillFiles });
     createTextSelectionPrompt(scenario, skillText);
-    createTextJudgePrompt(scenario, rubric, "Preflight");
+    createTextJudgePrompt(scenario, rubric, "Preflight", "task");
   }
   const runId = randomBytes(32).toString("hex");
   const createdAt = new Date().toISOString();

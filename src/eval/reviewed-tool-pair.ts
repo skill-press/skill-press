@@ -47,7 +47,13 @@ export function createToolJudgePrompt(
 ) {
   if (actor.status !== "complete" || actor.answer === null)
     throw new Error("Cannot judge an incomplete tool actor.");
-  const base = createTextJudgePrompt(scenario, rubric, actor.answer);
+  if (
+    actor.kind !== "skillpress.reviewed-tool-actor.v2" &&
+    actor.kind !== "skillpress.reviewed-tool-actor.v3"
+  )
+    throw new Error("Unknown tool actor version.");
+  const legacy = actor.kind === "skillpress.reviewed-tool-actor.v2";
+  const base = createTextJudgePrompt(scenario, rubric, actor.answer, legacy ? "english" : "task");
   const execution = actor.steps.flatMap((step) =>
     step.tool === undefined
       ? []
@@ -74,7 +80,7 @@ export function createToolJudgePrompt(
     "\n";
   if (Buffer.byteLength(text) > 1024 * 1024) throw new Error("Tool judge prompt is too large.");
   return Object.freeze({
-    version: "skillpress.tool-judge.v1" as const,
+    version: legacy ? ("skillpress.tool-judge.v1" as const) : ("skillpress.tool-judge.v2" as const),
     text,
     sha256: hash(text),
   });
@@ -100,7 +106,7 @@ export async function runReviewedToolPair(
   validateReviewedToolActorInput(baselineInput);
   const selectionPrompt = createTextSelectionPrompt(input.scenario, input.skillText);
   // Preflight rubric/fixture prompt size before any paid or entitled inference.
-  createTextJudgePrompt(input.scenario, input.rubric, "Preflight");
+  createTextJudgePrompt(input.scenario, input.rubric, "Preflight", "task");
   const persist = async (event: ToolPairEvent) => onEvent(structuredClone(event));
   let modelInvocations = 0;
   const infer = async (text: string) => {

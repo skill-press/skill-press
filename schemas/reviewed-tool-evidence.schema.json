@@ -401,7 +401,7 @@
               "required": ["version", "text", "sha256"],
               "properties": {
                 "version": {
-                  "const": "skillpress.tool-actor.v2"
+                  "enum": ["skillpress.tool-actor.v2", "skillpress.tool-actor.v3"]
                 },
                 "text": {
                   "type": "string",
@@ -452,7 +452,7 @@
               "required": ["version", "text", "sha256"],
               "properties": {
                 "version": {
-                  "const": "skillpress.tool-actor.v2"
+                  "enum": ["skillpress.tool-actor.v2", "skillpress.tool-actor.v3"]
                 },
                 "text": {
                   "type": "string",
@@ -500,7 +500,7 @@
       ],
       "properties": {
         "kind": {
-          "const": "skillpress.reviewed-tool-actor.v2"
+          "enum": ["skillpress.reviewed-tool-actor.v2", "skillpress.reviewed-tool-actor.v3"]
         },
         "status": {
           "const": "complete"
@@ -550,7 +550,7 @@
           "required": ["version", "text", "sha256"],
           "properties": {
             "version": {
-              "const": "skillpress.tool-judge.v1"
+              "enum": ["skillpress.tool-judge.v1", "skillpress.tool-judge.v2"]
             },
             "text": {
               "type": "string",

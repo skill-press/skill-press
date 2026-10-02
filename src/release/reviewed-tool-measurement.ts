@@ -19,6 +19,19 @@ import { NATIVE_REVIEW_POLICY } from "./native-policy.js";
 import { assessReviewedToolTrajectory } from "./reviewed-tool-trajectory.js";
 import { isReviewedToolEvidence } from "../eval/reviewed-tool-schema.js";
 
+/** Only identifies the first record; full measurement validation checks every record. */
+export function reviewedToolMeasurementActorKind(value: unknown): string | null {
+  let field: unknown = value;
+  for (const key of ["records", "0", "pair", "baseline", "actor", "kind"]) {
+    if (field === null || typeof field !== "object") return null;
+    field = (field as Record<string, unknown>)[key];
+  }
+  return field === "skillpress.reviewed-tool-actor.v2" ||
+    field === "skillpress.reviewed-tool-actor.v3"
+    ? field
+    : null;
+}
+
 type Prepared = Awaited<ReturnType<typeof prepareReviewedToolProject>>;
 type Measurement = Awaited<ReturnType<typeof runPreparedReviewedToolSuite>>;
 type Pair = Extract<Measurement["records"][number], { status: "passed" }>["pair"];
@@ -126,6 +139,7 @@ export function assessReviewedToolMeasurement(
       if (!categories.has(category)) issues.add("tool.scenarios.coverage");
     let baseline = 0;
     let withSkill = 0;
+    let actorKind: string | undefined;
     for (const [index, scenario] of suite.scenarios.entries()) {
       let before = 0;
       let after = 0;
@@ -137,6 +151,9 @@ export function assessReviewedToolMeasurement(
         assert.equal(record.scenarioId, scenario.id);
         assert.equal(record.repetition, repetition);
         const pair: Pair = record.pair;
+        actorKind ??= pair.baseline.actor.kind;
+        assert.equal(pair.baseline.actor.kind, actorKind);
+        assert.equal(pair.withSkill.actor.kind, actorKind);
         assert.equal(pair.kind, "skillpress.reviewed-tool-pair.v1");
         assert.equal(pair.execution, value.execution);
         assert.equal(pair.activationMeasurement, value.activationMeasurement);
