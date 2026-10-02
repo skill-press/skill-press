@@ -763,7 +763,7 @@ function releaseArgs(f: Awaited<ReturnType<typeof evidenceFixture>>) {
   ];
 }
 
-it("packages, prepares and inspects text submission through real CLI paths without inference or network", async () => {
+it("binds text release gate and submission payload without inference or network", async () => {
   const f = await evidenceFixture();
   const options = releaseOptions(f);
   const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected network"));
@@ -783,6 +783,13 @@ it("packages, prepares and inspects text submission through real CLI paths witho
   expect(JSON.parse(payload.reviewEvidenceBytes.toString()).measurement.releaseEligible).toBe(
     false,
   );
+  expect(fetch).not.toHaveBeenCalled();
+  expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
+});
+
+it("packages and prepares a text submission through real CLI paths", async () => {
+  const f = await evidenceFixture();
+  const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected network"));
   const output: string[] = [];
   const io = {
     stdout: (text: string) => {
@@ -798,6 +805,21 @@ it("packages, prepares and inspects text submission through real CLI paths witho
     ok: true,
     receipt: { operationStatus: "prepared", dryRun: true },
   });
+  expect(fetch).not.toHaveBeenCalled();
+  expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
+});
+
+it("prepares and inspects text submission with explicit artifacts through real CLI paths", async () => {
+  const f = await evidenceFixture();
+  const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected network"));
+  const output: string[] = [];
+  const io = {
+    stdout: (text: string) => {
+      output.push(text);
+    },
+    stderr: vi.fn(),
+  };
+  const args = releaseArgs(f);
   expect(
     await runCli(
       ["submit", ...args, "--dry-run", "--artifacts", f.prepared.artifacts.artifactsPath],
@@ -811,6 +833,14 @@ it("packages, prepares and inspects text submission through real CLI paths witho
   );
   expect(statusCode, `${output.at(-1)} ${JSON.stringify(io.stderr.mock.calls)}`).toBe(0);
   expect(output.at(-1)).toContain("Reviewed text gate: passed");
+  expect(fetch).not.toHaveBeenCalled();
+  expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
+});
+
+it("diagnoses text submission readiness without inference or network", async () => {
+  const f = await evidenceFixture();
+  const options = releaseOptions(f);
+  const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected network"));
   const commands: string[] = [];
   const doctor = await diagnoseProject(f.root, {
     evidence: options,
