@@ -81,10 +81,14 @@ into the agent's skill directory: that would bypass the current-trust check.
 
 ## Workflow
 
-Create a project from a complete, strictly validated capability brief:
+Create a project from a complete, strictly validated capability brief. Start with
+the [complete brief example](test/fixtures/create/complete-brief.yaml), replacing
+its sample identity, namespace, outcomes and tests with your own. For an existing
+launch skill, follow [author preparation](examples/launch-skills/AUTHORING.md).
 
 ```bash
 skpress init --brief capability-brief.yaml --output ./my-skill
+cd ./my-skill
 ```
 
 The brief must contain a registry namespace plus real outcomes, boundaries, tests, and evaluation
@@ -155,7 +159,22 @@ listed in [native evaluation](docs/NATIVE_EVALUATION.md), never a receipt-select
 image. Server validation and independent curator acceptance remain required;
 the production tool service has not been deployed.
 
-Package an exact candidate only after the release gate passes:
+Choose the evidence protocol before packaging or submitting. These flags are
+not interchangeable; use the protocol that actually produced your receipts:
+
+| Evidence producer | `eval-check` selection | `package` / `submit` selection |
+| --- | --- | --- |
+| Container-native `eval` | Default (no profile flag) | `--native` |
+| Reviewed text-only `eval-text` | `--reviewed-text` | `--reviewed-text` |
+| Reviewed Python-tool `eval-tool` | `--reviewed-tool --image <reviewed-image-digest>` | `--reviewed-tool` (no image flag) |
+
+For the text-only path, start with `skpress eval-text --suite training --dry-run
+--json`; see [author preparation](examples/launch-skills/AUTHORING.md#evidence-and-dry-run-submission)
+for both suites and complete text/tool check and submission commands.
+
+Package an exact candidate only after the release gate passes. The following
+examples are for container-native receipts; replace `--native` with the matching
+selection above for reviewed text/tool receipts:
 
 ```bash
 skpress package --native --project . \
@@ -284,6 +303,9 @@ This repository self-hosts the same contract through `skill-press.yaml`,
 
 ## Documentation
 
+- [Prepare your first author project and submission](examples/launch-skills/AUTHORING.md)
+- [Native, reviewed text and reviewed tool evaluation](docs/NATIVE_EVALUATION.md)
+- [Sample tasks and local walkthrough](examples/launch-skills/walkthrough.md)
 - [Product and implementation plan](docs/PLAN.md)
 - [Operating and recovery runbook](docs/OPERATIONS.md)
 - [Security and trust-boundary model](docs/SECURITY.md)
