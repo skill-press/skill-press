@@ -9,6 +9,7 @@ from pathlib import Path
 import sys
 
 MAX_BYTES = 10 * 1024 * 1024
+MAX_RECORD_SAMPLES = 100
 
 
 def profile(path, delimiter):
@@ -23,6 +24,7 @@ def profile(path, delimiter):
         raise ValueError("Input must contain a nonempty header record.")
     names = [name.strip() for name in header]
     widths = []
+    width_count = 0
     blanks = [0] * len(header)
     formulas = 0
     duplicate_rows = 0
@@ -30,7 +32,9 @@ def profile(path, delimiter):
     count = 0
     for count, row in enumerate(reader, 1):
         if len(row) != len(header):
-            widths.append(count)
+            width_count += 1
+            if len(widths) < MAX_RECORD_SAMPLES:
+                widths.append(count)
         for index, value in enumerate(row):
             if index < len(blanks) and not value.strip():
                 blanks[index] += 1
@@ -46,6 +50,8 @@ def profile(path, delimiter):
         "emptyHeaderPositions": [i + 1 for i, name in enumerate(names) if not name],
         "duplicateHeaderCount": len(names) - len(set(names)),
         "widthMismatchRecords": widths,
+        "widthMismatchCount": width_count,
+        "widthMismatchRecordsTruncated": width_count > len(widths),
         "blankCellsByColumn": blanks,
         "duplicateRecords": duplicate_rows,
         "possibleFormulaCells": formulas,

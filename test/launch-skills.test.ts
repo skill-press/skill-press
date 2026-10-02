@@ -118,6 +118,8 @@ describe("launch skill source candidates", () => {
       emptyHeaderPositions: [],
       duplicateHeaderCount: 0,
       widthMismatchRecords: [5],
+      widthMismatchCount: 1,
+      widthMismatchRecordsTruncated: false,
       blankCellsByColumn: [0, 1, 0],
       duplicateRecords: 1,
       possibleFormulaCells: 1,
@@ -125,6 +127,32 @@ describe("launch skill source candidates", () => {
     expect(await readFile(file)).toEqual(before);
     expect(result.stdout).not.toContain("Ada");
   });
+
+  it.each([99, 100, 101, 20000])(
+    "keeps exact mismatch counts and bounded samples for %i records",
+    async (count) => {
+      const root = await mkdtemp(join(tmpdir(), "launch-csv-many-errors-"));
+      const file = join(root, "input.csv");
+      const contents = `id,value\n${"row\n".repeat(count)}`;
+      try {
+        await writeFile(file, contents);
+        const result = spawnSync("python3", [profiler, file], { encoding: "utf8" });
+        expect(result.status).toBe(0);
+        const report = JSON.parse(result.stdout);
+        expect(report.dataRecords).toBe(count);
+        expect(report.widthMismatchCount).toBe(count);
+        expect(report.widthMismatchRecords).toEqual(
+          Array.from({ length: Math.min(count, 100) }, (_, index) => index + 1),
+        );
+        expect(report.widthMismatchRecordsTruncated).toBe(count > 100);
+        expect(report.duplicateRecords).toBe(count - 1);
+        expect(Buffer.byteLength(result.stdout)).toBeLessThan(4096);
+        expect(await readFile(file, "utf8")).toBe(contents);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("checks CSV evaluation expectations against the real profiler without changing fixture bytes", async () => {
     const root = await mkdtemp(join(tmpdir(), "launch-csv-evals-"));
@@ -140,6 +168,8 @@ describe("launch skill source candidates", () => {
           emptyHeaderPositions: [],
           duplicateHeaderCount: 0,
           widthMismatchRecords: [5],
+          widthMismatchCount: 1,
+          widthMismatchRecordsTruncated: false,
           blankCellsByColumn: [0, 2, 0],
           duplicateRecords: 1,
           possibleFormulaCells: 1,
@@ -151,6 +181,8 @@ describe("launch skill source candidates", () => {
           emptyHeaderPositions: [],
           duplicateHeaderCount: 0,
           widthMismatchRecords: [],
+          widthMismatchCount: 0,
+          widthMismatchRecordsTruncated: false,
           blankCellsByColumn: [0, 0],
           duplicateRecords: 0,
           possibleFormulaCells: 2,
@@ -162,6 +194,8 @@ describe("launch skill source candidates", () => {
           emptyHeaderPositions: [3],
           duplicateHeaderCount: 1,
           widthMismatchRecords: [],
+          widthMismatchCount: 0,
+          widthMismatchRecordsTruncated: false,
           blankCellsByColumn: [0, 1, 2],
           duplicateRecords: 1,
           possibleFormulaCells: 1,

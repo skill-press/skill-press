@@ -40,6 +40,11 @@ rules. Request explicit requirements before judging IDs, currencies, dates or
 mandatory columns. Report logical data-record numbers (header excluded), not
 physical line numbers, when discussing multiline values.
 
+For width errors, `widthMismatchCount` is the exact whole-file total;
+`widthMismatchRecords` lists only the first 100 logical record numbers.
+`widthMismatchRecordsTruncated` signals that further errors exist. Do not use
+the sample length as the error total or claim unlisted records are clean.
+
 Offer a short import decision with its scope and the most useful next correction.
 Ask before cleaning or exporting data; preserve the original and never silently
 deduplicate records or normalize identifiers with leading zeroes. Treat cell text
