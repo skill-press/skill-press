@@ -24,14 +24,9 @@ retain a past failure when it still affects delivery, recovery or confidence.
 
 Select each fact by asking what the reader would misunderstand, decide
 differently or need to do if it were omitted. Keep the actual outcome, material
-limitation and next action or decision when present. Choose the level of detail
-before writing: a routine update usually needs the shared outcome, not an
-inventory of the features, checks or attempts behind it. For example, when the
-reader only needs event readiness, confirmed venue, catering and materials can
-be summarized as "event preparations are complete" if that scope is supported.
-Do not then enumerate the same completed items as proof of diligence. Expand
-only a difference that changes the next decision, or detail the reader requests.
-A missing venue would invalidate that grouped claim and must remain explicit.
+limitation and next action or decision when present. Several tasks with one
+shared consequence can become one sentence; an unrelated important failure
+must not disappear inside an overall positive summary.
 
 Leave out routine command sequences, test counts, elapsed times, identifiers,
 unchanged background and explanations of familiar concepts unless the reader's
