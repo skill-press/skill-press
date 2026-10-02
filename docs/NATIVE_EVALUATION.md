@@ -96,8 +96,20 @@ and forced-cleanup results; image-name validation is not a trust allowlist.
 The existing CSV sandbox smoke script now exercises this primitive's real profiler,
 empty baseline skill mount, read-only/network boundaries, tmpfs capacity and output
 overflow cleanup. It uses fixed test Python, not model-generated actions, so it
-does not establish model tool use. The model request loop, source-bound trajectory,
-paired scoring and explicit admission support remain unfinished. Text-v1 evidence
+does not establish model tool use. `runReviewedToolActor` now connects the existing
+host ChatGPT adapter to this primitive using an explicit JSON action protocol.
+It permits at most three tool requests/four model attempts, records each prompt,
+response and actual tool result, and never sends expected/forbidden behaviors to
+the actor. Baseline receives the same interpreter without skill files. Normal
+Python exits 1/2 may be interpreted by the model; Docker startup/reserved or other
+unsupported exits, signal termination, infrastructure failure, invalid
+responses, failed cleanup and exhausted limits stop the run without automatic
+retry. A persistence callback receives isolated copies and can stop the run by
+failing. Abort signals reach model calls and stop subsequent tool requests; an
+already-running container still relies on its timeout. This is harness-mediated
+tool use, not native Codex tool execution or a claim that host inference is offline.
+Source-bound project trajectories, paired scoring and explicit admission support
+remain unfinished. Text-v1 evidence
 continues to reject script-bearing skills.
 
 Generate receipts with the public `eval-text` command after committing and reviewing

@@ -51,8 +51,7 @@ function validateFiles(files: readonly ReviewedToolFile[]): void {
  * Caller supplies reviewed synthetic bytes; generated Python runs only in Docker.
  * Each call is stateless, has a 30-second bound and never mounts writable host storage.
  */
-export async function runReviewedPythonTool(request: ReviewedPythonToolRequest) {
-  const input = structuredClone(request);
+export function validateReviewedPythonToolRequest(input: ReviewedPythonToolRequest): void {
   if (
     typeof input.python !== "string" ||
     !input.python.trim() ||
@@ -63,6 +62,11 @@ export async function runReviewedPythonTool(request: ReviewedPythonToolRequest) 
     throw new Error("A pinned Python image is required.");
   validateFiles(input.inputs);
   validateFiles(input.skillFiles);
+}
+
+export async function runReviewedPythonTool(request: ReviewedPythonToolRequest) {
+  const input = structuredClone(request);
+  validateReviewedPythonToolRequest(input);
   const root = await mkdtemp(join(tmpdir(), "skillpress-python-tool-"));
   try {
     const stage = async (name: string, files: readonly ReviewedToolFile[]) => {
