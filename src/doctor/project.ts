@@ -92,7 +92,9 @@ function commandProbes(
   ];
   return Object.freeze(
     probes.filter(
-      (probe) => options.evidence?.provider !== "native" || probe.id !== "command.tessl",
+      (probe) =>
+        (options.evidence?.provider === undefined || probe.id !== "command.tessl") &&
+        (options.evidence?.provider !== "reviewed-text" || probe.id !== `command.${sandbox}`),
     ),
   );
 }
@@ -231,17 +233,17 @@ export async function diagnoseProject(
       options.homeDirectory ?? homedir(),
     )),
     ...credentialChecks(options.environment ?? process.env).filter(
-      (entry) => options.evidence?.provider !== "native" || entry.id !== "credential.tessl",
+      (entry) => options.evidence?.provider === undefined || entry.id !== "credential.tessl",
     ),
   ];
   const gate =
     options.evidence === undefined ? null : await dependencies.checkGate(root, options.evidence);
-  if (options.evidence?.provider === "native") {
+  if (options.evidence?.provider !== undefined) {
     checks.push(
       check(
-        "evidence.native",
+        `evidence.${options.evidence.provider}`,
         gate?.passed ? "pass" : "error",
-        "Native evidence requires current source-bound measurements and independent curator review",
+        "Evidence requires current source-bound measurements and independent curator review",
       ),
     );
   } else

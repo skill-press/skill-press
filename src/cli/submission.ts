@@ -25,6 +25,7 @@ Usage:
 
 Options:
   --native                    Use native training/holdout evidence; never invoke Tessl
+  --reviewed-text             Use source-bound host-text receipts; never run inference or Tessl
   --project <directory>       Project root; defaults to the current directory
   --artifacts <directory>     Reuse an exact .skill-press/staging/<run>/artifacts package
   --review-evidence <file>    Native training or legacy Tessl Quality evidence
@@ -99,7 +100,12 @@ function parse(args: readonly string[]): SubmitArguments {
   ]);
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index] as string;
-    if (argument === "--json" || argument === "--dry-run" || argument === "--native") {
+    if (
+      argument === "--json" ||
+      argument === "--dry-run" ||
+      argument === "--native" ||
+      argument === "--reviewed-text"
+    ) {
       if (booleans.has(argument))
         throw new SubmitUsageError(`${argument} may be specified only once.`);
       booleans.add(argument);
@@ -118,6 +124,8 @@ function parse(args: readonly string[]): SubmitArguments {
   if (booleans.has("--dry-run") && values.has("--resume")) {
     throw new SubmitUsageError("--dry-run cannot be combined with --resume.");
   }
+  if (booleans.has("--native") && booleans.has("--reviewed-text"))
+    throw new SubmitUsageError("Select exactly one evidence protocol.");
   if (values.has("--resume") && !values.has("--artifacts")) {
     throw new SubmitUsageError("--resume requires --artifacts to bind the exact prior package.");
   }
@@ -128,6 +136,7 @@ function parse(args: readonly string[]): SubmitArguments {
       : { artifactsPath: values.get("--artifacts") as string }),
     evidence: {
       ...(booleans.has("--native") ? { provider: "native" as const } : {}),
+      ...(booleans.has("--reviewed-text") ? { provider: "reviewed-text" as const } : {}),
       reviewEvidencePath: required("--review-evidence"),
       evalEvidencePath: required("--eval-evidence"),
       evalSource: required("--eval-source"),
@@ -205,6 +214,8 @@ function isUnavailableStorageError(error: unknown): boolean {
 }
 
 function gateHuman(gate: ReleaseGateReport): string {
+  if (gate.gateType === "skillpress.reviewed-text-release")
+    return `Reviewed text release gate: ${gate.passed ? "passed (advisory)" : "blocked"}\nServer validation and independent curator review remain required.\n`;
   if (gate.gateType === "skillpress.native-release")
     return `Native release gate: ${gate.passed ? "passed (advisory)" : "blocked"}\nIndependent curator review remains required.\n`;
   return `Tessl release gate: ${gate.passed ? "passed" : "blocked"}\nQuality: ${gate.scores.quality ?? "unavailable"}/${gate.thresholds.quality}\nImpact: ${gate.scores.impact ?? "unavailable"}/${gate.thresholds.impact}\n`;

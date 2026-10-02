@@ -107,12 +107,12 @@ Normal project readiness still requires project and canonical-skill licenses.
 
 An exit code of 0 means the advisory checks passed, not release admission:
 `releaseEligible` and `releaseAuthorized` remain false, and `admissionIssues`
-contains `text_profile_not_admitted`. Failed checks return 3; invalid options
-return 2. These results cannot yet feed `submit --native` or replace curator
+contains `release_gate_required`. Failed checks return 3; invalid options
+return 2. These results cannot feed `submit --native` or replace curator
 corroboration. Self-consistent hashes do not attest actual model execution.
 The host-networked profile is never relabeled as network-none Docker.
 
-### Versioned text wire contract (not yet admitted)
+### Versioned text wire contract and submission
 
 `schemas/reviewed-text-evidence.schema.json` describes complete, source-bound
 text measurements. `schemas/reviewed-text-envelope.schema.json` wraps one
@@ -129,6 +129,38 @@ uses the same private-file loader, fresh source/package binding and assessment a
 the local command, with Git checks at entry/exit. It performs no model invocation,
 project test execution, network upload or release authorization. Inspect its
 `report`: structurally valid evidence can still fail quality/readiness, and all
-reports retain `text_profile_not_admitted`. Invalid wire structure or excessive
+reports retain `release_gate_required`. Invalid wire structure or excessive
 encoded size throws instead of producing upload bytes. This API prepares the
-contract for server integration; it does not enable `submit` for text evidence.
+contract without granting submission or publication permission by itself.
+
+Use the distinct text gate for submission preparation:
+
+```sh
+skpress package --reviewed-text --project ./candidate \
+  --review-evidence ".skill-press/runs/<training-run>/evidence.json" \
+  --eval-evidence ".skill-press/runs/<holdout-run>/evidence.json" --eval-source evals
+skpress submit --reviewed-text --project ./candidate \
+  --review-evidence ".skill-press/runs/<training-run>/evidence.json" \
+  --eval-evidence ".skill-press/runs/<holdout-run>/evidence.json" --eval-source evals --dry-run
+```
+
+`status` and `doctor` accept the same protocol/evidence options. Text inspection
+does not require Tessl or a container runtime. These commands do not invoke a
+model or execute project test commands. Removing `--dry-run` requests a real
+authenticated submission to the canonical service; it is not a deployment or
+publication command. Do that only when the intended service supports the policy
+and the operator has approved the submission.
+
+The local `skillpress.reviewed-text-release` gate recomputes both suites and
+readiness, and checks source/package bindings again when preparing upload bytes.
+Failed, stale, malformed or mixed-profile evidence blocks before upload. The server
+must support `skillpress.text-review` v1 and migration 0010, recompute against the
+actual uploaded ZIP and require explicit curator approval with independently
+obtained corroboration. The current candidate has local/CI support; this does not
+mean the production service is deployed.
+
+Original measurements retain their producer-era `releaseEligible:false` and
+`text_profile_not_admitted` markers unchanged. The new gate evaluates those
+advisory receipts under an explicit admission policy; it does not turn historical
+markers into execution attestation or grant release authorization. Quality failures
+remain failures. A passing synthetic lifecycle is not actual launch-skill quality.

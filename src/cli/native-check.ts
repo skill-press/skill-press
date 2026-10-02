@@ -18,8 +18,9 @@ Historical runs missing semantic binding or criterion scores must be rerun.
 of container runs. Store each suite at .skill-press/runs/<run-id>/evidence.json
 with private file/directory permissions. It rebuilds a private package and verifies
 the current committed source at entry/exit, without invoking models or project
-commands. Text results remain non-release-eligible even when this check passes;
-they cannot yet be used for native submission. This is not an untrusted-skill sandbox.
+commands. This check does not grant release eligibility. Use package/submit with
+--reviewed-text for the separate submission gate; never relabel these receipts as
+container-native evidence. This is not an untrusted-skill sandbox.
 `;
 
 export async function runNativeCheckCommand(
@@ -85,7 +86,7 @@ export async function runNativeCheckCommand(
     await io.stdout(
       json
         ? `${JSON.stringify(report)}\n`
-        : `${reviewedText ? "Reviewed text" : "Native"} evaluation: ${report.passed ? "passed (advisory)" : "blocked"}\n${report.issues.join("\n")}${report.issues.length === 0 ? "" : "\n"}${reviewedText ? "Text profile is not release-admitted. " : ""}Independent review and release admission remain required.\n`,
+        : `${reviewedText ? "Reviewed text" : "Native"} evaluation: ${report.passed ? "passed (advisory)" : "blocked"}\n${report.issues.join("\n")}${report.issues.length === 0 ? "" : "\n"}${reviewedText ? "Use --reviewed-text for the separate submission gate. " : ""}Independent review and release admission remain required.\n`,
     );
     return report.passed ? 0 : 3;
   } catch {

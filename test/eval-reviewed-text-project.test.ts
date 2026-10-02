@@ -1,6 +1,16 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { chmod, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
@@ -12,6 +22,11 @@ import { runCli } from "../src/cli.js";
 import { runNativeCheckCommand } from "../src/cli/native-check.js";
 import { checkReviewedTextEvaluation } from "../src/release/reviewed-text-check.js";
 import { prepareReviewedTextEvidence } from "../src/release/reviewed-text-evidence.js";
+import { checkReleaseGate } from "../src/release/gate.js";
+import { prepareSkillSubmission } from "../src/submission/manifest.js";
+import { diagnoseProject } from "../src/doctor/project.js";
+import { runSkillSubmission } from "../src/submission/run.js";
+import type { SkillPressSubmissionResource } from "../src/submission/generated-resource.js";
 import { isReviewedTextEnvelope } from "../src/eval/reviewed-text-schema.js";
 import * as projects from "../src/eval/reviewed-text-project.js";
 import {
@@ -28,7 +43,7 @@ import {
 
 const roots: string[] = [];
 async function fixture(licensed = false) {
-  const root = await mkdtemp(join(tmpdir(), "reviewed-text-project-"));
+  const root = await mkdtemp(join(await realpath(tmpdir()), "reviewed-text-project-"));
   roots.push(root);
   await mkdir(join(root, "skills"));
   await cp("skills/release-notes", join(root, "skills/release-notes"), { recursive: true });
@@ -210,7 +225,7 @@ const response = (prompt: TextEvaluationPrompt, text: string) => ({
   durationMs: 1,
 });
 
-async function evidenceFixture(licensed = true) {
+async function evidenceFixture(licensed = true, baselineScore = 0.5) {
   const root = await fixture(licensed);
   const prepared = await prepareReviewedTextProject(root);
   vi.mocked(runReviewedSelectedTextPair).mockImplementation(async (scenario, rubric, text) => {
@@ -222,7 +237,7 @@ async function evidenceFixture(licensed = true) {
       );
       const criteria = rubric.criteria
         .filter((c) => c.evaluator === "judge")
-        .map((c) => ({ id: c.id, score: withSkill ? 1 : 0.5, rationale: "Synthetic." }));
+        .map((c) => ({ id: c.id, score: withSkill ? 1 : baselineScore, rationale: "Synthetic." }));
       const judge = response(
         createTextJudgePrompt(scenario, rubric, actor.text),
         JSON.stringify({ criteria }),
@@ -297,11 +312,11 @@ it("checks a real licensed project and both stored suites through the CLI withou
     passed: true,
     releaseEligible: false,
     releaseAuthorized: false,
-    admissionIssues: ["text_profile_not_admitted"],
+    admissionIssues: ["release_gate_required"],
     readiness: { ok: true },
   });
   expect(await runNativeCheckCommand(args, io)).toBe(0);
-  expect(outputs[1]).toContain("Text profile is not release-admitted");
+  expect(outputs[1]).toContain("separate submission gate");
   expect(await runNativeCheckCommand([...args, "--reviewed-text"], io)).toBe(2);
   expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
 });
@@ -342,7 +357,7 @@ it("prepares deterministic text upload bytes without granting admission or runni
     passed: true,
     releaseEligible: false,
     releaseAuthorized: false,
-    admissionIssues: ["text_profile_not_admitted"],
+    admissionIssues: ["release_gate_required"],
   });
   expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
 });
@@ -457,3 +472,249 @@ it("rechecks source at exit and detects a changed license as part of the full tr
   });
   await expect(checkReviewedTextEvaluation(f.root, f.paths)).rejects.toThrow();
 });
+
+function releaseOptions(f: Awaited<ReturnType<typeof evidenceFixture>>) {
+  return {
+    provider: "reviewed-text" as const,
+    reviewEvidencePath: f.paths.trainingEvidencePath,
+    evalEvidencePath: f.paths.holdoutEvidencePath,
+    evalSource: "evals",
+  };
+}
+function releaseArgs(f: Awaited<ReturnType<typeof evidenceFixture>>) {
+  return [
+    "--reviewed-text",
+    "--project",
+    f.root,
+    "--review-evidence",
+    f.paths.trainingEvidencePath,
+    "--eval-evidence",
+    f.paths.holdoutEvidencePath,
+    "--eval-source",
+    "evals",
+  ];
+}
+
+it("packages, prepares and inspects text submission through real CLI paths without inference or network", async () => {
+  const f = await evidenceFixture();
+  const options = releaseOptions(f);
+  const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected network"));
+  const gate = await checkReleaseGate(f.root, options);
+  expect(gate).toMatchObject({
+    gateType: "skillpress.reviewed-text-release",
+    passed: true,
+    releaseAuthorized: false,
+    independentVerificationRequired: true,
+    sourceCommit: f.prepared.source.commit,
+  });
+  const payload = await prepareSkillSubmission(f.root, f.prepared.artifacts, options);
+  const prepared = await prepareReviewedTextEvidence(f.root, f.paths);
+  expect(payload.reviewEvidenceBytes).toEqual(prepared.reviewBytes);
+  expect(payload.evalEvidenceBytes).toEqual(prepared.evaluationBytes);
+  expect(payload.manifest.evidence.review.sha256).toBe(hash(prepared.reviewBytes.toString()));
+  expect(JSON.parse(payload.reviewEvidenceBytes.toString()).measurement.releaseEligible).toBe(
+    false,
+  );
+  const output: string[] = [];
+  const io = {
+    stdout: (text: string) => {
+      output.push(text);
+    },
+    stderr: vi.fn(),
+  };
+  const args = releaseArgs(f);
+  expect(await runCli(["package", ...args], io)).toBe(0);
+  expect(output.at(-1)).toContain("Reviewed text release gate: passed (advisory)");
+  expect(await runCli(["submit", ...args, "--dry-run", "--json"], io)).toBe(0);
+  expect(JSON.parse(output.at(-1) as string)).toMatchObject({
+    ok: true,
+    receipt: { operationStatus: "prepared", dryRun: true },
+  });
+  expect(
+    await runCli(
+      ["submit", ...args, "--dry-run", "--artifacts", f.prepared.artifacts.artifactsPath],
+      io,
+    ),
+  ).toBe(0);
+  expect(output.at(-1)).toContain("Reviewed text release gate: passed (advisory)");
+  const statusCode = await runCli(
+    ["status", ...args, "--artifacts", f.prepared.artifacts.artifactsPath],
+    io,
+  );
+  expect(statusCode, `${output.at(-1)} ${JSON.stringify(io.stderr.mock.calls)}`).toBe(0);
+  expect(output.at(-1)).toContain("Reviewed text gate: passed");
+  const commands: string[] = [];
+  const doctor = await diagnoseProject(f.root, {
+    evidence: options,
+    homeDirectory: f.root,
+    environment: {},
+    executor: async (command) => {
+      commands.push(command.argv[0]);
+      return {
+        status: "passed",
+        exitCode: 0,
+        signal: null,
+        stdout: Buffer.alloc(0),
+        stderr: Buffer.alloc(0),
+      };
+    },
+  });
+  expect(doctor.ready).toBe(true);
+  expect(commands).toEqual(["git"]);
+  expect(doctor.checks.map(({ id }) => id)).toContain("evidence.reviewed-text");
+  expect(doctor.checks.map(({ id }) => id)).not.toContain("credential.tessl");
+  expect(fetch).not.toHaveBeenCalled();
+  expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
+});
+
+it("sends text envelopes through submission orchestration without granting publication", async () => {
+  const f = await evidenceFixture();
+  const options = releaseOptions(f);
+  const payload = await prepareSkillSubmission(f.root, f.prepared.artifacts, options);
+  const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected network"));
+  const date = new Date().toISOString();
+  const remote: SkillPressSubmissionResource = {
+    schemaVersion: 1,
+    resourceType: "skillpress.submission",
+    id: "submission_12345678",
+    idempotencyKey: payload.idempotencyKey,
+    namespace: payload.manifest.registry.namespace,
+    status: "received",
+    statusVersion: 1,
+    sourceCommit: payload.manifest.source.commit,
+    artifactSha256: payload.manifest.package.artifact.sha256,
+    projectVersion: payload.manifest.project.version,
+    url: "https://skill-press.com/api/v1/submissions/submission_12345678",
+    receivedAt: date,
+    updatedAt: date,
+  };
+  const client = {
+    checkSession: vi.fn(async () => ({
+      schemaVersion: 1 as const,
+      sessionType: "skillpress.session" as const,
+      authenticated: true as const,
+    })),
+    submit: vi.fn(async () => remote),
+    getSubmission: vi.fn(async () => remote),
+  };
+  const receipt = await runSkillSubmission(f.root, f.prepared.artifacts, {
+    evidence: options,
+    client,
+  });
+  expect(receipt.operationStatus).toBe("submitted");
+  expect(receipt.remote?.status).toBe("received");
+  expect(receipt.remote?.release).toBeUndefined();
+  expect(client.submit).toHaveBeenCalledExactlyOnceWith(payload);
+  expect(client.getSubmission).toHaveBeenCalledExactlyOnceWith(remote.id);
+  expect(fetch).not.toHaveBeenCalled();
+  expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
+});
+
+it("blocks quality-failed text before submission, with no native or legacy fallback", async () => {
+  const f = await evidenceFixture(true, 1);
+  const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected network"));
+  const options = releaseOptions(f);
+  const gate = await checkReleaseGate(f.root, options);
+  expect(gate.passed).toBe(false);
+  expect(gate.issues.map(({ code }) => code)).toContain("training:text.impact.failed");
+  const output: string[] = [];
+  const io = {
+    stdout: (text: string) => {
+      output.push(text);
+    },
+    stderr: vi.fn(),
+  };
+  for (const command of ["package", "submit"]) {
+    expect(await runCli([command, ...releaseArgs(f)], io)).toBe(3);
+    expect(output.at(-1)).toContain("Reviewed text release gate: blocked");
+  }
+  await expect(prepareSkillSubmission(f.root, f.prepared.artifacts, options)).rejects.toThrow(
+    "exact package",
+  );
+  expect(fetch).not.toHaveBeenCalled();
+  expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
+});
+
+it("rejects wrong package bindings, stale receipts and unsafe text inputs", async () => {
+  const f = await evidenceFixture();
+  const options = releaseOptions(f);
+  for (const key of [
+    "sourceCommit",
+    "projectConfigSha256",
+    "skillSha256",
+    "artifactSha256",
+    "artifactBytes",
+    "provenanceSha256",
+  ] as const) {
+    await expect(
+      prepareSkillSubmission(
+        f.root,
+        {
+          ...f.prepared.artifacts,
+          [key]: key === "artifactBytes" ? 1 : "f".repeat(key === "sourceCommit" ? 40 : 64),
+        },
+        options,
+      ),
+    ).rejects.toThrow("exact package");
+  }
+  expect(
+    (await checkReleaseGate(f.root, { ...options, now: () => new Date("2030-01-01") })).passed,
+  ).toBe(false);
+  await expect(checkReleaseGate(f.root, { ...options, evalSource: "other" })).rejects.toThrow(
+    "canonical evals",
+  );
+  await writeFile(join(f.root, f.paths.trainingEvidencePath), "provider-secret-not-json");
+  const io = { stdout: vi.fn(), stderr: vi.fn() };
+  expect(await runCli(["submit", ...releaseArgs(f)], io)).toBe(3);
+  expect(io.stderr.mock.calls[0][0]).not.toContain("provider-secret");
+  expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
+});
+
+it("rejects duplicate, conflicting and incomplete text protocol CLI options", async () => {
+  const io = { stdout: vi.fn(), stderr: vi.fn() };
+  for (const command of ["package", "submit", "status", "doctor"]) {
+    expect(await runCli([command, "--reviewed-text", "--reviewed-text"], io)).toBe(2);
+    expect(await runCli([command, "--reviewed-text", "--native"], io)).toBe(2);
+    expect(await runCli([command, "--reviewed-text"], io)).toBe(2);
+  }
+  expect(
+    await runCli(
+      [
+        "doctor",
+        "--reviewed-text",
+        "--review-evidence",
+        "a",
+        "--eval-evidence",
+        "b",
+        "--eval-source",
+        "evals",
+        "--tessl-executable",
+        "tessl",
+      ],
+      io,
+    ),
+  ).toBe(2);
+});
+
+it.each(["training", "holdout", "both"])(
+  "rejects native-discriminated %s evidence without uploading",
+  async (which) => {
+    const f = await evidenceFixture();
+    const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected network"));
+    for (const [name, value] of [
+      ["training", f.training],
+      ["holdout", f.holdout],
+    ] as const) {
+      if (which !== "both" && which !== name) continue;
+      await writeFile(
+        join(f.root, value.path),
+        JSON.stringify({ ...value.result, evidenceType: "skillpress.native-evidence" }),
+      );
+    }
+    const io = { stdout: vi.fn(), stderr: vi.fn() };
+    expect(await runCli(["submit", ...releaseArgs(f)], io)).toBe(3);
+    expect(io.stderr.mock.calls[0][0]).toContain("text.evidence.invalid");
+    expect(fetch).not.toHaveBeenCalled();
+    expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
+  },
+);

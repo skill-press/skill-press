@@ -21,6 +21,7 @@ Usage:
 
 Options:
   --native                    Use native training/holdout evidence; never invoke Tessl
+  --reviewed-text             Use source-bound host-text receipts; never run inference or Tessl
   --project <directory>       Project root; defaults to the current directory
   --review-evidence <file>    Native training or legacy Tessl Quality evidence
   --eval-evidence <file>      Native holdout or legacy Tessl Impact evidence
@@ -44,7 +45,7 @@ export interface GateArguments {
   readonly evalEvidencePath: string;
   readonly evalSource: string;
   readonly json: boolean;
-  readonly provider?: "native";
+  readonly provider?: "native" | "reviewed-text";
 }
 
 interface PackageOperations {
@@ -92,13 +93,14 @@ function takeValue(args: readonly string[], index: number, flag: string): string
 function parse(args: readonly string[]): GateArguments {
   const values = new Map<string, string>();
   let json = false;
-  let native = false;
+  let provider: GateArguments["provider"];
   const allowed = new Set(["--project", "--review-evidence", "--eval-evidence", "--eval-source"]);
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index] as string;
-    if (argument === "--native") {
-      if (native) throw new PackageUsageError("--native may be specified only once.");
-      native = true;
+    if (argument === "--native" || argument === "--reviewed-text") {
+      if (provider !== undefined)
+        throw new PackageUsageError("Select exactly one evidence protocol, once.");
+      provider = argument === "--native" ? "native" : "reviewed-text";
       continue;
     }
     if (argument === "--json") {
@@ -123,7 +125,7 @@ function parse(args: readonly string[]): GateArguments {
     evalEvidencePath: required("--eval-evidence"),
     evalSource: required("--eval-source"),
     json,
-    ...(native ? { provider: "native" as const } : {}),
+    ...(provider === undefined ? {} : { provider }),
   });
 }
 
@@ -174,6 +176,8 @@ function gateOptions(args: GateArguments) {
 }
 
 function gateHuman(gate: ReleaseGateReport): string {
+  if (gate.gateType === "skillpress.reviewed-text-release")
+    return `Reviewed text release gate: ${gate.passed ? "passed (advisory)" : "blocked"}\nServer validation and independent curator review remain required.\n`;
   if (gate.gateType === "skillpress.native-release")
     return `Native release gate: ${gate.passed ? "passed (advisory)" : "blocked"}\nIndependent curator review remains required.\n`;
   return `Tessl release gate: ${gate.passed ? "passed" : "blocked"}\nQuality: ${gate.scores.quality ?? "unavailable"}/${gate.thresholds.quality}\nImpact: ${gate.scores.impact ?? "unavailable"}/${gate.thresholds.impact}\n`;

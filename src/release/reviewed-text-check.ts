@@ -64,7 +64,7 @@ export async function loadReviewedTextEvaluation(
     independentVerificationRequired: true as const,
     releaseAuthorized: false as const,
     releaseEligible: false as const,
-    admissionIssues: ["text_profile_not_admitted"],
+    admissionIssues: ["release_gate_required"],
     readiness,
     training: trainingAssessment,
     holdout: holdoutAssessment,

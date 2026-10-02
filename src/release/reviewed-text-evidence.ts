@@ -31,5 +31,11 @@ export async function prepareReviewedTextEvidence(
       throw new Error("Reviewed text evidence exceeds the upload limit.");
     return bytes;
   };
-  return { report, reviewBytes: encode(training), evaluationBytes: encode(holdout) };
+  return {
+    report,
+    source: prepared.source,
+    artifacts: prepared.artifacts,
+    reviewBytes: encode(training),
+    evaluationBytes: encode(holdout),
+  };
 }

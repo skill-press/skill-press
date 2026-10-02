@@ -20,6 +20,7 @@ Usage:
 
 Options:
   --native                    Use native evidence; do not probe or invoke Tessl
+  --reviewed-text             Use reviewed host-text receipts; do not invoke inference or Tessl
   --project <directory>       Project root; defaults to the current directory
   --review-evidence <file>    Native training or legacy Tessl Quality evidence
   --eval-evidence <file>      Native holdout or legacy Tessl Impact evidence
@@ -40,6 +41,7 @@ Usage:
 
 Options:
   --native                    Use native evidence; do not probe or invoke Tessl
+  --reviewed-text             Use reviewed host-text receipts; do not invoke inference or Tessl
   --project <directory>       Project root; defaults to the current directory
   --review-evidence <file>    Native training or legacy Tessl Quality evidence
   --eval-evidence <file>      Native holdout or legacy Tessl Impact evidence
@@ -109,7 +111,7 @@ function takeValue(args: readonly string[], index: number, flag: string): string
 function parse(args: readonly string[], doctor: boolean): StatusArguments | DoctorArguments {
   const values = new Map<string, string>();
   let json = false;
-  let native = false;
+  let provider: "native" | "reviewed-text" | undefined;
   const allowed = new Set([
     "--project",
     "--review-evidence",
@@ -119,9 +121,10 @@ function parse(args: readonly string[], doctor: boolean): StatusArguments | Doct
   ]);
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index] as string;
-    if (argument === "--native") {
-      if (native) throw new InspectUsageError("--native may be specified only once.");
-      native = true;
+    if (argument === "--native" || argument === "--reviewed-text") {
+      if (provider !== undefined)
+        throw new InspectUsageError("Select exactly one evidence protocol, once.");
+      provider = argument === "--native" ? "native" : "reviewed-text";
       continue;
     }
     if (argument === "--json") {
@@ -144,9 +147,9 @@ function parse(args: readonly string[], doctor: boolean): StatusArguments | Doct
   if (evidenceCount !== 0 && evidenceCount !== 3) {
     throw new InspectUsageError("Review evidence, eval evidence, and eval source are all-or-none.");
   }
-  if (native && (evidenceCount !== 3 || values.has("--tessl-executable")))
+  if (provider !== undefined && (evidenceCount !== 3 || values.has("--tessl-executable")))
     throw new InspectUsageError(
-      "--native requires complete native evidence and cannot select a Tessl executable.",
+      "The selected protocol requires complete evidence and cannot select a Tessl executable.",
     );
   const common: CommonArguments = {
     project: values.get("--project") ?? process.cwd(),
@@ -159,7 +162,7 @@ function parse(args: readonly string[], doctor: boolean): StatusArguments | Doct
             reviewEvidencePath,
             evalEvidencePath,
             evalSource,
-            ...(native ? { provider: "native" as const } : {}),
+            ...(provider === undefined ? {} : { provider }),
           },
         }),
     json,
@@ -251,7 +254,13 @@ function statusHuman(report: ProjectStatusReport): string {
   const submission = report.submission?.operationStatus ?? "not supplied";
   const trust = report.submission?.remote?.release?.trust.status ?? "not released";
   const issues = report.issues.map((entry) => `- ${entry.message} [${entry.code}]`).join("\n");
-  return `Local release-input readiness: ${report.ready ? "ready" : "blocked"}\nLocal: ${report.local.score}/${report.local.minimum}\n${report.gate?.gateType === "skillpress.native-release" ? "Native" : "Tessl"} gate: ${gate}\nPackage: ${packaged}\nSubmission: ${submission}\nSubmission namespace: ${report.submission?.namespace ?? "not supplied"}\nCurrent trust verified: no\nLast observed release trust: ${trust} (cached, not authoritative)\n${issues === "" ? "" : `${issues}\n`}`;
+  const protocol =
+    report.gate?.gateType === "skillpress.reviewed-text-release"
+      ? "Reviewed text"
+      : report.gate?.gateType === "skillpress.native-release"
+        ? "Native"
+        : "Tessl";
+  return `Local release-input readiness: ${report.ready ? "ready" : "blocked"}\nLocal: ${report.local.score}/${report.local.minimum}\n${protocol} gate: ${gate}\nPackage: ${packaged}\nSubmission: ${submission}\nSubmission namespace: ${report.submission?.namespace ?? "not supplied"}\nCurrent trust verified: no\nLast observed release trust: ${trust} (cached, not authoritative)\n${issues === "" ? "" : `${issues}\n`}`;
 }
 
 function doctorHuman(report: DoctorReport): string {

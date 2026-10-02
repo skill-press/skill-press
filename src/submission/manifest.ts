@@ -10,10 +10,11 @@ import { digestBoundedTree } from "../evidence/tree-digest.js";
 import type { LoadedSkillPackageArtifacts } from "../package/archive.js";
 import { isSafePathInput } from "../path-safety.js";
 import { prepareNativeEvidence } from "../release/native-evidence.js";
+import { prepareReviewedTextRelease } from "../release/reviewed-text-gate.js";
 import type { SkillPressSubmissionManifest } from "./generated-manifest.js";
 
 export interface SubmissionEvidencePaths {
-  readonly provider?: "native";
+  readonly provider?: "native" | "reviewed-text";
   readonly reviewEvidencePath: string;
   readonly evalEvidencePath: string;
   readonly evalSource: string;
@@ -272,7 +273,7 @@ export async function prepareSkillSubmission(
     ]);
   }
   const evidencePath =
-    evidence.provider === "native"
+    evidence.provider === "native" || evidence.provider === "reviewed-text"
       ? /^\.skill-press\/runs\/[a-f0-9]{64}\/evidence[.]json$/u
       : EVIDENCE_PATH;
   if (
@@ -350,8 +351,32 @@ export async function prepareSkillSubmission(
       ),
     ]);
   }
-  const reviewEvidenceBytes = native?.reviewBytes ?? rawReviewEvidenceBytes;
-  const evalEvidenceBytes = native?.evaluationBytes ?? rawEvalEvidenceBytes;
+  const text =
+    evidence.provider === "reviewed-text"
+      ? await prepareReviewedTextRelease(root, evidence)
+      : undefined;
+  if (
+    text !== undefined &&
+    (!text.report.passed ||
+      text.source.commit !== artifacts.sourceCommit ||
+      text.source.projectConfigSha256 !== artifacts.projectConfigSha256 ||
+      text.source.skillSha256 !== artifacts.skillSha256 ||
+      text.source.evalSourceSha256 !== evalSourceSha256 ||
+      text.artifacts.artifactSha256 !== artifacts.artifactSha256 ||
+      text.artifacts.artifactBytes !== artifacts.artifactBytes ||
+      text.artifacts.provenanceSha256 !== artifacts.provenanceSha256)
+  ) {
+    throw new SubmissionManifestError("Text evidence is not eligible for this exact package.", [
+      issue(
+        "submission.text.binding",
+        "/evidence",
+        "Passing text evidence must bind the exact current package and evaluation source.",
+      ),
+    ]);
+  }
+  const reviewEvidenceBytes = text?.reviewBytes ?? native?.reviewBytes ?? rawReviewEvidenceBytes;
+  const evalEvidenceBytes =
+    text?.evaluationBytes ?? native?.evaluationBytes ?? rawEvalEvidenceBytes;
   if (
     artifactBytes.byteLength !== artifacts.artifactBytes ||
     sha256(artifactBytes) !== artifacts.artifactSha256 ||
