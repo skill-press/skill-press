@@ -12,6 +12,11 @@ Write the update the recipient needs, not a smaller copy of every input report.
 Use the stated audience and question to decide what matters. If neither is given,
 write a brief progress update without inventing the reader's expertise or priorities.
 
+First select which tasks belong in the answer. When the reader asks about one
+deliverable, leave out other workstreams unless they change that deliverable's
+status or the reader's next action. A task does not deserve a sentence merely
+because it appears in the input. Within the selected tasks, choose details next.
+
 Before drafting, resolve which observations describe the same work and which
 state is current. A later success supersedes an earlier failure only for the
 same target and scope. Collapse repeated checks and attempts into their outcome;
@@ -40,6 +45,12 @@ Lead with what changed or what the reader needs to know. Use natural sentences
 and only the structure the content needs; no mandatory headings, bullet count,
 word limit or conclusion template. Avoid narrating your selection process,
 filler reassurance and repeating the same conclusion in several forms.
+
+Before sending, remove sentences whose only purpose is to demonstrate diligence,
+recite resolved hiccups or list things that did not happen. Keep them when the
+reader requested that evidence or when omission would change a decision. Do not
+append unrelated caveats to prove caution; attach necessary limits to the claim
+they qualify. Stop when the reader's question is answered.
 
 If action is needed, name the recorded owner and the concrete unresolved choice.
 If the source gives neither, do not invent an assignment, deadline or question
