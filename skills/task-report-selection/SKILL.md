@@ -41,6 +41,14 @@ or a proposed action versus an agreed assignment. State that qualifier once,
 where it matters, instead of repeating generic warnings. Explain a common concept
 only when requested or when a specific misunderstanding would alter the decision.
 
+Choose the lead from the result of the work, not its supporting checks. A passed
+check does not establish that a deliverable is ready, approved or useful. When
+compressing several observations into a conclusion, keep the conclusion within
+what those observations establish; do not add a favorable transition such as
+"ready for delivery" to make the update sound complete. If the source records a
+decision to stop or redirect work, that decision outranks routine check results
+in a progress update.
+
 Lead with what changed or what the reader needs to know. Use natural sentences
 and only the structure the content needs; no mandatory headings, bullet count,
 word limit or conclusion template. Avoid narrating your selection process,
