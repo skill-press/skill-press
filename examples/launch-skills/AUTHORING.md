@@ -34,6 +34,10 @@ training cases (including missing-input and source-injection failures) and two
 distinct holdout cases. Copy the three YAML files into that author's `evals/` before
 committing. They are scenario inputs, not passing evidence; run the actual model
 backend and retain failures. Keep holdout results out of skill optimization.
+For `incident-handoff`, [its separate eval inputs](incident-handoff-evals/) provide
+five training cases and two held-out tasks, including an observation-cutoff case.
+Use only the chosen skill's directory; do not combine the suites. These inputs
+are synthetic and have not yet produced recorded behavioral measurements.
 
 ```sh
 skpress check --project ./candidate --json
@@ -52,12 +56,28 @@ Use [native evaluation and submission](../../docs/NATIVE_EVALUATION.md) to captu
 real training and holdout evidence through an explicitly authorized backend, then
 run `eval-check`. Paid Tessl evaluation is not authorized and is not required by
 native mode. Local walkthroughs and synthetic lifecycle fixtures are not substitutes.
-The current reviewed Codex text experiments are not yet admissible native evidence:
-their host-networked execution must not be relabeled as network-none container
-execution. Do not copy pilot receipts into the submission flags below. No provider
-operation is performed automatically by this example.
+Choose the protocol that actually produced your evidence. Source-bound, complete
+reviewed host-text receipts use `--reviewed-text`; network-none container paired
+evidence uses `--native`. Never relabel one as the other. Text admission supports
+only SKILL.md and optional LICENSE, so it cannot evaluate `csv-quality-check`'s
+Python script. No provider operation is performed automatically by this example.
 
 With the resulting real evidence paths, prepare without contacting the registry:
+
+For reviewed text (`release-notes` or `incident-handoff`):
+
+```sh
+skpress eval-check --reviewed-text --project ./candidate \
+  --training-evidence ".skill-press/runs/<training-run>/evidence.json" \
+  --holdout-evidence ".skill-press/runs/<holdout-run>/evidence.json" --json
+
+skpress submit --project ./candidate --reviewed-text --dry-run \
+  --review-evidence ".skill-press/runs/<training-run>/evidence.json" \
+  --eval-evidence ".skill-press/runs/<holdout-run>/evidence.json" \
+  --eval-source evals --json
+```
+
+For container-native paired evidence (including executable skills):
 
 ```sh
 skpress eval-check --project ./candidate \
@@ -72,8 +92,9 @@ skpress submit --project ./candidate --native --dry-run \
 
 Replace run placeholders with actual run IDs; paths are relative to the candidate
 project. `review-evidence` maps to training, and `eval-evidence` maps to holdout. Use the same
-evidence flags and `--native` for `doctor`, `package` and `status`. This uses the
-existing native release gate and packager; missing/stale/mismatched evidence
+evidence flags and selected `--native` or `--reviewed-text` protocol for `doctor`,
+`package` and `status`. This uses the corresponding release gate and existing
+packager; missing/stale/mismatched or quality-failed evidence
 must block. After preparation, inspect `skpress status --help` to bind status to
 the exact artifact directory and private submission receipt. Status is local;
 it does not query a live reviewer queue. Preserve the receipt for exact retries.
@@ -89,5 +110,9 @@ implementation, packages them and loads/verifies the resulting artifacts. This
 tests source/packager compatibility, not the external evidence gate. The separate
 platform lifecycle tests actual source bytes with synthetic provider inputs.
 The sample `init`, local `check`, test-command execution and missing-evidence
-dry-run rejection have also been exercised. Real provider scoring and production
-admission remain future release work, not completed local evidence.
+dry-run rejection have also been exercised. Complete source-bound release-notes
+text measurements have run, but training gain was zero and the real dry-run is
+blocked. Do not retry unchanged inputs until a pass appears, lower thresholds or
+treat synthetic passing scores as permission to submit. The other candidates'
+real behavioral qualification and independent corroboration remain unfinished.
+Production deployment/admission is not established by local or CI success.

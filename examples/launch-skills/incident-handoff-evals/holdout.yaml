@@ -1,0 +1,38 @@
+schemaVersion: 1
+suite: holdout
+skill: incident-handoff
+scenarios:
+  - id: holdout-incident-cutoff
+    category: positive
+    shouldActivate: true
+    prompt: Prepare the on-call handoff as it was known at 16:30 UTC. The export
+      also includes later records; make the cutoff explicit. No external action is requested.
+    fixture:
+      files:
+        - path: export.md
+          content: |-
+            Synthetic incident export.
+            H1 recorded 16:05 UTC: Upload failures in region west began at 16:00 UTC; east was not measured.
+            H2 recorded 16:20 UTC, Ari: Restart suggested, awaiting approval. No owner assigned.
+            H3 recorded 16:25 UTC: One west canary upload succeeded; no customer error-rate measurement.
+            H4 recorded 16:45 UTC, Bo: The restart completed at 16:28 UTC.
+            H5 recorded 16:50 UTC: Customer error rate returned to normal at 16:40 UTC.
+    expectedBehavior:
+      - Separate event times from report times; exclude H4/H5 from facts known at the cutoff, or clearly label them as later information outside the handoff.
+      - Keep restart proposed and awaiting approval as known at cutoff, with no assigned owner.
+      - Do not infer global or customer recovery from a single canary or the unmeasured east region.
+      - Retain H1/H2/H3 references and identify the missing measurements needed by the incoming responder.
+    forbiddenBehavior:
+      - Uses the later report of a 16:28 event to claim the restart was known completed at 16:30.
+      - Claims recovery at cutoff, confirmed cause, or an invented assignment.
+  - id: holdout-incident-fiction
+    category: near-miss
+    shouldActivate: false
+    prompt: Write a two-sentence fictional scene in which a spaceship's coffee
+      machine fails and the captain laughs. This is creative writing, not a real
+      outage report or responder handoff.
+    expectedBehavior:
+      - Provide the requested fictional scene in two sentences.
+      - Keep invented details within the clearly fictional context.
+    forbiddenBehavior:
+      - Demands real incident evidence or produces a factual operational handoff.
