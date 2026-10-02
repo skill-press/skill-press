@@ -27,12 +27,18 @@ import { prepareReviewedToolEvidence } from "../src/release/reviewed-tool-eviden
 import { runCli } from "../src/cli.js";
 import { runNativeCheckCommand } from "../src/cli/native-check.js";
 import * as checks from "../src/check/project.js";
+import { TOOL_REVIEW_POLICY } from "../src/release/tool-policy.js";
+import { checkReleaseGate } from "../src/release/gate.js";
+import { prepareSkillSubmission } from "../src/submission/manifest.js";
+import { diagnoseProject } from "../src/doctor/project.js";
+import { runSkillSubmission } from "../src/submission/run.js";
+import type { SkillPressSubmissionResource } from "../src/submission/generated-resource.js";
 const roots: string[] = [];
-const image = `python@sha256:${"a".repeat(64)}`;
+const image = TOOL_REVIEW_POLICY.image;
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 const git = (root: string, args: string[]) =>
   execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
-async function fixture(licensed = true) {
+async function fixture(licensed = true, baseline = 0.5) {
   const root = await mkdtemp(join(await realpath(tmpdir()), "reviewed-tool-check-"));
   roots.push(root);
   await mkdir(join(root, "skills"));
@@ -82,7 +88,7 @@ async function fixture(licensed = true) {
                   .filter((c) => c.evaluator === "judge")
                   .map((c) => ({
                     id: c.id,
-                    score: stage === 2 ? 0.5 : 1,
+                    score: stage === 2 ? baseline : 1,
                     rationale: "Synthetic rubric response",
                   })),
               });
@@ -249,4 +255,292 @@ it("reports missing private evidence without leaking input errors", async () => 
     ),
   ).toBe(3);
   expect(JSON.parse(err.mock.calls[0][0]).code).toBe("tool.evidence.unavailable");
+});
+
+function releaseOptions(f: Awaited<ReturnType<typeof fixture>>) {
+  return {
+    provider: "reviewed-tool" as const,
+    reviewEvidencePath: f.paths.trainingEvidencePath,
+    evalEvidencePath: f.paths.holdoutEvidencePath,
+    evalSource: "evals",
+  };
+}
+
+it.each([
+  "sourceCommit",
+  "projectConfigSha256",
+  "skillSha256",
+  "artifactSha256",
+  "artifactBytes",
+  "provenanceSha256",
+] as const)("rejects mismatched tool package %s before upload", async (key) => {
+  const f = await fixture();
+  await expect(
+    prepareSkillSubmission(
+      f.root,
+      {
+        ...f.prepared.artifacts,
+        [key]: key === "artifactBytes" ? 1 : "f".repeat(key === "sourceCommit" ? 40 : 64),
+      },
+      releaseOptions(f),
+    ),
+  ).rejects.toThrow("exact package");
+  expect(runReviewedCodexText).not.toHaveBeenCalled();
+});
+
+it("rejects stale tool evidence, noncanonical eval source and sanitizes malformed input", async () => {
+  const f = await fixture();
+  expect(
+    (await checkReleaseGate(f.root, { ...releaseOptions(f), now: () => new Date("2030-01-01") }))
+      .passed,
+  ).toBe(false);
+  await expect(
+    checkReleaseGate(f.root, { ...releaseOptions(f), evalSource: "other" }),
+  ).rejects.toThrow("canonical evals");
+  await writeFile(join(f.root, f.paths.trainingEvidencePath), "provider-secret-not-json");
+  const io = { stdout: vi.fn(), stderr: vi.fn() };
+  expect(await runCli(["submit", ...releaseArgs(f)], io)).toBe(3);
+  expect(io.stderr.mock.calls[0][0]).not.toContain("provider-secret");
+});
+
+it.each(["training-text", "holdout-native", "image"])(
+  "rejects mixed or unreviewed %s receipts without upload",
+  async (kind) => {
+    const f = await fixture();
+    const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected network"));
+    for (const suite of ["training", "holdout"] as const) {
+      if (kind !== "image" && !kind.startsWith(suite)) continue;
+      const path = join(f.root, f.paths[`${suite}EvidencePath`]);
+      const raw = await readFile(path, "utf8");
+      const value = JSON.parse(raw);
+      value.evidenceType = kind.endsWith("text")
+        ? "skillpress.reviewed-text-suite"
+        : "skillpress.native-evidence";
+      await writeFile(
+        path,
+        kind === "image"
+          ? raw.replaceAll(image, `python@sha256:${"b".repeat(64)}`)
+          : JSON.stringify(value),
+      );
+    }
+    for (const command of ["package", "submit"]) {
+      expect(await runCli([command, ...releaseArgs(f)], { stdout: vi.fn(), stderr: vi.fn() })).toBe(
+        3,
+      );
+    }
+    expect(fetch).not.toHaveBeenCalled();
+    expect(runReviewedCodexText).not.toHaveBeenCalled();
+  },
+);
+
+it("rejects duplicate, conflicting and incomplete tool command options", async () => {
+  for (const command of ["package", "submit", "status", "doctor"]) {
+    for (const flags of [
+      ["--reviewed-tool"],
+      ["--reviewed-tool", "--reviewed-tool"],
+      ["--reviewed-tool", "--reviewed-text"],
+      ["--native", "--reviewed-tool"],
+    ])
+      expect(await runCli([command, ...flags], { stdout: vi.fn(), stderr: vi.fn() })).toBe(2);
+  }
+  expect(
+    await runCli(
+      [
+        "doctor",
+        "--reviewed-tool",
+        "--review-evidence",
+        "a",
+        "--eval-evidence",
+        "b",
+        "--eval-source",
+        "evals",
+        "--tessl-executable",
+        "tessl",
+      ],
+      { stdout: vi.fn(), stderr: vi.fn() },
+    ),
+  ).toBe(2);
+});
+function releaseArgs(f: Awaited<ReturnType<typeof fixture>>) {
+  return [
+    "--reviewed-tool",
+    "--project",
+    f.root,
+    "--review-evidence",
+    f.paths.trainingEvidencePath,
+    "--eval-evidence",
+    f.paths.holdoutEvidencePath,
+    "--eval-source",
+    "evals",
+  ];
+}
+
+it("binds tool release gate and submission payload without inference or network", async () => {
+  const f = await fixture();
+  const options = releaseOptions(f);
+  const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected network"));
+  const gate = await checkReleaseGate(f.root, options);
+  expect(gate).toMatchObject({
+    gateType: "skillpress.reviewed-tool-release",
+    passed: true,
+    releaseAuthorized: false,
+    independentVerificationRequired: true,
+    sourceCommit: f.prepared.source.commit,
+  });
+  const payload = await prepareSkillSubmission(f.root, f.prepared.artifacts, options);
+  const prepared = await prepareReviewedToolEvidence(f.root, f.paths, image);
+  expect(payload.reviewEvidenceBytes).toEqual(prepared.reviewBytes);
+  expect(payload.evalEvidenceBytes).toEqual(prepared.evaluationBytes);
+  expect(payload.manifest.evidence.review.sha256).toBe(hash(prepared.reviewBytes.toString()));
+  expect(JSON.parse(payload.reviewEvidenceBytes.toString()).measurement.releaseEligible).toBe(
+    false,
+  );
+  expect(fetch).not.toHaveBeenCalled();
+  expect(runReviewedCodexText).not.toHaveBeenCalled();
+});
+
+it("packages and prepares a tool submission through real CLI paths", async () => {
+  const f = await fixture();
+  const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected network"));
+  const output: string[] = [];
+  const io = {
+    stdout: (text: string) => {
+      output.push(text);
+    },
+    stderr: vi.fn(),
+  };
+  const args = releaseArgs(f);
+  expect(await runCli(["package", ...args], io)).toBe(0);
+  expect(output.at(-1)).toContain("Reviewed tool release gate: passed (advisory)");
+  expect(await runCli(["submit", ...args, "--dry-run", "--json"], io)).toBe(0);
+  expect(JSON.parse(output.at(-1) as string)).toMatchObject({
+    ok: true,
+    receipt: { operationStatus: "prepared", dryRun: true },
+  });
+  expect(fetch).not.toHaveBeenCalled();
+  expect(runReviewedCodexText).not.toHaveBeenCalled();
+});
+
+it("prepares and inspects tool submission with explicit artifacts through real CLI paths", async () => {
+  const f = await fixture();
+  const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected network"));
+  const output: string[] = [];
+  const io = {
+    stdout: (text: string) => {
+      output.push(text);
+    },
+    stderr: vi.fn(),
+  };
+  const args = releaseArgs(f);
+  expect(
+    await runCli(
+      ["submit", ...args, "--dry-run", "--artifacts", f.prepared.artifacts.artifactsPath],
+      io,
+    ),
+  ).toBe(0);
+  expect(output.at(-1)).toContain("Reviewed tool release gate: passed (advisory)");
+  const statusCode = await runCli(
+    ["status", ...args, "--artifacts", f.prepared.artifacts.artifactsPath],
+    io,
+  );
+  expect(statusCode, `${output.at(-1)} ${JSON.stringify(io.stderr.mock.calls)}`).toBe(0);
+  expect(output.at(-1)).toContain("Reviewed tool gate: passed");
+  expect(fetch).not.toHaveBeenCalled();
+  expect(runReviewedCodexText).not.toHaveBeenCalled();
+});
+
+it("diagnoses tool submission readiness without inference or network", async () => {
+  const f = await fixture();
+  const options = releaseOptions(f);
+  const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected network"));
+  const commands: string[] = [];
+  const doctor = await diagnoseProject(f.root, {
+    evidence: options,
+    homeDirectory: f.root,
+    environment: {},
+    executor: async (command) => {
+      commands.push(command.argv[0]);
+      return {
+        status: "passed",
+        exitCode: 0,
+        signal: null,
+        stdout: Buffer.alloc(0),
+        stderr: Buffer.alloc(0),
+      };
+    },
+  });
+  expect(doctor.ready).toBe(true);
+  expect(commands).toEqual(["git"]);
+  expect(doctor.checks.map(({ id }) => id)).toContain("evidence.reviewed-tool");
+  expect(doctor.checks.map(({ id }) => id)).not.toContain("credential.tessl");
+  expect(fetch).not.toHaveBeenCalled();
+  expect(runReviewedCodexText).not.toHaveBeenCalled();
+});
+
+it("sends tool envelopes through submission orchestration without granting publication", async () => {
+  const f = await fixture();
+  const options = releaseOptions(f);
+  const payload = await prepareSkillSubmission(f.root, f.prepared.artifacts, options);
+  const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected network"));
+  const date = new Date().toISOString();
+  const remote: SkillPressSubmissionResource = {
+    schemaVersion: 1,
+    resourceType: "skillpress.submission",
+    id: "submission_12345678",
+    idempotencyKey: payload.idempotencyKey,
+    namespace: payload.manifest.registry.namespace,
+    status: "received",
+    statusVersion: 1,
+    sourceCommit: payload.manifest.source.commit,
+    artifactSha256: payload.manifest.package.artifact.sha256,
+    projectVersion: payload.manifest.project.version,
+    url: "https://skill-press.com/api/v1/submissions/submission_12345678",
+    receivedAt: date,
+    updatedAt: date,
+  };
+  const client = {
+    checkSession: vi.fn(async () => ({
+      schemaVersion: 1 as const,
+      sessionType: "skillpress.session" as const,
+      authenticated: true as const,
+    })),
+    submit: vi.fn(async () => remote),
+    getSubmission: vi.fn(async () => remote),
+  };
+  const receipt = await runSkillSubmission(f.root, f.prepared.artifacts, {
+    evidence: options,
+    client,
+  });
+  expect(receipt.operationStatus).toBe("submitted");
+  expect(receipt.remote?.status).toBe("received");
+  expect(receipt.remote?.release).toBeUndefined();
+  expect(client.submit).toHaveBeenCalledExactlyOnceWith(payload);
+  expect(client.getSubmission).toHaveBeenCalledExactlyOnceWith(remote.id);
+  expect(fetch).not.toHaveBeenCalled();
+  expect(runReviewedCodexText).not.toHaveBeenCalled();
+});
+
+it("blocks quality-failed tool before submission, with no native or legacy fallback", async () => {
+  const f = await fixture(true, 1);
+  const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected network"));
+  const options = releaseOptions(f);
+  const gate = await checkReleaseGate(f.root, options);
+  expect(gate.passed).toBe(false);
+  expect(gate.issues.map(({ code }) => code)).toContain("training:tool.impact.failed");
+  const output: string[] = [];
+  const io = {
+    stdout: (text: string) => {
+      output.push(text);
+    },
+    stderr: vi.fn(),
+  };
+  for (const command of ["package", "submit"]) {
+    expect(await runCli([command, ...releaseArgs(f)], io)).toBe(3);
+    expect(output.at(-1)).toContain("Reviewed tool release gate: blocked");
+  }
+  await expect(prepareSkillSubmission(f.root, f.prepared.artifacts, options)).rejects.toThrow(
+    "exact package",
+  );
+  expect(fetch).not.toHaveBeenCalled();
+  expect(runReviewedCodexText).not.toHaveBeenCalled();
 });

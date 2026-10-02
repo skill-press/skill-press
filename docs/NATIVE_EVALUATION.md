@@ -118,9 +118,9 @@ rubric and verified release archive. `runPreparedReviewedToolSuite` snapshots
 that reviewed preparation and verifies source/resources/artifacts at entry and
 exit, not between individual calls. Missing, added or changed prepared resources
 are rejected against a fresh canonical staging. This removes the missing-artifact
-binding flag only after exit verification; tool-profile admission remains absent.
-The selected pinned Python image is a reviewed caller input, not a trusted-image
-allowlist. Binary resources are unsupported by this byte-staged text interface.
+binding flag only after exit verification. The measurement helper accepts a
+reviewed caller image; the separate tool submission gate below restricts admission
+to the server-reviewed image. Binary resources are unsupported by this byte-staged text interface.
 See [Codex structured outputs](https://learn.chatgpt.com/docs/non-interactive-mode).
 It permits at most three tool requests/four model attempts, records each prompt,
 response and actual tool result, and never sends expected/forbidden behaviors to
@@ -248,3 +248,30 @@ Original measurements retain their producer-era `releaseEligible:false` and
 advisory receipts under an explicit admission policy; it does not turn historical
 markers into execution attestation or grant release authorization. Quality failures
 remain failures. A passing synthetic lifecycle is not actual launch-skill quality.
+
+## Reviewed tool submission
+
+For reviewed first-party tool measurements, `package`, `submit`, `status` and
+`doctor` accept `--reviewed-tool` instead of `--native` or `--reviewed-text`.
+The release gate requires `--eval-source evals` and fixes the interpreter to
+`python@sha256:05b2b8b732ecd268fee8727a369f936f022d1321b59befd13c30ede22769dcdc`.
+It does not accept a custom image or infer one from uploaded receipts.
+
+```bash
+skpress package --reviewed-tool --project ./candidate \
+  --review-evidence .skill-press/runs/<training-run>/evidence.json \
+  --eval-evidence .skill-press/runs/<holdout-run>/evidence.json --eval-source evals
+skpress submit --reviewed-tool --project ./candidate --dry-run \
+  --review-evidence .skill-press/runs/<training-run>/evidence.json \
+  --eval-evidence .skill-press/runs/<holdout-run>/evidence.json --eval-source evals
+```
+
+The gate reuses bounded private ingestion, exact source/resource/archive checks
+and paired quality assessment; failed quality, stale or mixed receipts cannot
+fall back to text/native/Tessl. Upload preparation rechecks the exact package and
+emits distinct tool envelopes. These commands perform no model or container
+execution; doctor does not require Docker or Tessl for checking existing receipts.
+Server support requires `skillpress.tool-review@1` and migration 0011. Local/CI
+support does not establish production deployment. Independent corroboration and
+explicit curator acceptance remain mandatory; original advisory markers remain
+unchanged. Real launch candidates still need qualifying quality results.

@@ -140,7 +140,12 @@ skpress eval-check --reviewed-tool --image python@sha256:<reviewed-digest> \
 The files must be private (0600), under private real directories (0700), and
 bound to the current committed project. This performs no inference, image pull,
 container execution or network submission. Exit 0 means the local advisory checks
-passed; exit 3 means blocked. Tool-profile submission/admission is not enabled yet.
+passed; exit 3 means blocked. For submission, `package`, `submit`, `status` and
+`doctor` accept `--reviewed-tool` with the usual review/eval evidence paths and
+`--eval-source evals`. This separate gate uses the fixed reviewed interpreter
+listed in [native evaluation](docs/NATIVE_EVALUATION.md), never a receipt-selected
+image. Server validation and independent curator acceptance remain required;
+the production tool service has not been deployed.
 
 Package an exact candidate only after the release gate passes:
 

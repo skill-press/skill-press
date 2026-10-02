@@ -94,7 +94,8 @@ function commandProbes(
     probes.filter(
       (probe) =>
         (options.evidence?.provider === undefined || probe.id !== "command.tessl") &&
-        (options.evidence?.provider !== "reviewed-text" || probe.id !== `command.${sandbox}`),
+        (!["reviewed-text", "reviewed-tool"].includes(options.evidence?.provider ?? "") ||
+          probe.id !== `command.${sandbox}`),
     ),
   );
 }

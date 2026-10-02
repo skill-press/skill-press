@@ -25,6 +25,7 @@ Usage:
 
 Options:
   --native                    Use native training/holdout evidence; never invoke Tessl
+  --reviewed-tool             Use tool receipts with the fixed reviewed Python image; no execution
   --reviewed-text             Use source-bound host-text receipts; never run inference or Tessl
   --project <directory>       Project root; defaults to the current directory
   --artifacts <directory>     Reuse an exact .skill-press/staging/<run>/artifacts package
@@ -104,7 +105,8 @@ function parse(args: readonly string[]): SubmitArguments {
       argument === "--json" ||
       argument === "--dry-run" ||
       argument === "--native" ||
-      argument === "--reviewed-text"
+      argument === "--reviewed-text" ||
+      argument === "--reviewed-tool"
     ) {
       if (booleans.has(argument))
         throw new SubmitUsageError(`${argument} may be specified only once.`);
@@ -124,7 +126,10 @@ function parse(args: readonly string[]): SubmitArguments {
   if (booleans.has("--dry-run") && values.has("--resume")) {
     throw new SubmitUsageError("--dry-run cannot be combined with --resume.");
   }
-  if (booleans.has("--native") && booleans.has("--reviewed-text"))
+  if (
+    ["--native", "--reviewed-text", "--reviewed-tool"].filter((flag) => booleans.has(flag)).length >
+    1
+  )
     throw new SubmitUsageError("Select exactly one evidence protocol.");
   if (values.has("--resume") && !values.has("--artifacts")) {
     throw new SubmitUsageError("--resume requires --artifacts to bind the exact prior package.");
@@ -137,6 +142,7 @@ function parse(args: readonly string[]): SubmitArguments {
     evidence: {
       ...(booleans.has("--native") ? { provider: "native" as const } : {}),
       ...(booleans.has("--reviewed-text") ? { provider: "reviewed-text" as const } : {}),
+      ...(booleans.has("--reviewed-tool") ? { provider: "reviewed-tool" as const } : {}),
       reviewEvidencePath: required("--review-evidence"),
       evalEvidencePath: required("--eval-evidence"),
       evalSource: required("--eval-source"),
@@ -214,6 +220,8 @@ function isUnavailableStorageError(error: unknown): boolean {
 }
 
 function gateHuman(gate: ReleaseGateReport): string {
+  if (gate.gateType === "skillpress.reviewed-tool-release")
+    return `Reviewed tool release gate: ${gate.passed ? "passed (advisory)" : "blocked"}\nServer validation and independent curator review remain required.\n`;
   if (gate.gateType === "skillpress.reviewed-text-release")
     return `Reviewed text release gate: ${gate.passed ? "passed (advisory)" : "blocked"}\nServer validation and independent curator review remain required.\n`;
   if (gate.gateType === "skillpress.native-release")

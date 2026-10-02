@@ -20,6 +20,7 @@ Usage:
 
 Options:
   --native                    Use native evidence; do not probe or invoke Tessl
+  --reviewed-tool             Use tool receipts with the fixed reviewed Python image; no execution
   --reviewed-text             Use reviewed host-text receipts; do not invoke inference or Tessl
   --project <directory>       Project root; defaults to the current directory
   --review-evidence <file>    Native training or legacy Tessl Quality evidence
@@ -41,6 +42,7 @@ Usage:
 
 Options:
   --native                    Use native evidence; do not probe or invoke Tessl
+  --reviewed-tool             Use tool receipts with the fixed reviewed Python image; no execution
   --reviewed-text             Use reviewed host-text receipts; do not invoke inference or Tessl
   --project <directory>       Project root; defaults to the current directory
   --review-evidence <file>    Native training or legacy Tessl Quality evidence
@@ -111,7 +113,7 @@ function takeValue(args: readonly string[], index: number, flag: string): string
 function parse(args: readonly string[], doctor: boolean): StatusArguments | DoctorArguments {
   const values = new Map<string, string>();
   let json = false;
-  let provider: "native" | "reviewed-text" | undefined;
+  let provider: "native" | "reviewed-text" | "reviewed-tool" | undefined;
   const allowed = new Set([
     "--project",
     "--review-evidence",
@@ -121,10 +123,19 @@ function parse(args: readonly string[], doctor: boolean): StatusArguments | Doct
   ]);
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index] as string;
-    if (argument === "--native" || argument === "--reviewed-text") {
+    if (
+      argument === "--native" ||
+      argument === "--reviewed-text" ||
+      argument === "--reviewed-tool"
+    ) {
       if (provider !== undefined)
         throw new InspectUsageError("Select exactly one evidence protocol, once.");
-      provider = argument === "--native" ? "native" : "reviewed-text";
+      provider =
+        argument === "--native"
+          ? "native"
+          : argument === "--reviewed-text"
+            ? "reviewed-text"
+            : "reviewed-tool";
       continue;
     }
     if (argument === "--json") {
@@ -255,11 +266,13 @@ function statusHuman(report: ProjectStatusReport): string {
   const trust = report.submission?.remote?.release?.trust.status ?? "not released";
   const issues = report.issues.map((entry) => `- ${entry.message} [${entry.code}]`).join("\n");
   const protocol =
-    report.gate?.gateType === "skillpress.reviewed-text-release"
-      ? "Reviewed text"
-      : report.gate?.gateType === "skillpress.native-release"
-        ? "Native"
-        : "Tessl";
+    report.gate?.gateType === "skillpress.reviewed-tool-release"
+      ? "Reviewed tool"
+      : report.gate?.gateType === "skillpress.reviewed-text-release"
+        ? "Reviewed text"
+        : report.gate?.gateType === "skillpress.native-release"
+          ? "Native"
+          : "Tessl";
   return `Local release-input readiness: ${report.ready ? "ready" : "blocked"}\nLocal: ${report.local.score}/${report.local.minimum}\n${protocol} gate: ${gate}\nPackage: ${packaged}\nSubmission: ${submission}\nSubmission namespace: ${report.submission?.namespace ?? "not supplied"}\nCurrent trust verified: no\nLast observed release trust: ${trust} (cached, not authoritative)\n${issues === "" ? "" : `${issues}\n`}`;
 }
 

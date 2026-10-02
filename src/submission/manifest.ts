@@ -11,10 +11,11 @@ import type { LoadedSkillPackageArtifacts } from "../package/archive.js";
 import { isSafePathInput } from "../path-safety.js";
 import { prepareNativeEvidence } from "../release/native-evidence.js";
 import { prepareReviewedTextRelease } from "../release/reviewed-text-gate.js";
+import { prepareReviewedToolRelease } from "../release/reviewed-tool-gate.js";
 import type { SkillPressSubmissionManifest } from "./generated-manifest.js";
 
 export interface SubmissionEvidencePaths {
-  readonly provider?: "native" | "reviewed-text";
+  readonly provider?: "native" | "reviewed-text" | "reviewed-tool";
   readonly reviewEvidencePath: string;
   readonly evalEvidencePath: string;
   readonly evalSource: string;
@@ -273,7 +274,9 @@ export async function prepareSkillSubmission(
     ]);
   }
   const evidencePath =
-    evidence.provider === "native" || evidence.provider === "reviewed-text"
+    evidence.provider === "native" ||
+    evidence.provider === "reviewed-text" ||
+    evidence.provider === "reviewed-tool"
       ? /^\.skill-press\/runs\/[a-f0-9]{64}\/evidence[.]json$/u
       : EVIDENCE_PATH;
   if (
@@ -352,9 +355,11 @@ export async function prepareSkillSubmission(
     ]);
   }
   const text =
-    evidence.provider === "reviewed-text"
-      ? await prepareReviewedTextRelease(root, evidence)
-      : undefined;
+    evidence.provider === "reviewed-tool"
+      ? await prepareReviewedToolRelease(root, evidence)
+      : evidence.provider === "reviewed-text"
+        ? await prepareReviewedTextRelease(root, evidence)
+        : undefined;
   if (
     text !== undefined &&
     (!text.report.passed ||
@@ -366,11 +371,13 @@ export async function prepareSkillSubmission(
       text.artifacts.artifactBytes !== artifacts.artifactBytes ||
       text.artifacts.provenanceSha256 !== artifacts.provenanceSha256)
   ) {
-    throw new SubmissionManifestError("Text evidence is not eligible for this exact package.", [
+    throw new SubmissionManifestError("Reviewed evidence is not eligible for this exact package.", [
       issue(
-        "submission.text.binding",
+        evidence.provider === "reviewed-tool"
+          ? "submission.tool.binding"
+          : "submission.text.binding",
         "/evidence",
-        "Passing text evidence must bind the exact current package and evaluation source.",
+        "Passing reviewed evidence must bind the exact current package and evaluation source.",
       ),
     ]);
   }

@@ -27,8 +27,8 @@ container-native evidence. This is not an untrusted-skill sandbox.
 --reviewed-tool --image python@sha256:<64 lowercase hex> checks source-bound
 host-model/isolated-Python measurements using the same private storage rules.
 The image digest is explicitly supplied by the reviewer, never inferred from
-uploaded receipts. No image is pulled or executed. Tool submission admission is
-not yet enabled; passing this advisory check does not authorize publication.
+uploaded receipts. No image is pulled or executed. Use package/submit --reviewed-tool
+for the separate fixed-image admission gate; this check does not authorize publication.
 `;
 
 export async function runNativeCheckCommand(

@@ -21,6 +21,7 @@ Usage:
 
 Options:
   --native                    Use native training/holdout evidence; never invoke Tessl
+  --reviewed-tool             Use tool receipts with the fixed reviewed Python image; no execution
   --reviewed-text             Use source-bound host-text receipts; never run inference or Tessl
   --project <directory>       Project root; defaults to the current directory
   --review-evidence <file>    Native training or legacy Tessl Quality evidence
@@ -45,7 +46,7 @@ export interface GateArguments {
   readonly evalEvidencePath: string;
   readonly evalSource: string;
   readonly json: boolean;
-  readonly provider?: "native" | "reviewed-text";
+  readonly provider?: "native" | "reviewed-text" | "reviewed-tool";
 }
 
 interface PackageOperations {
@@ -97,10 +98,19 @@ function parse(args: readonly string[]): GateArguments {
   const allowed = new Set(["--project", "--review-evidence", "--eval-evidence", "--eval-source"]);
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index] as string;
-    if (argument === "--native" || argument === "--reviewed-text") {
+    if (
+      argument === "--native" ||
+      argument === "--reviewed-text" ||
+      argument === "--reviewed-tool"
+    ) {
       if (provider !== undefined)
         throw new PackageUsageError("Select exactly one evidence protocol, once.");
-      provider = argument === "--native" ? "native" : "reviewed-text";
+      provider =
+        argument === "--native"
+          ? "native"
+          : argument === "--reviewed-text"
+            ? "reviewed-text"
+            : "reviewed-tool";
       continue;
     }
     if (argument === "--json") {
@@ -176,6 +186,8 @@ function gateOptions(args: GateArguments) {
 }
 
 function gateHuman(gate: ReleaseGateReport): string {
+  if (gate.gateType === "skillpress.reviewed-tool-release")
+    return `Reviewed tool release gate: ${gate.passed ? "passed (advisory)" : "blocked"}\nServer validation and independent curator review remain required.\n`;
   if (gate.gateType === "skillpress.reviewed-text-release")
     return `Reviewed text release gate: ${gate.passed ? "passed (advisory)" : "blocked"}\nServer validation and independent curator review remain required.\n`;
   if (gate.gateType === "skillpress.native-release")
