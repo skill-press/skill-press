@@ -2,10 +2,16 @@ import { createHash } from "node:crypto";
 import { afterEach, expect, it, vi } from "vitest";
 vi.mock("../src/eval/codex-text.js", () => ({ runReviewedCodexText: vi.fn() }));
 import { runReviewedCodexText } from "../src/eval/codex-text.js";
+import { CODE_MODE_DISABLED_DIAGNOSTIC } from "../src/eval/codex-transcript.js";
 import { loadProjectConfig } from "../src/config/load.js";
 import { runReviewedToolSuite } from "../src/eval/reviewed-tool-suite.js";
 import { TOOL_ACTION_SCHEMA_JSON } from "../src/eval/tool-action-schema.js";
 import { assessReviewedToolMeasurement } from "../src/release/reviewed-tool-measurement.js";
+import { encodeReviewedToolEvidence } from "../src/release/reviewed-tool-evidence.js";
+import {
+  isReviewedToolEvidence,
+  isReviewedToolEnvelope,
+} from "../src/eval/reviewed-tool-schema.js";
 import type { SkillPressEvaluationSuite } from "../src/eval/generated-suite.js";
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 const now = new Date("2026-10-01T12:00:00.000Z");
@@ -136,6 +142,156 @@ async function fixture(
   return { prepared, measurement, name };
 }
 afterEach(() => vi.resetAllMocks());
+it("retains holdout failures and accepts the known benign diagnostic", async () => {
+  const t = await fixture();
+  const h = await fixture("holdout", 1, 1);
+  const data = JSON.parse(JSON.stringify(t.measurement));
+  data.records[0].pair.selection.response.diagnostics = [CODE_MODE_DISABLED_DIAGNOSTIC];
+  const result = encodeReviewedToolEvidence(t.prepared, data, h.measurement, now);
+  expect(result.report.training.passed).toBe(true);
+  expect(result.report.issues).toEqual(["holdout:tool.impact.failed"]);
+});
+it("strictly checks nested Python records as well as no-tool answers", async () => {
+  const f = await fixture();
+  const data = JSON.parse(JSON.stringify(f.measurement));
+  const actor = data.records[0].pair.baseline.actor;
+  const step = structuredClone(actor.steps[0]);
+  step.action = { kind: "python", code: "print(1)" };
+  step.tool = {
+    kind: "skillpress.reviewed-python-tool.v1",
+    image: f.prepared.image,
+    pythonSha256: hash("print(1)"),
+    inputs: [],
+    skillFiles: [],
+    network: "none",
+    outputStorage: "tmpfs",
+    policy: {
+      timeoutSeconds: 30,
+      cpus: 1,
+      memoryMib: 512,
+      pids: 64,
+      tmpfsMib: 8,
+      shmMib: 16,
+      maxOutputBytes: 65536,
+      maxArtifactBytes: 67108864,
+      maxArtifactFiles: 1024,
+    },
+    execution: {
+      status: "passed",
+      exitCode: 0,
+      signal: null,
+      durationMs: 1,
+      stdoutBytes: 2,
+      stderrBytes: 0,
+      stdoutSha256: hash("1\n"),
+      stderrSha256: hash(""),
+      stdoutText: "1\n",
+      stderrText: "",
+      cleanupAttempted: false,
+      cleanupOk: false,
+    },
+    releaseEligible: false,
+  };
+  actor.steps[0].index = 1;
+  actor.steps.unshift(step);
+  actor.modelInvocations = 2;
+  actor.toolInvocations = 1;
+  // Shape only: this deliberately does not forge a consistent execution transcript.
+  expect(isReviewedToolEvidence(data)).toBe(true);
+  for (const field of ["tool", "execution", "policy", "action"]) {
+    const copy = structuredClone(data);
+    const first = copy.records[0].pair.baseline.actor.steps[0];
+    const target =
+      field === "tool" ? first.tool : field === "action" ? first.action : first.tool[field];
+    target.extra = true;
+    expect(isReviewedToolEvidence(copy)).toBe(false);
+  }
+  delete step.tool;
+  expect(isReviewedToolEvidence(data)).toBe(false);
+});
+it("encodes deterministic separate envelopes and retains quality failure", async () => {
+  const training = await fixture("training", 1, 1);
+  const holdout = await fixture("holdout");
+  const first = encodeReviewedToolEvidence(
+    training.prepared,
+    training.measurement,
+    holdout.measurement,
+    now,
+  );
+  const second = encodeReviewedToolEvidence(
+    training.prepared,
+    training.measurement,
+    holdout.measurement,
+    now,
+  );
+  expect(first.reviewBytes.equals(second.reviewBytes)).toBe(true);
+  expect(first.evaluationBytes.equals(second.evaluationBytes)).toBe(true);
+  expect(isReviewedToolEnvelope(JSON.parse(first.reviewBytes.toString()))).toBe(true);
+  expect(first.report.issues).toEqual(["training:tool.impact.failed"]);
+  expect(first.report.releaseAuthorized).toBe(false);
+});
+it("rejects malformed, mixed and extra-field evidence", async () => {
+  const f = await fixture();
+  for (const value of [
+    null,
+    { ...f.measurement, extra: true },
+    { ...f.measurement, evidenceType: "skillpress.reviewed-text-suite" },
+  ]) {
+    expect(isReviewedToolEvidence(value)).toBe(false);
+    expect(() => encodeReviewedToolEvidence(f.prepared, value, f.measurement, now)).toThrow(
+      "upload contract",
+    );
+  }
+  for (const target of [
+    "source",
+    "artifact",
+    "summary",
+    "pair",
+    "actor",
+    "response",
+    "prompt",
+    "usage",
+  ]) {
+    const data = JSON.parse(JSON.stringify(f.measurement));
+    const actor = data.records[0].pair.baseline.actor;
+    const object =
+      target === "pair"
+        ? data.records[0].pair
+        : target === "actor"
+          ? actor
+          : target === "response"
+            ? actor.steps[0].response
+            : target === "prompt"
+              ? actor.steps[0].prompt
+              : target === "usage"
+                ? actor.steps[0].response.usage
+                : data[target];
+    object.extra = true;
+    expect(isReviewedToolEvidence(data)).toBe(false);
+  }
+});
+it("retains suite run reuse as an explicit failure", async () => {
+  const t = await fixture();
+  const h = await fixture("holdout");
+  h.measurement.runId = t.measurement.runId;
+  for (const [index, record] of h.measurement.records.entries())
+    record.runId = hash(
+      `${h.measurement.runId}:${Math.floor(index / h.measurement.repetitions)}:${record.repetition}`,
+    );
+  expect(
+    encodeReviewedToolEvidence(t.prepared, t.measurement, h.measurement, now).report.issues,
+  ).toContain("tool.pair.run_reuse");
+});
+it("enforces existing byte limit even for structurally valid envelopes", async () => {
+  const t = await fixture();
+  const h = await fixture("holdout");
+  const data = JSON.parse(JSON.stringify(t.measurement));
+  data.records[0].pair.selection.response.text = "界".repeat(400000);
+  expect(isReviewedToolEvidence(data)).toBe(true);
+  expect(() => encodeReviewedToolEvidence(t.prepared, data, h.measurement, now)).toThrow(
+    "upload limit",
+  );
+});
 it("rejects a self-consistent changed answer with a stale judge binding", async () => {
   const f = await fixture();
   const data = JSON.parse(JSON.stringify(f.measurement));
@@ -241,7 +397,7 @@ it.each(["2026-10-01T10:00:00.000Z", "2026-10-08T11:00:00.000Z"])(
 );
 it("rejects weakened minimums and missing categories", async () => {
   const f = await fixture("training", 0.7, 1, (p) => {
-    p.config.evaluation.repetitions = 1;
+    p.config.evaluation.minimumImpactDelta = 0.05;
     p.inputs.training.scenarios = p.inputs.training.scenarios.slice(
       0,
       1,

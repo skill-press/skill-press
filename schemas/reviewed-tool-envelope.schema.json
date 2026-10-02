@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/skill-press/skill-press/main/schemas/reviewed-tool-envelope.schema.json",
+  "title": "SkillPressReviewedToolEnvelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "evidenceType", "advisory", "inputs", "measurement"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "evidenceType": {
+      "const": "skillpress.reviewed-tool-evidence"
+    },
+    "advisory": {
+      "const": true
+    },
+    "inputs": {
+      "$ref": "reviewed-text-envelope.schema.json#/properties/inputs"
+    },
+    "measurement": {
+      "$ref": "reviewed-tool-evidence.schema.json"
+    }
+  }
+}

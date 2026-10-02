@@ -17,6 +17,7 @@ import {
 } from "../eval/text-evaluation.js";
 import { NATIVE_REVIEW_POLICY } from "./native-policy.js";
 import { assessReviewedToolTrajectory } from "./reviewed-tool-trajectory.js";
+import { isReviewedToolEvidence } from "../eval/reviewed-tool-schema.js";
 
 type Prepared = Awaited<ReturnType<typeof prepareReviewedToolProject>>;
 type Measurement = Awaited<ReturnType<typeof runPreparedReviewedToolSuite>>;
@@ -58,6 +59,7 @@ export function assessReviewedToolMeasurement(
 ) {
   const issues = new Set<string>();
   try {
+    assert.ok(isReviewedToolEvidence(input));
     const value = input as Measurement;
     const { config, inputs, skillText, skillFiles, image } = prepared;
     const suite = inputs[suiteName];
