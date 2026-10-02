@@ -1,4 +1,6 @@
-import { stat } from "node:fs/promises";
+import { stat, readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { TOOL_ACTION_SCHEMA_JSON } from "../src/eval/tool-action-schema.js";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -44,6 +46,35 @@ afterEach(() => {
 });
 
 describe("reviewed Codex text pilot transport (no live calls)", () => {
+  it("passes only a private fixed output schema and retains its hash", async () => {
+    let schemaPath = "";
+    run.mockImplementation(async (command) => {
+      if (command.argv[1] === "--version") return result("codex-cli 0.160.0\n");
+      schemaPath = command.argv[command.argv.indexOf("--output-schema") + 1];
+      expect(schemaPath.startsWith(command.cwd)).toBe(true);
+      expect((await stat(schemaPath)).mode & 0o777).toBe(0o600);
+      expect(await readFile(schemaPath, "utf8")).toBe(TOOL_ACTION_SCHEMA_JSON);
+      expect(command.argv).toContain('forced_login_method="chatgpt"');
+      return result(events);
+    });
+    const response = await runReviewedCodexText(
+      "Synthetic tool protocol.",
+      undefined,
+      "tool-action-v1",
+    );
+    expect(response.outputSchemaSha256).toBe(
+      createHash("sha256").update(TOOL_ACTION_SCHEMA_JSON).digest("hex"),
+    );
+    await expect(stat(schemaPath)).rejects.toThrow();
+  });
+
+  it("rejects unknown output schema modes before provider calls", async () => {
+    await expect(
+      runReviewedCodexText("Synthetic.", undefined, "other" as "tool-action-v1"),
+    ).rejects.toThrow("Unknown reviewed output schema");
+    expect(run).not.toHaveBeenCalled();
+  });
+
   const scenario: Scenario = {
     id: "notes",
     category: "positive",

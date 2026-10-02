@@ -98,6 +98,11 @@ empty baseline skill mount, read-only/network boundaries, tmpfs capacity and out
 overflow cleanup. It uses fixed test Python, not model-generated actions, so it
 does not establish model tool use. `runReviewedToolActor` now connects the existing
 host ChatGPT adapter to this primitive using an explicit JSON action protocol.
+Tool actor v2 additionally uses Codex's `--output-schema` with one fixed, private
+schema and records its digest. It still strictly parses the response locally;
+refusal, malformed output or provider/schema failure never enables a fallback.
+The old v1 pilot's plain-text final response remains retained as a failed run.
+See [Codex structured outputs](https://learn.chatgpt.com/docs/non-interactive-mode).
 It permits at most three tool requests/four model attempts, records each prompt,
 response and actual tool result, and never sends expected/forbidden behaviors to
 the actor. Baseline receives the same interpreter without skill files. Normal

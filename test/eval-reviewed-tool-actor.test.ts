@@ -56,8 +56,9 @@ const outcome = (status = "passed", extra = {}) =>
     },
     releaseEligible: false,
   }) as Awaited<ReturnType<typeof runReviewedPythonTool>>;
-const python = JSON.stringify({ kind: "python", code: "print('observed')" });
-const answer = JSON.stringify({ kind: "answer", text: "One data record." });
+const wire = (action: unknown) => JSON.stringify({ action });
+const python = wire({ kind: "python", code: "print('observed')" });
+const answer = wire({ kind: "answer", text: "One data record." });
 afterEach(() => vi.resetAllMocks());
 
 it.each([false, true])(
@@ -82,6 +83,7 @@ it.each([false, true])(
       skillFiles: input(withSkill).skillFiles,
     });
     const first = model.mock.calls[0][0];
+    expect(model.mock.calls.every((call) => call[2] === "tool-action-v1")).toBe(true);
     expect(first).not.toContain("SECRET_EXPECTED");
     expect(first).not.toContain("SECRET_FORBIDDEN");
     expect(first).not.toContain("id\\n001");
@@ -108,12 +110,15 @@ it.each([
   "null",
   "[]",
   "{}",
-  JSON.stringify({ kind: "answer", text: "", extra: true }),
-  JSON.stringify({ kind: "python", code: " " }),
-  JSON.stringify({ kind: "python", code: "x".repeat(65537) }),
-  JSON.stringify({ kind: "answer", text: "x".repeat(24577) }),
+  wire(null),
+  wire([]),
+  wire({}),
+  wire({ kind: "answer", text: "", extra: true }),
+  wire({ kind: "python", code: " " }),
+  wire({ kind: "python", code: "x".repeat(65537) }),
+  wire({ kind: "answer", text: "x".repeat(24577) }),
   "x".repeat(131073),
-  JSON.stringify({ kind: "shell", code: "whoami" }),
+  wire({ kind: "shell", code: "whoami" }),
 ])("rejects malformed action without execution", (text) => {
   expect(() => parseToolActorAction(text)).toThrow();
 });

@@ -24,7 +24,7 @@ type ToolReceipt = Awaited<ReturnType<typeof runReviewedPythonTool>>;
 export interface ToolActorStep {
   readonly index: number;
   readonly prompt: {
-    readonly version: "skillpress.tool-actor.v1";
+    readonly version: "skillpress.tool-actor.v2";
     readonly text: string;
     readonly sha256: string;
   };
@@ -39,7 +39,16 @@ const TOOL_LIMIT = 3;
 
 export function parseToolActorAction(text: string): ToolActorAction {
   if (Buffer.byteLength(text) > 128 * 1024) throw new Error("Tool response is too large.");
-  const value = JSON.parse(text) as Record<string, unknown> | null;
+  const envelope = JSON.parse(text) as Record<string, unknown> | null;
+  if (
+    envelope === null ||
+    typeof envelope !== "object" ||
+    Array.isArray(envelope) ||
+    Object.keys(envelope).length !== 1 ||
+    !("action" in envelope)
+  )
+    throw new Error("Invalid tool envelope.");
+  const value = envelope.action as Record<string, unknown> | null;
   if (
     value === null ||
     typeof value !== "object" ||
@@ -90,8 +99,8 @@ function actorPrompt(input: ReviewedToolActorInput, steps: readonly ToolActorSte
   const text =
     "Complete the user's task in English. You have one harness tool: Python 3 standard library. " +
     "This is a JSON request protocol, not permission to use native Codex tools. " +
-    'Return exactly one JSON object: {"kind":"python","code":"Python source"} to request execution, ' +
-    'or {"kind":"answer","text":"your final answer"}. No Markdown fences or other fields. ' +
+    'Return exactly one JSON object: {"action":{"kind":"python","code":"Python source"}} to request execution, ' +
+    'or {"action":{"kind":"answer","text":"your final answer"}}. No Markdown fences or other fields. ' +
     "Python runs in a fresh network-none container each time, with read-only /input and /skill. " +
     "Only listed files are available; read task files with Python when needed. " +
     "Python may run the provided /skill scripts via subprocess or runpy when present. " +
@@ -106,7 +115,7 @@ function actorPrompt(input: ReviewedToolActorInput, steps: readonly ToolActorSte
     "\n";
   if (Buffer.byteLength(text) > 1024 * 1024)
     throw new Error("Tool prompt exceeds the input limit.");
-  return Object.freeze({ version: "skillpress.tool-actor.v1" as const, text, sha256: hash(text) });
+  return Object.freeze({ version: "skillpress.tool-actor.v2" as const, text, sha256: hash(text) });
 }
 
 /** Bounded first-party experiment. Not a release receipt or source-bound project evaluator.
@@ -150,7 +159,7 @@ export async function runReviewedToolActor(
     await onStep(structuredClone(step));
   };
   const result = (status: "complete" | "failed", answer: string | null, failure?: string) => ({
-    kind: "skillpress.reviewed-tool-actor.v1" as const,
+    kind: "skillpress.reviewed-tool-actor.v2" as const,
     status,
     answer,
     ...(failure === undefined ? {} : { failure }),
@@ -166,7 +175,7 @@ export async function runReviewedToolActor(
     const prompt = actorPrompt(input, steps);
     let response: ModelReceipt;
     try {
-      response = await runReviewedCodexText(prompt.text, signal);
+      response = await runReviewedCodexText(prompt.text, signal, "tool-action-v1");
     } catch {
       await record({ index, prompt, failure: "model_failed" });
       return result("failed", null, "model_failed");

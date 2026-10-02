@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { runCapturedCommand } from "../process/capture.js";
 import { MAX_CODEX_TRANSCRIPT_BYTES, parseCodexTextResponse } from "./codex-transcript.js";
+import { TOOL_ACTION_SCHEMA_JSON } from "./tool-action-schema.js";
 import type { SkillPressEvaluationRubric } from "./generated-rubric.js";
 import type { Scenario } from "./generated-suite.js";
 import { parseEvaluationRubric, parseEvaluationSuite } from "./load.js";
@@ -56,7 +57,13 @@ function validatePairInputs(scenario: Scenario, rubric: SkillPressEvaluationRubr
  * Uses ChatGPT auth on the host, never mounts or copies auth into skill storage.
  * Not exported as an eligible paired-runner backend or exposed by the CLI.
  */
-export async function runReviewedCodexText(text: string, signal?: AbortSignal) {
+export async function runReviewedCodexText(
+  text: string,
+  signal?: AbortSignal,
+  outputSchema?: "tool-action-v1",
+) {
+  if (outputSchema !== undefined && outputSchema !== "tool-action-v1")
+    throw new Error("Unknown reviewed output schema.");
   if (!text.trim() || Buffer.byteLength(text, "utf8") > MAX_CODEX_TRANSCRIPT_BYTES) {
     throw new Error("Codex pilot input must be nonempty and at most 1 MiB.");
   }
@@ -68,6 +75,9 @@ export async function runReviewedCodexText(text: string, signal?: AbortSignal) {
     }),
   );
   try {
+    const schemaPath = join(directory, "output-schema.json");
+    if (outputSchema !== undefined)
+      await writeFile(schemaPath, TOOL_ACTION_SCHEMA_JSON, { mode: 0o600, flag: "wx" });
     const version = await runCapturedCommand({
       argv: ["codex", "--version"],
       cwd: directory,
@@ -89,6 +99,7 @@ export async function runReviewedCodexText(text: string, signal?: AbortSignal) {
         "--strict-config",
         "--ephemeral",
         "--json",
+        ...(outputSchema === undefined ? [] : ["--output-schema", schemaPath]),
         "--skip-git-repo-check",
         "--sandbox",
         "read-only",
@@ -139,6 +150,11 @@ export async function runReviewedCodexText(text: string, signal?: AbortSignal) {
       inputSha256: createHash("sha256").update(text).digest("hex"),
       outputSha256: createHash("sha256").update(response.text).digest("hex"),
       durationMs: result.durationMs,
+      ...(outputSchema === undefined
+        ? {}
+        : {
+            outputSchemaSha256: createHash("sha256").update(TOOL_ACTION_SCHEMA_JSON).digest("hex"),
+          }),
     });
   } finally {
     await rm(directory, { recursive: true, force: true });
