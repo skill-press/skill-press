@@ -47,7 +47,7 @@ describe("launch skill source candidates", () => {
       expect(guide).not.toContain(".skill-press/tessl-evals");
     },
   );
-  it.each(["release-notes", "incident-handoff", "csv-quality-check"])(
+  it.each(["release-notes", "incident-handoff", "csv-quality-check", "ci-revision-triage"])(
     "stages and packages actual %s source in a separate author project",
     async (name) => {
       const root = await mkdtemp(join(tmpdir(), "launch-author-"));
@@ -93,7 +93,7 @@ describe("launch skill source candidates", () => {
     },
   );
 
-  it.each(["release-notes", "incident-handoff", "csv-quality-check"])(
+  it.each(["release-notes", "incident-handoff", "csv-quality-check", "ci-revision-triage"])(
     "validates the complete %s skill tree",
     async (name) => {
       expect(

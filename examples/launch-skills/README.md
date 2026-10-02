@@ -1,6 +1,6 @@
 # Launch skill candidates
 
-These three source candidates are not published releases. They need isolated
+These source candidates are not published releases. They need isolated
 behavioral and review verification; local structural validation is not a quality
 score or admission decision. Their source folders are under `skills/`, independent
 of the repository's existing self-hosted `skill-press` project configuration.
@@ -13,8 +13,17 @@ own project; do not accidentally package the CLI repository's self-hosted skill.
 | `release-notes` | Ask for user-facing release notes using `release-changes.md` | Separate actual change from test-only and reverted changes; identify migration uncertainty | Agent text reasoning; Git only for local revision ranges |
 | `incident-handoff` | Ask for a shift handoff at 10:15 UTC from `incident-records.md` | Preserve conflicting health observations, unconfirmed cause and unassigned work | Agent text reasoning only |
 | `csv-quality-check` | Ask whether `import.csv` is ready for a spreadsheet import | Detect malformed width, blanks, exact duplicate and formula-like content without rewriting | Python 3.10+ standard library and an agent |
+| `ci-revision-triage` | Diagnose the source-derived case in `ci-revision-triage.json` | Locate stale revision/configuration copies and propose the minimal repair without weakening CI | Agent text reasoning; optional read-only Git/CI access |
 
-All examples are synthetic. No external account, network or production resources
+The first three examples are synthetic. The CI case reconstructs an actual
+repository incident with normalized source facts; it is not an external-user
+interview or unseen holdout. The first three candidates failed incremental-gain
+qualification and remain preserved. CI triage is the first replacement candidate,
+not yet evaluated or qualified; the quality thresholds are unchanged. Its input
+and expected outcome are explicit so usefulness can be checked before investing
+in complete paired suites. Do not feed the expected outcome to either actor.
+
+No external account, network or production resources
 are needed. They are portable skill folders for an agent supporting `SKILL.md`;
 specific agent loading/reload behavior is not asserted here. Do not invent live
 `skpress add` locators for these drafts or bypass canonical installation checks.
