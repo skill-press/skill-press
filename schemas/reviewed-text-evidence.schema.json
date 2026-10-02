@@ -418,7 +418,10 @@
       ],
       "properties": {
         "kind": {
-          "const": "skillpress.reviewed-selected-text-pair-pilot"
+          "enum": [
+            "skillpress.reviewed-selected-text-pair-pilot",
+            "skillpress.reviewed-selected-text-pair-pilot.v2"
+          ]
         },
         "baseline": {
           "$ref": "#/definitions/leg"

@@ -148,6 +148,17 @@ continues to reject script-bearing skills.
 
 ### Reviewed text evaluation
 
+New text runs use `skillpress.reviewed-selected-text-pair-pilot.v2`: actor and
+judge both follow the requested task language, preserving code, commands and
+quoted source text. Historical unversioned pair receipts retain their exact v1
+English prompts and hashes. All records and both training/holdout suites must
+share one generation; relabeling or mixing receipts is rejected. The metadata
+selector, source/artifact binding and quality thresholds are unchanged.
+
+The platform must adopt the expanded text schema and matching prompt validation
+before accepting new v2 receipts. An older consumer rejects them; rollback does
+not convert evidence. This is separate from tool actor v3 / judge v2 support.
+
 Generate receipts with the public `eval-text` command after committing and reviewing
 the first-party skill, both suites and rubric. Preview does not invoke models:
 
@@ -270,8 +281,8 @@ actor v2 / judge v1 receipts keep their exact English prompts and hashes. One
 measurement, both paired arms, and its training/holdout set must use the same
 protocol generation. Do not relabel old evidence or combine generations.
 
-This change applies to the tool profile only; the existing text-only v1 profile
-still uses its original English instruction. A platform consumer must adopt this
+The historical text-only v1 profile retains its original English instruction;
+new text runs use the separate v2 pair protocol above. A platform consumer must adopt this
 schema and semantic validation before accepting new v3 tool receipts. Older
 consumers reject the new generation; rollback does not convert its receipts.
 

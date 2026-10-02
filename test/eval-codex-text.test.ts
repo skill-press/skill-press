@@ -135,6 +135,7 @@ describe("reviewed Codex text pilot transport (no live calls)", () => {
     );
     expect(pair).toMatchObject({
       modelInvocations: 5,
+      kind: "skillpress.reviewed-selected-text-pair-pilot.v2",
       releaseEligible: false,
       activationMeasurement: "harness-metadata-selection",
       baseline: { activated: false },
@@ -142,6 +143,10 @@ describe("reviewed Codex text pilot transport (no live calls)", () => {
     });
     const prompts = run.mock.calls.map(([c]) => c.stdin).filter((s) => s !== undefined);
     expect(prompts).toHaveLength(5);
+    for (const index of [1, 2, 3, 4]) {
+      expect(prompts[index]).toContain("language explicitly requested in the task");
+      expect(prompts[index]).not.toContain("in English");
+    }
     for (const index of [0, 1, 2, 4]) expect(prompts[index]).not.toContain("PRIVATE INSTRUCTIONS");
     expect(prompts[3]?.includes("PRIVATE INSTRUCTIONS")).toBe(selected);
     expect(prompts[3]).not.toContain("Decision.");

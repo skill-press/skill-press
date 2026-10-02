@@ -27,6 +27,19 @@ type PassedRecord = Extract<Measurement["records"][number], { status: "passed" }
 type Receipt = PassedRecord["pair"]["baseline"]["actor"];
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 
+/** Identification only; full assessment validates every pair and both receipts. */
+export function reviewedTextMeasurementProtocol(value: unknown): string | null {
+  let field: unknown = value;
+  for (const key of ["records", "0", "pair", "kind"]) {
+    if (field === null || typeof field !== "object") return null;
+    field = (field as Record<string, unknown>)[key];
+  }
+  return field === "skillpress.reviewed-selected-text-pair-pilot" ||
+    field === "skillpress.reviewed-selected-text-pair-pilot.v2"
+    ? field
+    : null;
+}
+
 function receipt(value: Receipt, prompt: TextEvaluationPrompt): void {
   assert.equal(typeof value.text, "string");
   assert.ok(value.text.trim() && Buffer.byteLength(value.text) <= MAX_CODEX_TRANSCRIPT_BYTES);
@@ -134,6 +147,7 @@ export function assessReviewedTextMeasurement(
 
     let baselineSuccesses = 0;
     let withSkillSuccesses = 0;
+    let pairKind: string | undefined;
     for (const [index, scenario] of suite.scenarios.entries()) {
       assert.equal(scenario.fixture?.environment, undefined);
       let before = 0;
@@ -146,7 +160,14 @@ export function assessReviewedTextMeasurement(
         assert.equal(record.scenarioId, scenario.id);
         assert.equal(record.repetition, repetition);
         const pair: PassedRecord["pair"] = record.pair;
-        assert.equal(pair.kind, "skillpress.reviewed-selected-text-pair-pilot");
+        assert.ok(
+          pair.kind === "skillpress.reviewed-selected-text-pair-pilot" ||
+            pair.kind === "skillpress.reviewed-selected-text-pair-pilot.v2",
+        );
+        pairKind ??= pair.kind;
+        assert.equal(pair.kind, pairKind);
+        const language =
+          pair.kind === "skillpress.reviewed-selected-text-pair-pilot" ? "english" : "task";
         assert.equal(pair.modelInvocations, 5);
         assert.equal(pair.releaseEligible, false);
         assert.equal(pair.activationMeasurement, "harness-metadata-selection");
@@ -165,9 +186,10 @@ export function assessReviewedTextMeasurement(
             createTextActorPrompt(
               scenario,
               arm === "withSkill" && pair.selection.selected ? skillText : null,
+              language,
             ),
           );
-          receipt(leg.judge, createTextJudgePrompt(scenario, rubric, leg.actor.text));
+          receipt(leg.judge, createTextJudgePrompt(scenario, rubric, leg.actor.text, language));
           assert.deepEqual(leg.criteria, parseTextJudgeScores(leg.judge.text, rubric));
           const score = recomputeRubricScore(
             leg.activated,

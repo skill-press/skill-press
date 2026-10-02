@@ -173,11 +173,12 @@ export async function runReviewedTextPair(
   signal?: AbortSignal,
 ) {
   validatePairInputs(scenario, rubric);
-  const baselinePrompt = createTextActorPrompt(scenario, null);
-  const skillPrompt = createTextActorPrompt(scenario, skillText);
+  const baselinePrompt = createTextActorPrompt(scenario, null, "task");
+  const skillPrompt = createTextActorPrompt(scenario, skillText, "task");
+  createTextJudgePrompt(scenario, rubric, "Preflight", "task");
   const leg = async (actorPrompt: string) => {
     const actor = await runReviewedCodexText(actorPrompt, signal);
-    const judgePrompt = createTextJudgePrompt(scenario, rubric, actor.text);
+    const judgePrompt = createTextJudgePrompt(scenario, rubric, actor.text, "task");
     const judge = await runReviewedCodexText(judgePrompt.text, signal);
     const criteria = parseTextJudgeScores(judge.text, rubric);
     return Object.freeze({ actor, judge, criteria });
@@ -185,7 +186,7 @@ export async function runReviewedTextPair(
   const baseline = await leg(baselinePrompt.text);
   const withSkill = await leg(skillPrompt.text);
   return Object.freeze({
-    kind: "skillpress.reviewed-text-pair-pilot" as const,
+    kind: "skillpress.reviewed-text-pair-pilot.v2" as const,
     baseline,
     withSkill,
     modelInvocations: 4,
@@ -203,8 +204,9 @@ export async function runReviewedSelectedTextPair(
   validatePairInputs(scenario, rubric);
   const selectionPrompt = createTextSelectionPrompt(scenario, skillText);
   // Validate both possible actor inputs before spending an inference invocation.
-  createTextActorPrompt(scenario, skillText);
-  createTextActorPrompt(scenario, null);
+  createTextActorPrompt(scenario, skillText, "task");
+  createTextActorPrompt(scenario, null, "task");
+  createTextJudgePrompt(scenario, rubric, "Preflight", "task");
   const selection = await runReviewedCodexText(selectionPrompt.text, signal);
   const decision = parseTextSelection(selection.text);
   const pair = await runReviewedTextPair(
@@ -215,7 +217,9 @@ export async function runReviewedSelectedTextPair(
   );
   return Object.freeze({
     ...pair,
-    kind: "skillpress.reviewed-selected-text-pair-pilot" as const,
+    kind: "skillpress.reviewed-selected-text-pair-pilot.v2" as
+      | "skillpress.reviewed-selected-text-pair-pilot"
+      | "skillpress.reviewed-selected-text-pair-pilot.v2",
     selection: Object.freeze({ ...selection, ...decision }),
     skillTextSha256: createHash("sha256").update(skillText).digest("hex"),
     baseline: Object.freeze({ ...pair.baseline, activated: false }),

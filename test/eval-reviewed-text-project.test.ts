@@ -493,28 +493,35 @@ const response = (prompt: TextEvaluationPrompt, text: string) => ({
   durationMs: 1,
 });
 
-async function evidenceFixture(licensed = true, baselineScore = 0.5) {
+async function evidenceFixture(
+  licensed = true,
+  baselineScore = 0.5,
+  language: "english" | "task" = "english",
+) {
   const root = await fixture(licensed);
   const prepared = await prepareReviewedTextProject(root);
   vi.mocked(runReviewedSelectedTextPair).mockImplementation(async (scenario, rubric, text) => {
     const selected = scenario.shouldActivate;
     const leg = (withSkill: boolean) => {
       const actor = response(
-        createTextActorPrompt(scenario, withSkill && selected ? text : null),
+        createTextActorPrompt(scenario, withSkill && selected ? text : null, language),
         "Synthetic answer.",
       );
       const criteria = rubric.criteria
         .filter((c) => c.evaluator === "judge")
         .map((c) => ({ id: c.id, score: withSkill ? 1 : baselineScore, rationale: "Synthetic." }));
       const judge = response(
-        createTextJudgePrompt(scenario, rubric, actor.text),
+        createTextJudgePrompt(scenario, rubric, actor.text, language),
         JSON.stringify({ criteria }),
       );
       return { actor, judge, criteria, activated: withSkill && selected };
     };
     const rationale = "Synthetic selection.";
     return {
-      kind: "skillpress.reviewed-selected-text-pair-pilot",
+      kind:
+        language === "english"
+          ? "skillpress.reviewed-selected-text-pair-pilot"
+          : "skillpress.reviewed-selected-text-pair-pilot.v2",
       baseline: leg(false),
       withSkill: leg(true),
       selection: {
@@ -555,6 +562,38 @@ async function evidenceFixture(licensed = true, baselineScore = 0.5) {
     paths: { trainingEvidencePath: values[0].path, holdoutEvidencePath: values[1].path },
   };
 }
+
+it("checks v2 stored evidence and rejects mixed training/holdout protocol generations", async () => {
+  const f = await evidenceFixture(true, 0.5, "task");
+  expect((await prepareReviewedTextEvidence(f.root, f.paths)).report.passed).toBe(true);
+  const holdout = structuredClone(f.holdout.result);
+  for (const record of holdout.records) {
+    if (record.status !== "passed") throw new Error("Expected passed fixture.");
+    const scenario = holdout.suite.scenarios.find((s) => s.id === record.scenarioId);
+    if (!scenario) throw new Error("Missing fixture scenario.");
+    const pair = record.pair;
+    pair.kind = "skillpress.reviewed-selected-text-pair-pilot";
+    for (const arm of ["baseline", "withSkill"] as const) {
+      const leg = pair[arm];
+      leg.actor.inputSha256 = createTextActorPrompt(
+        scenario,
+        arm === "withSkill" && pair.selection.selected ? f.prepared.skillText : null,
+      ).sha256;
+      leg.judge.inputSha256 = createTextJudgePrompt(
+        scenario,
+        holdout.rubric,
+        leg.actor.text,
+      ).sha256;
+    }
+  }
+  await writeFile(join(f.root, f.holdout.path), JSON.stringify(holdout), { mode: 0o600 });
+  const report = (await prepareReviewedTextEvidence(f.root, f.paths)).report;
+  expect(report.training.passed).toBe(true);
+  expect(report.holdout.passed).toBe(true);
+  expect(report.issues).toEqual(["text.pair.protocol_mismatch"]);
+  expect(report.passed).toBe(false);
+  expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
+});
 
 it("checks a real licensed project and both stored suites through the CLI without inference", async () => {
   const f = await evidenceFixture();

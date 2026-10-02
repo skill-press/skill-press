@@ -11,7 +11,10 @@ import {
   type ImprovementEvidencePaths,
 } from "../improve/project-input.js";
 import { NATIVE_REVIEW_POLICY } from "./native-policy.js";
-import { assessReviewedTextMeasurement } from "./reviewed-text-measurement.js";
+import {
+  assessReviewedTextMeasurement,
+  reviewedTextMeasurementProtocol,
+} from "./reviewed-text-measurement.js";
 
 function runId(value: unknown): string | null {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
@@ -52,8 +55,9 @@ export async function loadReviewedTextEvaluation(
   )
     issues.push("holdout:text.storage.binding");
   if (trainingId !== null && trainingId === holdoutId) issues.push("text.pair.run_reuse");
-  // Both assessments enforce the same fixed model, effort, authentication and
-  // protocol. Pair IDs derive from disjoint suite run IDs, so cannot overlap.
+  if (reviewedTextMeasurementProtocol(training) !== reviewedTextMeasurementProtocol(holdout))
+    issues.push("text.pair.protocol_mismatch");
+  // Each suite validates all records against one protocol; both suites must match.
   await verifyReviewedTextProject(root, prepared);
   const report = Object.freeze({
     schemaVersion: 1 as const,

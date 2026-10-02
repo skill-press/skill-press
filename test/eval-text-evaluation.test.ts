@@ -34,6 +34,42 @@ const score = { id: "accuracy", score: 0.5, rationale: "Missing a migration ques
 const encoded = (criteria: unknown[]) => JSON.stringify({ criteria });
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 
+it("preserves historical actor and judge golden hashes", () => {
+  const task: Scenario = {
+    id: "count",
+    category: "positive",
+    shouldActivate: true,
+    prompt: "Count input records.",
+    expectedBehavior: ["One record."],
+    fixture: { files: [{ path: "data.csv", content: "id\n1\n" }] },
+  };
+  const criteria: SkillPressEvaluationRubric = {
+    schemaVersion: 1,
+    name: "quality",
+    criteria: [{ id: "task", description: "Correct facts", weight: 100, evaluator: "judge" }],
+  };
+  expect(createTextActorPrompt(task, null).sha256).toBe(
+    "76816c7a7f4b049d010c8b0205c339c6430b9a1247be8d50a288da273678956f",
+  );
+  expect(createTextJudgePrompt(task, criteria, "One record.").sha256).toBe(
+    "0002ff786cdad1887f3de4069048754a0b539dec0ee4af2d37c396b9208610d0",
+  );
+});
+it("uses task language only in the explicit v2 protocol", () => {
+  const task = { ...scenario, prompt: "请用中文说明。" };
+  for (const prompt of [
+    createTextActorPrompt(task, null, "task"),
+    createTextJudgePrompt(task, rubric, "说明", "task"),
+  ]) {
+    expect(prompt.version).toBe("skillpress.text-evaluation.v2");
+    expect(prompt.text).toContain("language explicitly requested in the task");
+    expect(prompt.text).not.toContain("in English");
+  }
+  expect(() => createTextActorPrompt(task, null, "unknown" as "task")).toThrow(
+    "Unknown actor language",
+  );
+});
+
 describe("text evaluation actor/judge separation", () => {
   const skill = "---\nname: notes\ndescription: Draft release notes.\n---\nPRIVATE BODY";
 

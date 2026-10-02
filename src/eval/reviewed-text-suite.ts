@@ -7,6 +7,7 @@ import { parseEvaluationRubric, parseEvaluationSuite } from "./load.js";
 import { evaluationInputsSha256, recomputeRubricScore } from "./measurement.js";
 import {
   createTextActorPrompt,
+  createTextJudgePrompt,
   createTextSelectionPrompt,
   textSkillMetadata,
 } from "./text-evaluation.js";
@@ -59,8 +60,9 @@ export async function runReviewedTextSuite(options: ReviewedTextSuiteOptions) {
     if (scenario.fixture?.environment !== undefined)
       throw new Error("Text suites cannot apply fixture environment variables.");
     createTextSelectionPrompt(scenario, skillText);
-    createTextActorPrompt(scenario, skillText);
-    createTextActorPrompt(scenario, null);
+    createTextActorPrompt(scenario, skillText, "task");
+    createTextActorPrompt(scenario, null, "task");
+    createTextJudgePrompt(scenario, rubric, "Preflight", "task");
   }
   const runId = randomBytes(32).toString("hex");
   const createdAt = new Date().toISOString();

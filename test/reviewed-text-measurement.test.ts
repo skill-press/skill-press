@@ -171,6 +171,53 @@ async function fixture(
 }
 afterEach(() => vi.resetAllMocks());
 
+function useTaskLanguage(f: Awaited<ReturnType<typeof fixture>>, count = Infinity) {
+  for (const record of f.measurement.records.slice(0, count)) {
+    if (record.status !== "passed") throw new Error("Expected passed fixture.");
+    const scenario = f.prepared.inputs[f.name].scenarios.find((s) => s.id === record.scenarioId);
+    if (!scenario) throw new Error("Missing fixture scenario.");
+    const pair = record.pair;
+    pair.kind = "skillpress.reviewed-selected-text-pair-pilot.v2";
+    for (const arm of ["baseline", "withSkill"] as const) {
+      const leg = pair[arm];
+      leg.actor.inputSha256 = createTextActorPrompt(
+        scenario,
+        arm === "withSkill" && pair.selection.selected ? skillText : null,
+        "task",
+      ).sha256;
+      leg.judge.inputSha256 = createTextJudgePrompt(
+        scenario,
+        f.prepared.inputs.rubric,
+        leg.actor.text,
+        "task",
+      ).sha256;
+    }
+  }
+}
+it("accepts complete v2 receipts without changing quality outcomes", async () => {
+  const f = await fixture();
+  const original = assessReviewedTextMeasurement(f.measurement, f.prepared, f.name, now);
+  expect(original.passed).toBe(true);
+  useTaskLanguage(f);
+  expect(assessReviewedTextMeasurement(f.measurement, f.prepared, f.name, now)).toEqual(original);
+});
+it("rejects valid receipts from mixed generations across records", async () => {
+  const f = await fixture();
+  useTaskLanguage(f, 1);
+  expect(assessReviewedTextMeasurement(f.measurement, f.prepared, f.name, now).passed).toBe(false);
+});
+it.each(["actor", "judge"] as const)("rejects a legacy %s bound to a v2 pair", async (role) => {
+  const f = await fixture();
+  const original = structuredClone(f.measurement);
+  useTaskLanguage(f);
+  const record = f.measurement.records[0];
+  const old = original.records[0];
+  if (record.status !== "passed" || old.status !== "passed")
+    throw new Error("Expected passed fixture.");
+  record.pair.baseline[role] = old.pair.baseline[role];
+  expect(assessReviewedTextMeasurement(f.measurement, f.prepared, f.name, now).passed).toBe(false);
+});
+
 it.each(["training", "holdout"] as const)(
   "recomputes complete %s quality without authorizing release",
   async (name) => {
