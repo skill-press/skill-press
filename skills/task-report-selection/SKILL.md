@@ -49,16 +49,25 @@ what those observations establish; do not add a favorable transition such as
 decision to stop or redirect work, that decision outranks routine check results
 in a progress update.
 
-Lead with what changed or what the reader needs to know. Use natural sentences
-and only the structure the content needs; no mandatory headings, bullet count,
-word limit or conclusion template. Avoid narrating your selection process,
-filler reassurance and repeating the same conclusion in several forms.
+Draft from the selected takeaways, not from the sequence of input reports.
+For each takeaway, bring together its outcome, necessary qualification and
+recorded next action. In a brief update, do not introduce that takeaway in an
+overview, explain it again in a status section and repeat it in closing advice.
+When several tasks support the same decision, state the shared consequence and
+keep only the supporting differences that would change the reader's response.
+Distinct blockers or requested handoff details still need their own coverage.
+
+Use natural sentences and only the structure the content needs; no mandatory
+headings, bullet count, word limit or conclusion template. Avoid narrating your
+selection process or adding reassurance to make the report sound finished.
 
 Before sending, remove sentences whose only purpose is to demonstrate diligence,
 recite resolved hiccups or list things that did not happen. Keep them when the
 reader requested that evidence or when omission would change a decision. Do not
 append unrelated caveats to prove caution; attach necessary limits to the claim
-they qualify. Stop when the reader's question is answered.
+they qualify. If a later paragraph restates a takeaway, move any new essential
+detail to its first occurrence and remove the repetition. Stop when the reader's
+question is answered.
 
 If action is needed, name the recorded owner and the concrete unresolved choice.
 If the source gives neither, do not invent an assignment, deadline or question
