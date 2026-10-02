@@ -138,7 +138,7 @@ async function bestEffortPrivateMode(path: string, mode: number): Promise<void> 
   }
 }
 
-async function createRunStorage(projectRoot: string, runId: string): Promise<string> {
+export async function createRunStorage(projectRoot: string, runId: string): Promise<string> {
   const skillpressDirectory = join(projectRoot, ".skill-press");
   const runsDirectory = join(skillpressDirectory, "runs");
   try {

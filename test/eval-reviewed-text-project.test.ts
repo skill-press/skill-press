@@ -4,6 +4,7 @@ import {
   chmod,
   cp,
   mkdir,
+  lstat,
   mkdtemp,
   readFile,
   realpath,
@@ -29,6 +30,7 @@ import { runSkillSubmission } from "../src/submission/run.js";
 import type { SkillPressSubmissionResource } from "../src/submission/generated-resource.js";
 import { isReviewedTextEnvelope } from "../src/eval/reviewed-text-schema.js";
 import * as projects from "../src/eval/reviewed-text-project.js";
+import * as capture from "../src/process/capture.js";
 import {
   createTextActorPrompt,
   createTextJudgePrompt,
@@ -42,6 +44,240 @@ import {
 } from "../src/eval/reviewed-text-project.js";
 
 const roots: string[] = [];
+function textIo() {
+  const stdout = vi.fn<(text: string) => void>();
+  const stderr = vi.fn<(text: string) => void>();
+  return { stdout, stderr };
+}
+const textArgs = (root: string) => [
+  "eval-text",
+  "--project",
+  root,
+  "--suite",
+  "holdout",
+  "--reviewed-inputs",
+  "--max-model-calls",
+  "30",
+  "--json",
+];
+
+it.each([
+  [],
+  ["--suite", "unknown"],
+  ["--suite", "training"],
+  ["--suite", "holdout", "--reviewed-inputs"],
+  ["--suite", "holdout", "--max-model-calls", "30"],
+  ["--suite", "holdout", "--dry-run", "--max-model-calls", "0"],
+  ["--suite", "holdout", "--dry-run", "--max-model-calls", "9007199254740992"],
+  ["--dry-run", "--dry-run"],
+  ["--suite", "holdout", "--suite", "training"],
+  ["--unknown"],
+  ["--suite"],
+  ["--project", "--json"],
+])("rejects eval-text usage before inference: %j", async (...args) => {
+  expect(await runCli(["eval-text", ...args], textIo())).toBe(2);
+  expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
+});
+
+it("documents eval-text and handles output failures", async () => {
+  const io = textIo();
+  expect(await runCli(["eval-text", "--help"], io)).toBe(0);
+  expect(io.stdout.mock.calls[0][0]).toContain("--reviewed-inputs");
+  io.stderr.mockImplementation(() => {
+    throw new Error("broken output");
+  });
+  expect(await runCli(["eval-text"], io)).toBe(1);
+  expect(await runCli(textArgs("/nonexistent-eval-project"), io)).toBe(1);
+});
+
+it("previews model cost without invoking models", async () => {
+  const root = await fixture(true);
+  const io = textIo();
+  expect(
+    await runCli(
+      ["eval-text", "--project", root, "--suite", "training", "--dry-run", "--json"],
+      io,
+    ),
+  ).toBe(0);
+  expect(JSON.parse(io.stdout.mock.calls[0][0])).toMatchObject({
+    status: "preview",
+    plannedPairs: 15,
+    plannedModelCalls: 75,
+    releaseAuthorized: false,
+  });
+  expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
+});
+
+it.each(["cap", "readiness", "stdout"])("blocks eval-text before models on %s", async (kind) => {
+  const root = await fixture(kind !== "readiness");
+  const io = textIo();
+  const args = textArgs(root);
+  if (kind === "cap") args[args.indexOf("30")] = "29";
+  if (kind === "stdout") {
+    args.push("--dry-run");
+    args.splice(args.indexOf("--json"), 1);
+    io.stdout.mockImplementation(() => {
+      throw new Error("broken output");
+    });
+  }
+  expect(await runCli(args, io)).toBe(kind === "stdout" ? 1 : 3);
+  expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
+});
+
+it.each(["training", "holdout"] as const)(
+  "persists private %s model receipts through eval-text",
+  async (suite) => {
+    const f = await evidenceFixture();
+    const io = textIo();
+    const args = textArgs(f.root);
+    args[args.indexOf("holdout")] = suite;
+    args[args.indexOf("30")] = "75";
+    expect(await runCli(args, io)).toBe(0);
+    const report = JSON.parse(io.stdout.mock.calls[0][0]);
+    expect(report).toMatchObject({ complete: true, status: "completed", releaseAuthorized: false });
+    expect(runReviewedSelectedTextPair).toHaveBeenCalledTimes(suite === "training" ? 15 : 6);
+    expect((await lstat(join(f.root, report.evidencePath))).mode & 0o777).toBe(0o600);
+    expect((await lstat(join(f.root, report.checkpointPath))).mode & 0o777).toBe(0o700);
+    expect(JSON.parse(await readFile(join(f.root, report.evidencePath), "utf8")).complete).toBe(
+      true,
+    );
+    expect(io.stderr.mock.calls.flat().join("")).not.toContain("Synthetic answer.");
+  },
+);
+
+it.each(["SIGINT", "SIGTERM"] as const)(
+  "cancels eval-text on %s and restores listeners",
+  async (signal) => {
+    const f = await evidenceFixture();
+    const io = textIo();
+    const before = process.listenerCount(signal);
+    io.stderr.mockImplementation((text) => {
+      if (JSON.parse(text).event === "eval-text.started") process.emit(signal);
+    });
+    expect(await runCli(textArgs(f.root), io)).toBe(3);
+    expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
+    expect(process.listenerCount(signal)).toBe(before);
+    expect(JSON.parse(io.stdout.mock.calls[0][0])).toMatchObject({
+      complete: false,
+      status: "blocked",
+    });
+  },
+);
+
+it.each(["SIGINT", "SIGTERM"] as const)(
+  "propagates in-flight %s cancellation without starting another pair",
+  async (event) => {
+    const f = await evidenceFixture();
+    const before = process.listenerCount(event);
+    let aborted = false;
+    vi.mocked(runReviewedSelectedTextPair).mockImplementation(
+      async (_scenario, _rubric, _text, signal) => {
+        expect(signal).toBeInstanceOf(AbortSignal);
+        return new Promise((_resolve, reject) => {
+          signal?.addEventListener(
+            "abort",
+            () => {
+              aborted = true;
+              reject(new Error("cancelled"));
+            },
+            { once: true },
+          );
+          process.emit(event);
+        });
+      },
+    );
+    const io = textIo();
+    expect(await runCli(textArgs(f.root), io)).toBe(3);
+    expect(aborted).toBe(true);
+    expect(runReviewedSelectedTextPair).toHaveBeenCalledTimes(1);
+    expect(process.listenerCount(event)).toBe(before);
+    expect(JSON.parse(io.stdout.mock.calls[0][0])).toMatchObject({
+      complete: false,
+      status: "blocked",
+    });
+  },
+);
+
+it("retains a failed model receipt without exposing provider errors or retrying", async () => {
+  const f = await evidenceFixture();
+  vi.mocked(runReviewedSelectedTextPair).mockRejectedValue(new Error("PRIVATE_PROVIDER_DETAIL"));
+  const io = textIo();
+  expect(await runCli(textArgs(f.root), io)).toBe(3);
+  expect(runReviewedSelectedTextPair).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(io.stdout.mock.calls[0][0])).toMatchObject({ complete: false, summary: null });
+  expect(JSON.stringify([io.stdout.mock.calls, io.stderr.mock.calls])).not.toContain(
+    "PRIVATE_PROVIDER_DETAIL",
+  );
+});
+
+it.each(["quality", "stdout", "oversize"])("handles eval-text final %s outcomes", async (kind) => {
+  const f = await evidenceFixture(true, kind === "quality" ? 1 : 0.5);
+  const io = textIo();
+  const args = textArgs(f.root).filter((arg) => arg !== "--json");
+  if (kind === "stdout")
+    io.stdout.mockImplementation(() => {
+      throw new Error("broken output");
+    });
+  if (kind === "oversize") {
+    const result = structuredClone(f.holdout.result);
+    vi.spyOn(projects, "runPreparedReviewedTextSuite").mockResolvedValue({
+      ...result,
+      ineligibilityReasons: ["x".repeat(1024 * 1024)],
+    });
+  }
+  expect(await runCli(args, io)).toBe(kind === "stdout" ? 1 : 3);
+  if (kind === "quality") expect(io.stdout.mock.calls[0][0]).toContain("Text evaluation blocked");
+});
+
+it("requires ignored capture storage before inference", async () => {
+  const root = await fixture(true);
+  await writeFile(join(root, ".gitignore"), "");
+  expect(await runCli(textArgs(root), textIo())).toBe(3);
+  expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
+});
+
+it("checks the actual final evidence ignore boundary separately", async () => {
+  const f = await evidenceFixture();
+  const original = capture.runCapturedCommand;
+  let refused = "";
+  vi.spyOn(capture, "runCapturedCommand").mockImplementation(async (options) => {
+    if (options.argv[1] === "check-ignore" && options.argv.at(-1)?.endsWith("/evidence.json")) {
+      refused = options.argv.at(-1) as string;
+      return original({
+        ...options,
+        argv: ["git", "check-ignore", "--quiet", "--", "not-ignored"],
+      });
+    }
+    return original(options);
+  });
+  const io = textIo();
+  expect(await runCli(textArgs(f.root), io)).toBe(3);
+  expect(refused).toContain("/evidence.json");
+  await expect(lstat(join(f.root, refused))).rejects.toThrow();
+  expect(io.stdout).not.toHaveBeenCalled();
+});
+
+it.each(["source", "checkpoint", "progress"])(
+  "retains checkpoints without a success report on %s failure",
+  async (kind) => {
+    const f = await evidenceFixture();
+    const io = textIo();
+    io.stderr.mockImplementation(async (text) => {
+      const event = JSON.parse(text);
+      if (event.event === "eval-text.started" && kind === "checkpoint")
+        await mkdir(join(f.root, event.checkpointPath, "pair-1.json"));
+      if (event.event === "eval-text.progress" && kind === "source")
+        await writeFile(join(f.root, "evals/holdout.yaml"), "changed source");
+      if (event.event === "eval-text.progress" && kind === "progress")
+        throw new Error("broken progress");
+    });
+    expect(await runCli(textArgs(f.root), io)).toBe(3);
+    expect(io.stdout).not.toHaveBeenCalled();
+    expect(JSON.parse(io.stderr.mock.calls.at(-1)?.[0] ?? "{}").code).toBe(
+      "text.evaluation.failed",
+    );
+  },
+);
 async function fixture(licensed = false) {
   const root = await mkdtemp(join(await realpath(tmpdir()), "reviewed-text-project-"));
   roots.push(root);

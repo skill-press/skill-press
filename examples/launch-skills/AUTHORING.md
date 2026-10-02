@@ -62,6 +62,14 @@ evidence uses `--native`. Never relabel one as the other. Text admission support
 only SKILL.md and optional LICENSE, so it cannot evaluate `csv-quality-check`'s
 Python script. No provider operation is performed automatically by this example.
 
+For the two text-only skills, `skpress eval-text --project ./candidate --suite
+training --dry-run --json` previews the model call count without inference.
+After reviewing the first-party inputs, use `--reviewed-inputs --max-model-calls
+<preview-count>` instead of `--dry-run`; repeat for `--suite holdout`. See the
+linked guide for backend requirements, private checkpoints and cancellation limits.
+Keep both returned `evidencePath` values. A quality failure remains a failure;
+the command neither submits nor approves a release.
+
 With the resulting real evidence paths, prepare without contacting the registry:
 
 For reviewed text (`release-notes` or `incident-handoff`):

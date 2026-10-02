@@ -82,6 +82,36 @@ limit without changing that integrity boundary.
 
 ## Reviewed text experiments: local assessment only
 
+Generate receipts with the public `eval-text` command after committing and reviewing
+the first-party skill, both suites and rubric. Preview does not invoke models:
+
+```sh
+skpress eval-text --project ./candidate --suite training --dry-run --json
+skpress eval-text --project ./candidate --suite holdout --dry-run --json
+```
+
+Only after reviewing those inputs and the displayed call counts, run each suite
+with an explicit cap (these examples assume five training/two holdout scenarios
+and three repetitions; use your preview's count):
+
+```sh
+skpress eval-text --project ./candidate --suite training --reviewed-inputs --max-model-calls 75 --json
+skpress eval-text --project ./candidate --suite holdout --reviewed-inputs --max-model-calls 30 --json
+```
+
+This uses the existing reviewed Codex CLI 0.160.0 backend, `gpt-6.1-sol` / medium,
+forced ChatGPT login, without Tessl or API-billing fallback. Calls are serial,
+five per pair; the cap bounds harness calls, not provider-internal retries.
+Only SKILL.md and optional LICENSE are supported. This is host-networked execution
+for reviewed first-party inputs, not an untrusted-code sandbox. No project test
+command is executed. Progress goes to stderr; the final report on stdout supplies
+`evidencePath`. Prompts and answers remain in private, Git-ignored files under
+`.skill-press/runs/`, with per-pair checkpoints retained on failure. SIGINT/SIGTERM
+requests cancellation without guaranteeing remote cancellation. No automatic retry
+or resume is performed; do not rerun unchanged quality failures to chase a pass.
+Exit 0 means this suite passed advisory checks (or preview is ready), not publication
+approval. Both suites and subsequent admission checks remain required.
+
 For an operator-reviewed first-party text project, `eval-check --reviewed-text`
 can assess the two source-bound manifests produced by the reviewed text harness:
 
