@@ -1,6 +1,6 @@
 ---
 name: incident-handoff
-description: Turn incident notes, alerts and responder messages into a source-linked shift handoff with current impact, uncertainties and next actions. Use for operational incident handoffs, not fictional outages or unsupported root-cause conclusions.
+description: Turn incident notes, alerts and responder messages into a source-linked shift handoff with current impact, uncertainties and next actions. Use for operational handoffs, including drills with synthetic records and requests that still need source material. Not for creative-writing stories or unrelated summaries.
 license: MIT
 ---
 
