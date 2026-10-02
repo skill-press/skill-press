@@ -9,6 +9,8 @@ import {
   writeFile,
   chmod,
   symlink,
+  lstat,
+  readdir,
 } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -27,6 +29,8 @@ import { prepareReviewedToolEvidence } from "../src/release/reviewed-tool-eviden
 import { runCli } from "../src/cli.js";
 import { runNativeCheckCommand } from "../src/cli/native-check.js";
 import * as checks from "../src/check/project.js";
+import * as toolProjects from "../src/eval/reviewed-tool-project.js";
+import * as capture from "../src/process/capture.js";
 import { TOOL_REVIEW_POLICY } from "../src/release/tool-policy.js";
 import { checkReleaseGate } from "../src/release/gate.js";
 import {
@@ -41,6 +45,243 @@ const image = TOOL_REVIEW_POLICY.image;
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 const git = (root: string, args: string[]) =>
   execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+
+const evalArgs = (root: string) => [
+  "eval-tool",
+  "--project",
+  root,
+  "--suite",
+  "holdout",
+  "--reviewed-inputs",
+  "--max-model-calls",
+  "66",
+  "--json",
+];
+const evalIo = () => ({
+  stdout: vi.fn<(value: string) => void>(),
+  stderr: vi.fn<(value: string) => void>(),
+});
+
+it.each(["SIGINT", "SIGTERM"] as const)(
+  "propagates in-flight tool %s without another call",
+  async (signal) => {
+    const f = await fixture();
+    const before = process.listenerCount(signal);
+    let aborted = false;
+    vi.mocked(runReviewedCodexText).mockImplementation(
+      async (_prompt, inputSignal) =>
+        new Promise((_resolve, reject) => {
+          inputSignal?.addEventListener(
+            "abort",
+            () => {
+              aborted = true;
+              reject(new Error("cancelled"));
+            },
+            { once: true },
+          );
+          process.emit(signal);
+        }),
+    );
+    const io = evalIo();
+    expect(await runCli(evalArgs(f.root), io)).toBe(3);
+    expect(aborted).toBe(true);
+    expect(runReviewedCodexText).toHaveBeenCalledTimes(1);
+    expect(process.listenerCount(signal)).toBe(before);
+    expect(JSON.parse(io.stdout.mock.calls[0][0])).toMatchObject({
+      complete: false,
+      summary: null,
+    });
+  },
+);
+
+it("requires the final tool evidence path to be ignored independently", async () => {
+  const f = await fixture();
+  f.configureProvider("holdout");
+  const original = capture.runCapturedCommand;
+  let refused = "";
+  vi.spyOn(capture, "runCapturedCommand").mockImplementation((options) => {
+    if (options.argv[1] === "check-ignore" && options.argv.at(-1)?.endsWith("/evidence.json")) {
+      refused = options.argv.at(-1) as string;
+      return original({
+        ...options,
+        argv: ["git", "check-ignore", "--quiet", "--", "not-ignored"],
+      });
+    }
+    return original(options);
+  });
+  const io = evalIo();
+  expect(await runCli(evalArgs(f.root), io)).toBe(3);
+  expect(refused).toContain("/evidence.json");
+  await expect(lstat(join(f.root, refused))).rejects.toThrow();
+  expect(io.stdout).not.toHaveBeenCalled();
+});
+
+it.each([
+  [],
+  ["--suite", "unknown"],
+  ["--suite", "training"],
+  ["--suite", "holdout", "--reviewed-inputs"],
+  ["--suite", "holdout", "--max-model-calls", "66"],
+  ["--suite", "training", "--dry-run", "--max-model-calls", "0"],
+  ["--suite", "training", "--dry-run", "--max-model-calls", "9007199254740992"],
+  ["--dry-run", "--dry-run"],
+  ["--suite", "holdout", "--suite", "training"],
+  ["--unknown"],
+  ["--suite"],
+  ["--project", "--json"],
+])("rejects eval-tool usage before inference: %j", async (...flags) => {
+  expect(await runCli(["eval-tool", ...flags], evalIo())).toBe(2);
+  expect(runReviewedCodexText).not.toHaveBeenCalled();
+});
+
+it("documents eval-tool and handles unavailable output", async () => {
+  const io = evalIo();
+  expect(await runCli(["eval-tool", "--help"], io)).toBe(0);
+  expect(io.stdout.mock.calls[0][0]).toContain("eleven per pair");
+  io.stderr.mockImplementation(() => {
+    throw new Error("broken output");
+  });
+  expect(await runCli(["eval-tool"], io)).toBe(1);
+  expect(await runCli(evalArgs("/nonexistent-eval-project"), io)).toBe(1);
+});
+
+it.each(["preview", "cap", "readiness", "stdout"])(
+  "checks eval-tool %s before inference",
+  async (kind) => {
+    const f = await fixture(kind !== "readiness");
+    const io = evalIo();
+    const args = evalArgs(f.root);
+    if (kind === "preview" || kind === "stdout") args.push("--dry-run");
+    if (kind === "cap") args[args.indexOf("66")] = "65";
+    if (kind === "stdout") {
+      args.splice(args.indexOf("--json"), 1);
+      io.stdout.mockImplementation(() => {
+        throw new Error("broken output");
+      });
+    }
+    expect(await runCli(args, io)).toBe(kind === "preview" ? 0 : kind === "stdout" ? 1 : 3);
+    if (kind === "preview")
+      expect(JSON.parse(io.stdout.mock.calls[0][0])).toMatchObject({
+        plannedPairs: 6,
+        plannedModelCalls: 66,
+        image,
+        releaseAuthorized: false,
+      });
+    expect(runReviewedCodexText).not.toHaveBeenCalled();
+  },
+);
+
+it.each(["training", "holdout"] as const)(
+  "persists private tool %s events, pairs and evidence",
+  async (suite) => {
+    const f = await fixture();
+    f.configureProvider(suite);
+    const io = evalIo();
+    const args = evalArgs(f.root);
+    args[args.indexOf("holdout")] = suite;
+    args[args.indexOf("66")] = "165";
+    expect(await runCli(args, io)).toBe(0);
+    const report = JSON.parse(io.stdout.mock.calls[0][0]);
+    expect(report).toMatchObject({ complete: true, status: "completed", releaseAuthorized: false });
+    expect(runReviewedCodexText).toHaveBeenCalledTimes(suite === "training" ? 75 : 30);
+    expect((await lstat(join(f.root, report.evidencePath))).mode & 0o777).toBe(0o600);
+    const directory = join(f.root, report.checkpointPath);
+    expect((await lstat(directory)).mode & 0o777).toBe(0o700);
+    const files = await readdir(directory);
+    expect(files.some((name) => name.startsWith("event-"))).toBe(true);
+    expect(files.filter((name) => name.startsWith("pair-")).length).toBe(
+      suite === "training" ? 15 : 6,
+    );
+    for (const name of files) expect((await lstat(join(directory, name))).mode & 0o777).toBe(0o600);
+    expect(io.stderr.mock.calls.flat().join("")).not.toContain("Synthetic answer.");
+  },
+);
+
+it.each(["SIGINT", "SIGTERM"] as const)(
+  "cancels tool evaluation on %s and restores listeners",
+  async (signal) => {
+    const f = await fixture();
+    const io = evalIo();
+    const before = process.listenerCount(signal);
+    io.stderr.mockImplementation((value) => {
+      if (JSON.parse(value).event === "eval-tool.started") process.emit(signal);
+    });
+    expect(await runCli(evalArgs(f.root), io)).toBe(3);
+    expect(runReviewedCodexText).not.toHaveBeenCalled();
+    expect(process.listenerCount(signal)).toBe(before);
+    expect(JSON.parse(io.stdout.mock.calls[0][0])).toMatchObject({
+      complete: false,
+      summary: null,
+    });
+  },
+);
+
+it.each(["provider", "quality", "stdout", "oversize"])(
+  "retains tool %s failure without retry",
+  async (kind) => {
+    const f = await fixture(true, kind === "quality" ? 1 : 0.5);
+    f.configureProvider("holdout");
+    if (kind === "provider")
+      vi.mocked(runReviewedCodexText).mockRejectedValue(new Error("PRIVATE_PROVIDER_DETAIL"));
+    if (kind === "oversize") {
+      const measurement = JSON.parse(
+        await readFile(join(f.root, f.paths.holdoutEvidencePath), "utf8"),
+      );
+      vi.spyOn(toolProjects, "runPreparedReviewedToolSuite").mockResolvedValue({
+        ...measurement,
+        ineligibilityReasons: ["x".repeat(1048576)],
+      });
+    }
+    const io = evalIo();
+    if (kind === "stdout")
+      io.stdout.mockImplementation(() => {
+        throw new Error("broken output");
+      });
+    expect(
+      await runCli(
+        evalArgs(f.root).filter((arg) => arg !== "--json"),
+        io,
+      ),
+    ).toBe(kind === "stdout" ? 1 : 3);
+    if (kind === "provider") expect(runReviewedCodexText).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify([io.stdout.mock.calls, io.stderr.mock.calls])).not.toContain(
+      "PRIVATE_PROVIDER_DETAIL",
+    );
+  },
+);
+
+it.each(["ignore", "event", "pair", "source", "progress"])(
+  "blocks tool evaluation on %s storage/boundary failure",
+  async (kind) => {
+    const f = await fixture();
+    f.configureProvider("holdout");
+    const io = evalIo();
+    if (kind === "ignore") {
+      const original = capture.runCapturedCommand;
+      vi.spyOn(capture, "runCapturedCommand").mockImplementation((options) =>
+        original(
+          options.argv[1] === "check-ignore"
+            ? { ...options, argv: ["git", "check-ignore", "--quiet", "--", "not-ignored"] }
+            : options,
+        ),
+      );
+    }
+    io.stderr.mockImplementation(async (value) => {
+      const event = JSON.parse(value);
+      if (event.event === "eval-tool.started" && (kind === "event" || kind === "pair"))
+        await mkdir(join(f.root, event.checkpointPath, `${kind}-1.json`));
+      if (event.event === "eval-tool.progress" && kind === "source")
+        await writeFile(join(f.root, "evals/holdout.yaml"), "changed source");
+      if (event.event === "eval-tool.progress" && kind === "progress")
+        throw new Error("broken progress");
+    });
+    expect(await runCli(evalArgs(f.root), io)).toBe(3);
+    expect(io.stdout).not.toHaveBeenCalled();
+    expect(JSON.parse(io.stderr.mock.calls.at(-1)?.[0] ?? "{}").code).toBe(
+      "tool.evaluation.failed",
+    );
+  },
+);
 async function fixture(licensed = true, baseline = 0.5) {
   const root = await mkdtemp(join(await realpath(tmpdir()), "reviewed-tool-check-"));
   roots.push(root);
@@ -75,7 +316,7 @@ async function fixture(licensed = true, baseline = 0.5) {
   ]);
   const prepared = await prepareReviewedToolProject(root, image);
   const paths = { trainingEvidencePath: "", holdoutEvidencePath: "" };
-  for (const suite of ["training", "holdout"] as const) {
+  const configureProvider = (suite: "training" | "holdout") => {
     let calls = 0;
     vi.mocked(runReviewedCodexText).mockImplementation(async (prompt, _signal, schema) => {
       const index = calls++;
@@ -111,6 +352,9 @@ async function fixture(licensed = true, baseline = 0.5) {
         usage: { inputTokens: 10, cachedInputTokens: 1, outputTokens: 2 },
       };
     });
+  };
+  for (const suite of ["training", "holdout"] as const) {
+    configureProvider(suite);
     const result = await runPreparedReviewedToolSuite(root, prepared, suite, {
       onEvent: async () => {},
       onResult: async () => {},
@@ -122,7 +366,7 @@ async function fixture(licensed = true, baseline = 0.5) {
     paths[`${suite}EvidencePath`] = `.skill-press/runs/${result.runId}/evidence.json`;
   }
   vi.mocked(runReviewedCodexText).mockClear();
-  return { root, paths, prepared };
+  return { root, paths, prepared, configureProvider };
 }
 afterEach(async () => {
   vi.restoreAllMocks();

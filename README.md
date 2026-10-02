@@ -130,6 +130,14 @@ Historical Tessl evidence remains a separate compatibility path, not a fallback.
 For reviewed first-party host-model/isolated-Python receipts, use the explicit
 tool profile and the interpreter digest you reviewed before measurement:
 
+Use `skpress eval-tool --suite training --dry-run --json` to preview a tool
+evaluation. After reviewing the skill resources, both suites and rubric, run with
+`--reviewed-inputs --max-model-calls <previewed-maximum>` instead of `--dry-run`.
+Repeat for holdout only when appropriate; do not rerun unchanged quality failures.
+The command uses the fixed reviewed Python image, existing ChatGPT login and
+serial calls, with private checkpoints and cancellation. See the
+[tool evaluation workflow](docs/NATIVE_EVALUATION.md#public-tool-evaluation).
+
 ```bash
 skpress eval-check --reviewed-tool --image python@sha256:<reviewed-digest> \
   --project . \

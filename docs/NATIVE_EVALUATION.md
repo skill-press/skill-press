@@ -249,6 +249,36 @@ advisory receipts under an explicit admission policy; it does not turn historica
 markers into execution attestation or grant release authorization. Quality failures
 remain failures. A passing synthetic lifecycle is not actual launch-skill quality.
 
+## Public tool evaluation
+
+`eval-tool` exposes the existing reviewed first-party tool evaluator. Preview
+before executing; review every skill resource, both suites and the rubric.
+
+```bash
+skpress eval-tool --project ./candidate --suite training --dry-run --json
+# After reviewing inputs, use the previewed maximum (15 pairs would require 165):
+skpress eval-tool --project ./candidate --suite training \
+  --reviewed-inputs --max-model-calls 165 --json
+```
+
+Run holdout separately with its own preview. The fixed image matches the tool
+submission policy below. Each pair permits at most eleven explicit model calls;
+the cap does not measure provider-internal retries. The host model is networked,
+while Python uses the existing Docker isolation and resource/time limits. This
+does not authorize unreviewed third-party inputs. Only existing ChatGPT entitlement
+is used, with fixed gpt-6.1-sol/medium; no paid Tessl/API fallback or automatic retry.
+Dry-run invokes neither models nor containers, though it prepares a local package.
+
+Selection, actor steps/results and judges are written under a private ignored
+checkpoint directory before continuing, followed by private pair records and
+canonical `.skill-press/runs/<run-id>/evidence.json`. Progress contains stage/counts,
+not answers or prompts. SIGINT/SIGTERM forwards cancellation and prevents subsequent
+calls; provider-side cancellation is not guaranteed. Keep partial checkpoints after
+failure. Source changes, persistence errors and incomplete execution cannot produce
+a passed report. Exit 0 is preview readiness or advisory suite success; 3 means
+blocked/incomplete. Both suites and independent curator acceptance are still needed.
+No submission, publication or deployment is performed by this command.
+
 ## Reviewed tool submission
 
 For reviewed first-party tool measurements, `package`, `submit`, `status` and
