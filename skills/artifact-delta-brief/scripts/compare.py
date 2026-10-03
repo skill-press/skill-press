@@ -13,6 +13,7 @@ MAX_ARCHIVE = 32 * 1024 * 1024
 MAX_TOTAL = 64 * 1024 * 1024
 MAX_FILE = 8 * 1024 * 1024
 MAX_MEMBERS = 4096
+MAX_OUTPUT = 64 * 1024
 
 
 def category(name):
@@ -102,12 +103,36 @@ def compare(before, after):
     }
 
 
+def compact(result):
+    """Project a complete comparison, omitting only unchanged member records."""
+    names = sorted(set(result["added"] + result["removed"] + result["changed"]))
+    return {
+        "format": "artifact-delta-brief.compact.v1",
+        "before": {**{k: v for k, v in result["before"].items() if k != "files"},
+                   "fileCount": len(result["before"]["files"])},
+        "after": {**{k: v for k, v in result["after"].items() if k != "files"},
+                  "fileCount": len(result["after"]["files"])},
+        **{k: result[k] for k in ("added", "removed", "changed", "contentChanged",
+                                 "metadataChanged", "semanticChangesVerified")},
+        "members": {name: {"before": result["before"]["files"].get(name),
+                           "after": result["after"]["files"].get(name)} for name in names},
+        "memberRecords": "All added, removed, content-changed and mode-changed members; unchanged records omitted.",
+    }
+
+
 if __name__ == "__main__":
     try:
-        if len(sys.argv) != 3:
-            raise ValueError("Expected before and after tarballs")
+        full = len(sys.argv) == 4 and sys.argv[3] == "--full"
+        if len(sys.argv) != 3 and not full:
+            raise ValueError("Expected before and after tarballs, optionally --full")
         result = compare(sys.argv[1], sys.argv[2])
-        print(json.dumps(result, ensure_ascii=False))
+        encoded = json.dumps(result if full else compact(result), ensure_ascii=False)
+        if not full and len((encoded + "\n").encode("utf-8")) > MAX_OUTPUT:
+            raise OverflowError("Complete compact result exceeds stdout limit")
+        print(encoded)
+    except OverflowError:
+        print(json.dumps({"error": "Complete comparison exceeds 64 KiB; use --full with permitted local storage. No partial result."}), file=sys.stderr)
+        sys.exit(2)
     except (OSError, EOFError, ValueError, TypeError, AttributeError, tarfile.TarError, zlib.error):
         print(json.dumps({"error": "Cannot compare complete supported npm artifacts; no partial result."}), file=sys.stderr)
         sys.exit(2)

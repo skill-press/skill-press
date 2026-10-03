@@ -7,7 +7,7 @@ it("compares complete package payloads without extraction and rejects unsupporte
     [
       "-c",
       `
-import gzip, importlib.util, io, json, pathlib, tarfile, tempfile
+import gzip, importlib.util, io, json, pathlib, subprocess, sys, tarfile, tempfile
 spec = importlib.util.spec_from_file_location("compare", "skills/artifact-delta-brief/scripts/compare.py")
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
@@ -41,6 +41,32 @@ with tempfile.TemporaryDirectory() as directory:
     assert result["semanticChangesVerified"] is False
     assert result["before"]["identity"] == result["after"]["identity"]
     assert result["before"]["sha256"] != result["after"]["sha256"]
+    reduced = module.compact(result)
+    assert reduced["before"]["fileCount"] == reduced["after"]["fileCount"] == 4
+    assert sorted(reduced["members"]) == ["package/a.js", "package/add.txt", "package/mode.js", "package/remove.txt"]
+    for name, sides in reduced["members"].items():
+        assert sides["before"] == result["before"]["files"].get(name)
+        assert sides["after"] == result["after"]["files"].get(name)
+    assert reduced["members"]["package/mode.js"]["after"]["mode"] == 0o755
+    assert reduced["members"]["package/add.txt"]["before"] is None
+    assert reduced["members"]["package/remove.txt"]["after"] is None
+    assert module.compact(module.compare(a, a))["members"] == {}
+    command = [sys.executable, "skills/artifact-delta-brief/scripts/compare.py", str(a), str(b)]
+    assert json.loads(subprocess.check_output(command)) == reduced
+    assert json.loads(subprocess.check_output(command + ["--full"])) == result
+    assert subprocess.run(command + ["--unknown"], capture_output=True).returncode == 2
+    # Many unchanged members used to overwhelm bounded tool stdout.
+    repeated = [entry("package/f%d.js" % n) for n in range(476)]
+    archive(a, [identity] + repeated)
+    archive(b, [identity] + repeated[:-1] + [entry("package/f475.js", b"new")])
+    small = subprocess.check_output(command)
+    large = subprocess.check_output(command + ["--full"])
+    assert len(small) < 65536 < len(large)
+    assert json.loads(small)["contentChanged"] == ["package/f475.js"]
+    archive(b, [identity] + [entry("package/f%d.js" % n, b"new") for n in range(476)])
+    excess = subprocess.run(command, capture_output=True)
+    assert excess.returncode == 2 and excess.stdout == b""
+    assert json.loads(excess.stderr)["error"]
     assert module.compare(a, a)["changed"] == []
     raw = gzip.decompress(a.read_bytes())
     for payload in [raw + raw, raw + b"hidden", raw[:512]]:
