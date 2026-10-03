@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "provenance": "Delegate-authored simplified algorithm example, not a new user report or behavioral qualification. Full real reports remain in coordination diagnostics.",
+  "sources": {
+    "s1": {
+      "order": 1,
+      "text": "发布候选组合已通过离线验证，安装包已在本地留存。下一步完成报告编辑诊断。"
+    },
+    "s2": {
+      "order": 2,
+      "text": "报告编辑诊断已完成，但正文仍包含不需要的过程细节，尚不能证明首发价值。下一步先从原报告抽取有来源的事实，再由脚本生成简报。"
+    }
+  },
+  "facts": [
+    {
+      "id": "candidate",
+      "topic": "release",
+      "key": "candidate",
+      "kind": "outcome",
+      "scope": "offline",
+      "clause": "发布候选组合已通过离线验证",
+      "known": true,
+      "source": { "id": "s1", "quote": "发布候选组合已通过离线验证" }
+    },
+    {
+      "id": "old_action",
+      "topic": "report",
+      "key": "next_action",
+      "kind": "action",
+      "scope": "content_work",
+      "clause": "完成报告编辑诊断",
+      "known": true,
+      "source": { "id": "s1", "quote": "下一步完成报告编辑诊断" }
+    },
+    {
+      "id": "result",
+      "topic": "report",
+      "key": "editing_result",
+      "kind": "outcome",
+      "scope": "content_work",
+      "clause": "报告编辑仍夹带多余过程",
+      "known": false,
+      "source": { "id": "s2", "quote": "报告编辑诊断已完成，但正文仍包含不需要的过程细节" }
+    },
+    {
+      "id": "qualification",
+      "topic": "report",
+      "key": "qualification",
+      "kind": "condition",
+      "scope": "content_work",
+      "clause": "首发价值尚未得到证明",
+      "known": true,
+      "source": { "id": "s2", "quote": "尚不能证明首发价值" },
+      "qualifies": ["result"]
+    },
+    {
+      "id": "new_action",
+      "topic": "report",
+      "key": "next_action",
+      "kind": "action",
+      "scope": "content_work",
+      "clause": "从原报告抽取有来源的事实，再由脚本生成简报",
+      "known": false,
+      "source": { "id": "s2", "quote": "下一步先从原报告抽取有来源的事实，再由脚本生成简报" },
+      "supersedes": ["old_action"]
+    }
+  ],
+  "include": ["candidate", "result", "new_action"]
+}

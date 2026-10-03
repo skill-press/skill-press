@@ -54,6 +54,7 @@ describe("launch skill source candidates", () => {
     "ci-revision-triage",
     "task-report-selection",
     "report-edit",
+    "report-brief",
   ])("stages and packages actual %s source in a separate author project", async (name) => {
     const root = await mkdtemp(join(tmpdir(), "launch-author-"));
     try {
@@ -91,7 +92,9 @@ describe("launch skill source candidates", () => {
       expect(loaded.skillArchive).toBe(`${name}-0.1.0.skill`);
       expect(loaded.skillSha256).toBe(staged.skillSha256);
       expect(loaded.artifactSha256).toBe(packaged.artifactSha256);
-      expect(staged.files.length).toBe(name === "csv-quality-check" ? 2 : 1);
+      expect(staged.files.length).toBe(
+        ["csv-quality-check", "report-brief"].includes(name) ? 2 : 1,
+      );
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -104,6 +107,7 @@ describe("launch skill source candidates", () => {
     "ci-revision-triage",
     "task-report-selection",
     "report-edit",
+    "report-brief",
   ])("validates the complete %s skill tree", async (name) => {
     expect(await validateAgentSkill(resolve("skills", name), { expectedName: name })).toMatchObject(
       {
