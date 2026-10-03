@@ -378,7 +378,13 @@ execution. Status `input-preview` means only that these inputs were prepared;
 `readinessAssessed: false` and `executionSupported: false` are intentional.
 
 V2 execution currently returns exit 3 with `tool.file_fixtures.execution_not_supported`.
-Model prompts, independent file-reading judges, evaluation receipts and server admission
-are not implemented for this version. Existing `check`, native/text evaluation and
+An internal `reviewed-file-pair` primitive now implements versioned selection/actor/judge
+prompts and isolated original-byte access. Each judge has its own tool history and no
+Skill resources or other-arm answer. The pair permits at most 17 model calls and three
+Python calls per actor/judge, persists each requested tool action before execution,
+and stops on persistence, model or infrastructure failure without retry. A successful
+judge tool call is required when files exist; it does not prove adequate semantic review.
+This primitive is not wired into public execution, suite checkpoints or admission and
+always reports `releaseEligible: false`. Existing `check`, native/text evaluation and
 release gates still reject v2 suites. Do not treat preview success as evaluation
 readiness, content qualification or permission to submit. No production support is claimed.
