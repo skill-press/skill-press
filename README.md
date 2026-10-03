@@ -46,8 +46,13 @@ build this checkout:
 ```bash
 npm ci --ignore-scripts
 npm run build
+node dist/bin.js --version
 node dist/bin.js --help
 ```
+
+When following this branch's guides, replace `skpress` with
+`node "/absolute/path/to/this/checkout/dist/bin.js"` to use that build from an author project.
+Building the checkout does not update an existing globally installed `skpress`.
 
 To install the currently published CLI instead:
 
