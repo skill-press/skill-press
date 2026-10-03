@@ -39,8 +39,9 @@ owner; the production service verifies that the authenticated submitter controls
 ## Current development setup
 
 Use Node.js 22 or newer. Linux is the current compatibility baseline; macOS and Windows are not yet
-release gates. Until the first formal `@skill-press/cli` release, build the executable from this
-repository:
+release gates. This branch prepares CLI 0.1.2. The npm registry check on 2026-10-02 found
+`latest` at 0.1.1 and no published 0.1.2. To use the candidate features described in this branch,
+build this checkout:
 
 ```bash
 npm ci --ignore-scripts
@@ -48,15 +49,16 @@ npm run build
 node dist/bin.js --help
 ```
 
-After the package is formally released, the intended installation is:
+To install the currently published CLI instead:
 
 ```bash
 npm install --global @skill-press/cli
 skpress --help
 ```
 
-The package name is fixed, but this README does not claim that a production npm release is already
-available.
+Check `npm view @skill-press/cli version` for the current published version; do not assume it
+includes this branch's candidate features. Installing the CLI does not make the production
+registry available: the service limitation above still applies.
 
 ## First installation of a Skill
 
@@ -84,7 +86,8 @@ into the agent's skill directory: that would bypass the current-trust check.
 Create a project from a complete, strictly validated capability brief. Start with
 the [complete brief example](test/fixtures/create/complete-brief.yaml), replacing
 its sample identity, namespace, outcomes and tests with your own. For an existing
-launch skill, follow [author preparation](examples/launch-skills/AUTHORING.md).
+launch skill, start with [what is available and what you can prepare](examples/launch-skills/AUTHORING.md#before-you-start),
+then follow that guide's author-project steps.
 
 ```bash
 skpress init --brief capability-brief.yaml --output ./my-skill

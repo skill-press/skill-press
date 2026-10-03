@@ -1,10 +1,33 @@
 # Preparing one launch skill for submission
 
-Work on one skill per author project. The three folders in this repository are
-source candidates, not three releases of the CLI's own `skill-press.yaml` project.
-Do not run package at the CLI repository root expecting to submit another skill.
+## Before you start
+
+### What is available today?
+
+The npm check on 2026-10-02 found CLI 0.1.1 published; this guide targets the
+unreleased 0.1.2 [repository build](../../README.md#current-development-setup).
+The canonical registry is not live yet, so an installed CLI does not establish
+availability of online submission or installation.
+
+### What can I prepare before the registry opens?
+
+Create [one author project](#create-and-populate-the-author-project) with your own
+identity, namespace, license and scenarios, then follow the local checks and
+[evidence/dry-run steps](#evidence-and-dry-run-submission) below. Do not package
+the CLI repository root expecting to submit a different Skill.
+
+### What is still required before my Skill is published?
+
+Qualifying training and holdout evidence, independent corroboration and curator
+approval remain required; actual submission also needs a live service and valid
+author authority. Draft examples, local checks and successful dry-runs are not
+publication or proof of qualifying quality.
 
 ## Create and populate the author project
+
+Work on one skill per author project. The original `release-notes`,
+`incident-handoff` and `csv-quality-check` examples, and the later experimental
+Skill folders, are source candidates, not releases of the CLI's own `skill-press.yaml` project.
 
 Start from the [complete brief example](../../test/fixtures/create/complete-brief.yaml).
 Set the skill name, real repository/author, requested namespace and license to the
