@@ -21,7 +21,11 @@ function freeze<T>(value: T): T {
   return value;
 }
 
-async function readResources(root: string, staged: StagedCanonicalSkill, image: string) {
+export async function readReviewedToolResources(
+  root: string,
+  staged: StagedCanonicalSkill,
+  image: string,
+) {
   const skillFiles = await Promise.all(
     staged.files.map(async (file) => {
       const bytes = await readFile(join(root, staged.stagingPath, staged.skillPath, file.path));
@@ -48,7 +52,7 @@ export async function prepareReviewedToolProject(projectDirectory: string, image
   const config = await loadProjectConfig(root);
   const inputs = await loadProjectEvaluationInputs(root);
   const staged = await stageCanonicalSkill(root);
-  const resources = await readResources(root, staged, image);
+  const resources = await readReviewedToolResources(root, staged, image);
   for (const suite of [inputs.training, inputs.holdout]) {
     if (suite.skill !== config.skill.name) throw new Error("Tool suite skill identity differs.");
     for (const scenario of suite.scenarios)
@@ -88,7 +92,7 @@ export async function verifyReviewedToolProject(
   // Canonical staging enumerates the entire tracked tree, so omitted/extra resources
   // cannot pass by merely presenting a self-consistent list of content hashes.
   const staged = await stageCanonicalSkill(root);
-  const resources = await readResources(root, staged, prepared.image);
+  const resources = await readReviewedToolResources(root, staged, prepared.image);
   if (
     !same(source, prepared.source) ||
     !same(config, prepared.config) ||

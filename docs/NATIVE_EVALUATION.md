@@ -387,8 +387,11 @@ judge tool call is required when files exist; it does not prove adequate semanti
 The internal `reviewed-file-suite` runner preflights every scenario before inference,
 enforces a whole-suite model-call budget, runs repetitions serially, and awaits event
 and pair-result persistence callbacks before continuing. Failures stop the suite;
-partial runs have no success-rate summary. These callbacks still need project-bound
-private storage and public-command integration. Neither primitive is wired into public
+partial runs have no success-rate summary. `reviewed-file-project` captures both v2
+suites, original bytes, canonical Skill resources, config and rubric from one clean
+committed source. Entry and exit checks (including exceptional exits) revalidate that
+capture; these checks do not run between model calls. Checkpoint callbacks still need
+private on-disk storage and public-command integration. These primitives are not wired into public
 execution or admission; both report `releaseEligible: false`. Existing `check`, native/text evaluation and
 release gates still reject v2 suites. Do not treat preview success as evaluation
 readiness, content qualification or permission to submit. No production support is claimed.

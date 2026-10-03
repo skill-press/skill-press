@@ -14,6 +14,12 @@ import {
 import { parseEvaluationSuite } from "../src/eval/load.js";
 import * as configLoader from "../src/config/load.js";
 import * as staging from "../src/package/stage.js";
+import * as fileSuiteRunner from "../src/eval/reviewed-file-suite.js";
+import {
+  prepareReviewedFileProject,
+  verifyReviewedFileProject,
+  runPreparedReviewedFileSuite,
+} from "../src/eval/reviewed-file-project.js";
 vi.mock("../src/eval/codex-text.js", () => ({
   runReviewedCodexText: vi.fn(),
   runReviewedSelectedTextPair: vi.fn(),
@@ -91,6 +97,106 @@ async function fixture() {
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
   vi.restoreAllMocks();
+});
+
+it("binds both file suites and all skill resources to the committed project", async () => {
+  const root = await fixture();
+  const prepared = await prepareReviewedFileProject(root, `python@sha256:${"a".repeat(64)}`);
+  expect(prepared.training.files[0]?.files[0]?.content).toEqual(new Uint8Array(data));
+  expect(prepared.holdout.definition.suite).toBe("holdout");
+  expect(prepared.skillFiles.some((file) => file.path === "SKILL.md")).toBe(true);
+  await verifyReviewedFileProject(root, structuredClone(prepared));
+  const runner = vi
+    .spyOn(fileSuiteRunner, "runReviewedFileSuite")
+    .mockResolvedValue({ complete: true, releaseEligible: false } as never);
+  const callbacks = {
+    onEvent: vi.fn(),
+    onResult: vi.fn(),
+    suite: { skill: "injected" },
+    files: [],
+    maxModelCalls: 999999,
+  };
+  const result = await runPreparedReviewedFileSuite(root, prepared, "holdout", 1000, callbacks);
+  expect(result).toMatchObject({ source: prepared.source, complete: true, releaseEligible: false });
+  expect(runner.mock.calls[0]?.[0]).toMatchObject({
+    suite: prepared.holdout.definition,
+    maxModelCalls: 1000,
+    repetitions: prepared.config.evaluation.repetitions,
+    files: prepared.holdout.files,
+  });
+  expect(runReviewedCodexText).not.toHaveBeenCalled();
+});
+
+it.each(["memory", "source", "suite"])(
+  "rejects changed %s before suite execution",
+  async (kind) => {
+    const root = await fixture();
+    const prepared = await prepareReviewedFileProject(root, `python@sha256:${"a".repeat(64)}`);
+    const runner = vi.spyOn(fileSuiteRunner, "runReviewedFileSuite");
+    if (kind === "memory") prepared.skillText += "changed";
+    if (kind === "source")
+      await writeFile(join(root, "evals/fixtures/training/input.bin"), "changed");
+    await expect(
+      runPreparedReviewedFileSuite(
+        root,
+        prepared,
+        kind === "suite" ? ("bad" as never) : "training",
+        1000,
+        { onEvent: vi.fn(), onResult: vi.fn() },
+      ),
+    ).rejects.toThrow();
+    expect(runner).not.toHaveBeenCalled();
+  },
+);
+
+it.each([true, false])("checks source on exit when suite throws=%s", async (throws) => {
+  const root = await fixture();
+  const prepared = await prepareReviewedFileProject(root, `python@sha256:${"a".repeat(64)}`);
+  vi.spyOn(fileSuiteRunner, "runReviewedFileSuite").mockImplementation(async () => {
+    await writeFile(join(root, "evals/fixtures/holdout/input.bin"), "changed");
+    if (throws) throw new Error("suite failed");
+    return { complete: true } as never;
+  });
+  await expect(
+    runPreparedReviewedFileSuite(
+      root,
+      prepared,
+      "training",
+      1000,
+      { onEvent: vi.fn(), onResult: vi.fn() },
+      new AbortController().signal,
+    ),
+  ).rejects.toThrow("Native release inputs must be clean and tracked.");
+});
+
+it("rejects a mixed v1/v2 project before model execution", async () => {
+  const root = await fixture();
+  await writeFile(
+    join(root, "evals/holdout.yaml"),
+    stringify({ ...suite("holdout"), schemaVersion: 1 }),
+  );
+  commit(root);
+  await expect(prepareReviewedFileProject(root, `python@sha256:${"a".repeat(64)}`)).rejects.toThrow(
+    "Both file suites",
+  );
+});
+
+it("rejects a commit changed during project preparation", async () => {
+  const root = await fixture();
+  const original = staging.stageCanonicalSkill;
+  let first = true;
+  vi.spyOn(staging, "stageCanonicalSkill").mockImplementation(async (...args) => {
+    const result = await original(...args);
+    if (first) {
+      first = false;
+      await writeFile(join(root, "README.md"), "source changed");
+      commit(root);
+    }
+    return result;
+  });
+  await expect(prepareReviewedFileProject(root, `python@sha256:${"a".repeat(64)}`)).rejects.toThrow(
+    "changed during preparation",
+  );
 });
 
 it("previews exact original bytes through the CLI, but blocks model execution and v1 admission", async () => {
