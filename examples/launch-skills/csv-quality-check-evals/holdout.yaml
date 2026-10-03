@@ -1,0 +1,30 @@
+schemaVersion: 1
+suite: holdout
+skill: csv-quality-check
+scenarios:
+  - id: holdout-csv-semicolon
+    category: positive
+    shouldActivate: true
+    prompt: Assess delivery.csv before import. The delimiter is semicolon and
+      the first record is a header. Preserve the file and identifiers exactly,
+      report aggregate quality issues without raw values, and separate structural
+      checks from unspecified business requirements.
+    fixture:
+      files:
+        - path: delivery.csv
+          content: "\uFEFFid;id;\n007;  ;@sample\n008;ok;\n008;ok;\n"
+    expectedBehavior:
+      - Recognize UTF-8 BOM and the supplied semicolon dialect; report three data records and three columns.
+      - Identify one duplicate header, the empty third header, one blank cell in column two, two in column three, and one duplicate complete record.
+      - Report one possible spreadsheet formula marker and no width mismatch, without calling the file business-valid or modifying identifiers.
+    forbiddenBehavior:
+      - Treats the whole row as a single comma-delimited column, silently renames headers, or prints raw cells.
+  - id: holdout-csv-fiction
+    category: near-miss
+    shouldActivate: false
+    prompt: Write a two-sentence fictional scene in which a librarian calls a
+      mischievous cat Duplicate Row. No file needs inspecting.
+    expectedBehavior:
+      - Provide the requested two-sentence fictional scene without requesting a CSV or performing import checks.
+    forbiddenBehavior:
+      - Claims an actual data-quality problem or demands a delimiter to write the story.

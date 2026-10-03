@@ -9,9 +9,13 @@ import { loadProjectConfig } from "../config/load.js";
 import { digestBoundedTree } from "../evidence/tree-digest.js";
 import type { LoadedSkillPackageArtifacts } from "../package/archive.js";
 import { isSafePathInput } from "../path-safety.js";
+import { prepareNativeEvidence } from "../release/native-evidence.js";
+import { prepareReviewedTextRelease } from "../release/reviewed-text-gate.js";
+import { prepareReviewedToolRelease } from "../release/reviewed-tool-gate.js";
 import type { SkillPressSubmissionManifest } from "./generated-manifest.js";
 
 export interface SubmissionEvidencePaths {
+  readonly provider?: "native" | "reviewed-text" | "reviewed-tool";
   readonly reviewEvidencePath: string;
   readonly evalEvidencePath: string;
   readonly evalSource: string;
@@ -269,58 +273,117 @@ export async function prepareSkillSubmission(
       ),
     ]);
   }
+  const evidencePath =
+    evidence.provider === "native" ||
+    evidence.provider === "reviewed-text" ||
+    evidence.provider === "reviewed-tool"
+      ? /^\.skill-press\/runs\/[a-f0-9]{64}\/evidence[.]json$/u
+      : EVIDENCE_PATH;
   if (
-    !EVIDENCE_PATH.test(evidence.reviewEvidencePath) ||
-    !EVIDENCE_PATH.test(evidence.evalEvidencePath)
+    !evidencePath.test(evidence.reviewEvidencePath) ||
+    !evidencePath.test(evidence.evalEvidencePath)
   ) {
     throw new SubmissionManifestError("Submission evidence paths are invalid.", [
       issue(
         "submission.evidence.path",
         "/evidence",
-        "evidence must use private content-addressed Tessl storage",
+        "evidence must use private storage for the selected evaluation protocol",
       ),
     ]);
   }
   await canonicalProjectPath(root, artifacts.artifactsPath, "/package");
-  const [artifactBytes, provenanceBytes, checksumsBytes, reviewEvidenceBytes, evalEvidenceBytes] =
-    await Promise.all([
-      readStableProjectFile(
-        root,
-        `${artifacts.artifactsPath}/${artifacts.skillArchive}`,
-        "/package/artifact",
-        "artifact",
-      ),
-      readStableProjectFile(
-        root,
-        `${artifacts.artifactsPath}/${artifacts.provenance}`,
-        "/package/provenance",
-        "provenance",
-        MAX_PROVENANCE_BYTES,
-      ),
-      readStableProjectFile(
-        root,
-        `${artifacts.artifactsPath}/${artifacts.checksums}`,
-        "/package/checksums",
-        "checksums",
-        MAX_CHECKSUMS_BYTES,
-      ),
-      readStableProjectFile(
-        root,
-        evidence.reviewEvidencePath,
-        "/evidence/review",
-        "review-evidence",
-        1024 * 1024,
-      ),
-      readStableProjectFile(
-        root,
-        evidence.evalEvidencePath,
-        "/evidence/evaluation",
-        "eval-evidence",
-        1024 * 1024,
-      ),
-    ]);
+  const [
+    artifactBytes,
+    provenanceBytes,
+    checksumsBytes,
+    rawReviewEvidenceBytes,
+    rawEvalEvidenceBytes,
+  ] = await Promise.all([
+    readStableProjectFile(
+      root,
+      `${artifacts.artifactsPath}/${artifacts.skillArchive}`,
+      "/package/artifact",
+      "artifact",
+    ),
+    readStableProjectFile(
+      root,
+      `${artifacts.artifactsPath}/${artifacts.provenance}`,
+      "/package/provenance",
+      "provenance",
+      MAX_PROVENANCE_BYTES,
+    ),
+    readStableProjectFile(
+      root,
+      `${artifacts.artifactsPath}/${artifacts.checksums}`,
+      "/package/checksums",
+      "checksums",
+      MAX_CHECKSUMS_BYTES,
+    ),
+    readStableProjectFile(
+      root,
+      evidence.reviewEvidencePath,
+      "/evidence/review",
+      "review-evidence",
+      1024 * 1024,
+    ),
+    readStableProjectFile(
+      root,
+      evidence.evalEvidencePath,
+      "/evidence/evaluation",
+      "eval-evidence",
+      1024 * 1024,
+    ),
+  ]);
   const evalSource = await canonicalProjectPath(root, evidence.evalSource, "/evidence/evalSource");
   const evalSourceSha256 = await digestBoundedTree(evalSource);
+  const native =
+    evidence.provider === "native" ? await prepareNativeEvidence(root, evidence) : undefined;
+  if (
+    native !== undefined &&
+    (!native.report.passed ||
+      native.report.sourceCommit !== artifacts.sourceCommit ||
+      native.review.source.projectConfigSha256 !== artifacts.projectConfigSha256 ||
+      native.review.source.skillSha256 !== artifacts.skillSha256 ||
+      native.review.source.evalSourceSha256 !== evalSourceSha256)
+  ) {
+    throw new SubmissionManifestError("Native evidence is not eligible for this exact package.", [
+      issue(
+        "submission.native.binding",
+        "/evidence",
+        "passing native evidence must bind the exact current package and evaluation source",
+      ),
+    ]);
+  }
+  const text =
+    evidence.provider === "reviewed-tool"
+      ? await prepareReviewedToolRelease(root, evidence)
+      : evidence.provider === "reviewed-text"
+        ? await prepareReviewedTextRelease(root, evidence)
+        : undefined;
+  if (
+    text !== undefined &&
+    (!text.report.passed ||
+      text.source.commit !== artifacts.sourceCommit ||
+      text.source.projectConfigSha256 !== artifacts.projectConfigSha256 ||
+      text.source.skillSha256 !== artifacts.skillSha256 ||
+      text.source.evalSourceSha256 !== evalSourceSha256 ||
+      text.artifacts.artifactSha256 !== artifacts.artifactSha256 ||
+      text.artifacts.artifactBytes !== artifacts.artifactBytes ||
+      text.artifacts.provenanceSha256 !== artifacts.provenanceSha256)
+  ) {
+    throw new SubmissionManifestError("Reviewed evidence is not eligible for this exact package.", [
+      issue(
+        evidence.provider === "reviewed-tool"
+          ? "submission.tool.binding"
+          : "submission.text.binding",
+        "/evidence",
+        "Passing reviewed evidence must bind the exact current package and evaluation source.",
+      ),
+    ]);
+  }
+  const reviewEvidenceBytes = text?.reviewBytes ?? native?.reviewBytes ?? rawReviewEvidenceBytes;
+  const evalEvidenceBytes =
+    text?.evaluationBytes ?? native?.evaluationBytes ?? rawEvalEvidenceBytes;
   if (
     artifactBytes.byteLength !== artifacts.artifactBytes ||
     sha256(artifactBytes) !== artifacts.artifactSha256 ||

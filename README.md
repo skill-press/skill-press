@@ -39,31 +39,64 @@ owner; the production service verifies that the authenticated submitter controls
 ## Current development setup
 
 Use Node.js 22 or newer. Linux is the current compatibility baseline; macOS and Windows are not yet
-release gates. Until the first formal `@skill-press/cli` release, build the executable from this
-repository:
+release gates. This branch prepares CLI 0.1.2. The npm registry check on 2026-10-02 found
+`latest` at 0.1.1 and no published 0.1.2. To use the candidate features described in this branch,
+build this checkout:
 
 ```bash
 npm ci --ignore-scripts
 npm run build
+node dist/bin.js --version
 node dist/bin.js --help
 ```
 
-After the package is formally released, the intended installation is:
+When following this branch's guides, replace `skpress` with
+`node "/absolute/path/to/this/checkout/dist/bin.js"` to use that build from an author project.
+Building the checkout does not update an existing globally installed `skpress`.
+
+To install the currently published CLI instead:
 
 ```bash
 npm install --global @skill-press/cli
 skpress --help
 ```
 
-The package name is fixed, but this README does not claim that a production npm release is already
-available.
+Check `npm view @skill-press/cli version` for the current published version; do not assume it
+includes this branch's candidate features. Installing the CLI does not make the production
+registry available: the service limitation above still applies.
+
+## First installation of a Skill
+
+Once the registry is live, start in the project where your agent will use the skill.
+Discovery and installation do not require an author token.
+
+1. Run `skpress discover` (or `skpress discover <name>`) and choose an exact release.
+2. In a Git project, add `.agents/skills/` to `.gitignore` before installing. Keep
+   this directory untracked; it contains locally derived installed files.
+3. Run the `skpress add namespace/skill@version` command shown by discovery.
+4. Commit `skill-lock.json` and the ignore rule. On another machine or clone, run
+   `skpress install` to restore the locked releases with fresh trust verification.
+
+Installed skills live under `.agents/skills/`. Use an agent that supports discovery
+from that directory, and follow its reload/start-session behavior. Skill Press does
+not launch an agent or prove that an agent has loaded the installed skill.
+
+An empty discovery list means no releases were returned; a connection or integrity
+error is a failed lookup, not an empty registry. A quarantined or revoked release is
+not installable. Do not work around an installation failure by copying mirror files
+into the agent's skill directory: that would bypass the current-trust check.
 
 ## Workflow
 
-Create a project from a complete, strictly validated capability brief:
+Create a project from a complete, strictly validated capability brief. Start with
+the [complete brief example](test/fixtures/create/complete-brief.yaml), replacing
+its sample identity, namespace, outcomes and tests with your own. For an existing
+launch skill, start with [what is available and what you can prepare](examples/launch-skills/AUTHORING.md#before-you-start),
+then follow that guide's author-project steps.
 
 ```bash
 skpress init --brief capability-brief.yaml --output ./my-skill
+cd ./my-skill
 ```
 
 The brief must contain a registry namespace plus real outcomes, boundaries, tests, and evaluation
@@ -94,34 +127,77 @@ skpress improve --training-evidence <training-evidence.json> \
   --evaluator-command <evaluator>
 ```
 
-Capture current official Tessl evidence with a pinned binary:
+Check native training and holdout evidence without Tessl:
 
 ```bash
-skpress tessl review --project . --workspace <workspace> \
-  --executable <absolute-versioned-tessl-binary>
-skpress tessl eval --project . --source .skill-press/tessl-evals/<set> \
-  --executable <absolute-versioned-tessl-binary>
+skpress eval-check \
+  --training-evidence .skill-press/runs/<training-run>/evidence.json \
+  --holdout-evidence .skill-press/runs/<holdout-run>/evidence.json
 ```
 
-Skill Press currently trusts official Tessl CLI 0.101.0 by executable digest. Tessl is an evidence
-provider, not a publication destination. See the [Tessl evidence contract](docs/TESSL.md).
+See [native evaluation](docs/NATIVE_EVALUATION.md) for backend prerequisites, policy,
+source binding and the independent-review boundary. No paid Tessl evaluation is required.
+Historical Tessl evidence remains a separate compatibility path, not a fallback.
 
-Package an exact candidate only after the release gate passes:
+For reviewed first-party host-model/isolated-Python receipts, use the explicit
+tool profile and the interpreter digest you reviewed before measurement:
+
+Use `skpress eval-tool --suite training --dry-run --json` to preview a tool
+evaluation. After reviewing the skill resources, both suites and rubric, run with
+`--reviewed-inputs --max-model-calls <previewed-maximum>` instead of `--dry-run`.
+Repeat for holdout only when appropriate; do not rerun unchanged quality failures.
+The command uses the fixed reviewed Python image, existing ChatGPT login and
+serial calls, with private checkpoints and cancellation. See the
+[tool evaluation workflow](docs/NATIVE_EVALUATION.md#public-tool-evaluation).
 
 ```bash
-skpress package --project . \
-  --review-evidence <review-evidence.json> \
-  --eval-evidence <eval-evidence.json> \
-  --eval-source .skill-press/tessl-evals/<set>
+skpress eval-check --reviewed-tool --image python@sha256:<reviewed-digest> \
+  --project . \
+  --training-evidence .skill-press/runs/<training-run>/evidence.json \
+  --holdout-evidence .skill-press/runs/<holdout-run>/evidence.json --json
+```
+
+The files must be private (0600), under private real directories (0700), and
+bound to the current committed project. This performs no inference, image pull,
+container execution or network submission. Exit 0 means the local advisory checks
+passed; exit 3 means blocked. For submission, `package`, `submit`, `status` and
+`doctor` accept `--reviewed-tool` with the usual review/eval evidence paths and
+`--eval-source evals`. This separate gate uses the fixed reviewed interpreter
+listed in [native evaluation](docs/NATIVE_EVALUATION.md), never a receipt-selected
+image. Server validation and independent curator acceptance remain required;
+the production tool service has not been deployed.
+
+Choose the evidence protocol before packaging or submitting. These flags are
+not interchangeable; use the protocol that actually produced your receipts:
+
+| Evidence producer | `eval-check` selection | `package` / `submit` selection |
+| --- | --- | --- |
+| Container-native `eval` | Default (no profile flag) | `--native` |
+| Reviewed text-only `eval-text` | `--reviewed-text` | `--reviewed-text` |
+| Reviewed Python-tool `eval-tool` | `--reviewed-tool --image <reviewed-image-digest>` | `--reviewed-tool` (no image flag) |
+
+For the text-only path, start with `skpress eval-text --suite training --dry-run
+--json`; see [author preparation](examples/launch-skills/AUTHORING.md#evidence-and-dry-run-submission)
+for both suites and complete text/tool check and submission commands.
+
+Package an exact candidate only after the release gate passes. The following
+examples are for container-native receipts; replace `--native` with the matching
+selection above for reviewed text/tool receipts:
+
+```bash
+skpress package --native --project . \
+  --review-evidence .skill-press/runs/<training-run>/evidence.json \
+  --eval-evidence .skill-press/runs/<holdout-run>/evidence.json \
+  --eval-source evals
 ```
 
 Prepare the canonical submission locally:
 
 ```bash
-skpress submit --project . --artifacts <artifacts-directory> \
-  --review-evidence <review-evidence.json> \
-  --eval-evidence <eval-evidence.json> \
-  --eval-source .skill-press/tessl-evals/<set> \
+skpress submit --native --project . --artifacts <artifacts-directory> \
+  --review-evidence .skill-press/runs/<training-run>/evidence.json \
+  --eval-evidence .skill-press/runs/<holdout-run>/evidence.json \
+  --eval-source evals \
   --dry-run
 ```
 
@@ -161,9 +237,16 @@ version reservation and audit records remain, but it no longer consumes the auth
 Trusted installation uses exact locators and never falls back to a branch or third-party catalog:
 
 ```bash
+skpress discover
+skpress discover <name-or-namespace>
 skpress add <namespace>/<skill>@<exact-version>
 skpress install
 ```
+
+`discover` lists published releases after verifying the complete discovery snapshot.
+Its optional query filters locators without case sensitivity; `--json` returns structured
+results. The feed's trust labels are informational: `add` always checks fresh signed trust
+before installing. Discovery needs no token or project, but requires the registry to be live.
 
 `add` records the immutable artifact and the highest observed signed trust sequence in
 `skill-lock.json`, then installs under `.agents/skills/`. `install` restores every exact lock entry.
@@ -228,6 +311,9 @@ This repository self-hosts the same contract through `skill-press.yaml`,
 
 ## Documentation
 
+- [Prepare your first author project and submission](examples/launch-skills/AUTHORING.md)
+- [Native, reviewed text and reviewed tool evaluation](docs/NATIVE_EVALUATION.md)
+- [Sample tasks and local walkthrough](examples/launch-skills/walkthrough.md)
 - [Product and implementation plan](docs/PLAN.md)
 - [Operating and recovery runbook](docs/OPERATIONS.md)
 - [Security and trust-boundary model](docs/SECURITY.md)

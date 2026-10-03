@@ -10,10 +10,10 @@ import {
   type CapturedCommandResult,
 } from "../process/capture.js";
 import {
-  checkTesslReleaseGate,
-  type TesslReleaseGateOptions,
-  type TesslReleaseGateReport,
-} from "../release/tessl-gate.js";
+  checkReleaseGate,
+  type ReleaseGateOptions,
+  type ReleaseGateReport,
+} from "../release/gate.js";
 
 export interface DoctorCheck {
   readonly id: string;
@@ -22,7 +22,7 @@ export interface DoctorCheck {
 }
 
 export interface DoctorOptions {
-  readonly evidence?: TesslReleaseGateOptions;
+  readonly evidence?: ReleaseGateOptions;
   readonly tesslExecutable?: string;
   readonly environment?: Readonly<Record<string, string | undefined>>;
   readonly executor?: (command: CapturedCommand) => Promise<CapturedCommandResult>;
@@ -34,20 +34,20 @@ export interface DoctorReport {
   readonly schemaVersion: 1;
   readonly reportType: "skillpress.doctor";
   readonly ready: boolean;
-  readonly gate: TesslReleaseGateReport | null;
+  readonly gate: ReleaseGateReport | null;
   readonly checks: readonly DoctorCheck[];
 }
 
 interface DoctorOperations {
   readonly loadConfig: typeof loadProjectConfig;
   readonly checkLocal: typeof checkProject;
-  readonly checkGate: typeof checkTesslReleaseGate;
+  readonly checkGate: typeof checkReleaseGate;
 }
 
 const defaultOperations: DoctorOperations = Object.freeze({
   loadConfig: loadProjectConfig,
   checkLocal: checkProject,
-  checkGate: checkTesslReleaseGate,
+  checkGate: checkReleaseGate,
 });
 
 interface CommandProbe {
@@ -77,7 +77,7 @@ function commandProbes(
   sandbox: "docker" | "podman",
   options: DoctorOptions,
 ): readonly CommandProbe[] {
-  return Object.freeze([
+  const probes: readonly CommandProbe[] = [
     { id: "command.git", argv: ["git", "--version"], message: "Git executable is available" },
     {
       id: `command.${sandbox}`,
@@ -89,7 +89,15 @@ function commandProbes(
       argv: [options.tesslExecutable ?? "tessl", "--version"],
       message: "Tessl CLI is available; trust is rechecked by the release gate",
     },
-  ] satisfies readonly CommandProbe[]);
+  ];
+  return Object.freeze(
+    probes.filter(
+      (probe) =>
+        (options.evidence?.provider === undefined || probe.id !== "command.tessl") &&
+        (!["reviewed-text", "reviewed-tool"].includes(options.evidence?.provider ?? "") ||
+          probe.id !== `command.${sandbox}`),
+    ),
+  );
 }
 
 async function runProbe(
@@ -225,25 +233,36 @@ export async function diagnoseProject(
       config.skill.name,
       options.homeDirectory ?? homedir(),
     )),
-    ...credentialChecks(options.environment ?? process.env),
+    ...credentialChecks(options.environment ?? process.env).filter(
+      (entry) => options.evidence?.provider === undefined || entry.id !== "credential.tessl",
+    ),
   ];
   const gate =
     options.evidence === undefined ? null : await dependencies.checkGate(root, options.evidence);
-  checks.push(
-    gate === null
-      ? check(
-          "evidence.tessl",
-          "error",
-          "Tessl release evidence was not supplied for freshness checks",
-        )
-      : gate.passed
-        ? check("evidence.tessl", "pass", "Tessl release evidence is current and passes")
-        : check(
+  if (options.evidence?.provider !== undefined) {
+    checks.push(
+      check(
+        `evidence.${options.evidence.provider}`,
+        gate?.passed ? "pass" : "error",
+        "Evidence requires current source-bound measurements and independent curator review",
+      ),
+    );
+  } else
+    checks.push(
+      gate === null
+        ? check(
             "evidence.tessl",
             "error",
-            "Tessl release evidence is stale, invalid, or below threshold",
-          ),
-  );
+            "Tessl release evidence was not supplied for freshness checks",
+          )
+        : gate.passed
+          ? check("evidence.tessl", "pass", "Tessl release evidence is current and passes")
+          : check(
+              "evidence.tessl",
+              "error",
+              "Tessl release evidence is stale, invalid, or below threshold",
+            ),
+    );
   return freeze({
     schemaVersion: 1,
     reportType: "skillpress.doctor",

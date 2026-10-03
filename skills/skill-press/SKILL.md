@@ -29,10 +29,15 @@ Read only the references needed for the current request.
    them. Proceed only when both commands exit `0` and their JSON reports contain `ok: true`; treat
    exit `3` or `ok: false` as blocked. On failure, fix manually or use bounded improvement, then
    rerun check, test, and training evaluation before testing the unchanged private holdout.
-4. Use paired sandbox evaluation for behavioral evidence. Keep private holdout contents isolated
-   from the authoring role.
-5. Capture official Tessl Quality and Impact evidence without inventing scores or replacing them
-   with local readiness.
+4. Choose the evaluator for the actual inputs: `eval-text` for reviewed first-party text-only
+   skills, `eval-tool` for reviewed first-party scripts/resources, or `eval` for a compatible
+   container adapter. Host-model profiles are not untrusted-input sandboxes. Keep genuinely private
+   holdout contents isolated from authoring; public examples are regression cases, not unseen tests.
+5. Check existing training/holdout evidence without rerunning it. Match its protocol: reviewed text
+   uses `--reviewed-text`, reviewed tools use `--reviewed-tool` (plus the explicit reviewed image
+   for `eval-check`), container evidence uses default `eval-check` and `--native` downstream.
+   Read the evidence reference for exact commands. Never mix/relabel receipts, invent scores or
+   invoke paid Tessl. Legacy Tessl remains a separate compatibility protocol.
 6. Stage only clean tracked canonical files and create deterministic artifacts bound to the exact
    commit, configuration digest, skill digest, checksums, and provenance.
 7. Use `skpress submit --dry-run ...` to prepare the exact canonical request locally. A plain
@@ -58,12 +63,13 @@ skpress improve --project . \
   --evaluator-command <evaluator> --json
 ```
 
-After official evidence passes, prepare without contacting the registry:
+After container-native evidence passes, prepare without contacting the registry
+(reviewed text/tool receipts require their own protocol flag instead):
 
 ```sh
-skpress submit --project . --dry-run \
-  --review-evidence <review-evidence.json> \
-  --eval-evidence <eval-evidence.json> --eval-source <eval-source> --json
+skpress submit --native --project . --dry-run \
+  --review-evidence <training-evidence.json> \
+  --eval-evidence <holdout-evidence.json> --eval-source evals --json
 ```
 
 ## Trust and authority boundaries
@@ -82,10 +88,11 @@ skpress submit --project . --dry-run \
 
 ## Current interface
 
-The CLI requires Node.js 22+; sandboxed evaluation also requires Docker or Podman. The production
-registry, token issuer, immutable downloads, and verified install are not live. Until they are,
-stop submission at `--dry-run` and do not substitute another publication target.
+The CLI requires Node.js 22+; sandboxed evaluation also requires Docker or Podman and an explicitly
+authorized model/adapter backend. The native submission and verified install commands are implemented,
+but the production registry is not deployed. Until it is, stop submission at `--dry-run` and do not
+substitute another publication target. Synthetic test adapters do not establish real model quality.
 
-Commands: `init`, `check`, `test`, `eval`, `tessl`, `improve`, `package`, `submit`, `add`, `install`,
+Commands: `init`, `check`, `test`, `eval`, `eval-text`, `eval-tool`, `eval-check`, `tessl`, `improve`, `package`, `submit`, `add`, `install`,
 `status`, and `doctor`. Use `<command> --help` for advanced flags. Typed exports provide the same
 lower-level validation, evaluation, packaging, and submission contracts.

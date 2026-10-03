@@ -17,6 +17,7 @@ import type {
   TranscriptEvidence,
 } from "./generated-evidence.js";
 import { loadProjectEvaluationInputs } from "./load.js";
+import { evaluationInputsSha256, recomputeRubricScore } from "./measurement.js";
 import { executeSandboxInvocation, type SandboxExecutionResult } from "./sandbox-execute.js";
 import {
   createSandboxInvocation,
@@ -137,7 +138,7 @@ async function bestEffortPrivateMode(path: string, mode: number): Promise<void> 
   }
 }
 
-async function createRunStorage(projectRoot: string, runId: string): Promise<string> {
+export async function createRunStorage(projectRoot: string, runId: string): Promise<string> {
   const skillpressDirectory = join(projectRoot, ".skill-press");
   const runsDirectory = join(skillpressDirectory, "runs");
   try {
@@ -414,17 +415,14 @@ function scoreResult(
   expectedActivation: boolean,
   criteria: ProjectEvaluationInputs["rubric"]["criteria"],
 ): number {
-  const judgeScores = new Map(result.criteria.map((criterion) => [criterion.id, criterion.score]));
-  const total = criteria.reduce((score, criterion) => {
-    const criterionScore =
-      criterion.evaluator === "deterministic"
-        ? result.activated === expectedActivation
-          ? 1
-          : 0
-        : (judgeScores.get(criterion.id) as number);
-    return score + criterion.weight * criterionScore;
-  }, 0);
-  return Math.round(total * 1_000_000) / 1_000_000;
+  const score = recomputeRubricScore(
+    result.activated,
+    expectedActivation,
+    criteria,
+    result.criteria,
+  );
+  if (score === null) throw new Error("Validated adapter criteria became invalid.");
+  return score;
 }
 
 type ProjectEvaluationInputs = Awaited<ReturnType<typeof loadProjectEvaluationInputs>>;
@@ -578,6 +576,7 @@ async function runLeg(
       loadedSkillSha256: result.loadedSkillSha256,
       rubricScore,
       successful: rubricScore >= config.quality.readinessMinimum,
+      criterionScores: result.criteria.map(({ id, score }) => ({ id, score })),
       inputSha256,
       transcript: transcriptEvidence(result.transcript, secrets),
       engineStdoutSha256: execution.stdoutSha256,
@@ -708,6 +707,7 @@ export async function runPairedEvaluation(
     },
     skillSha256: staged.sha256,
     configSha256: digest(canonicalJson(config)),
+    evaluationInputsSha256: evaluationInputsSha256(suite, inputs.rubric),
     repetitions: config.evaluation.repetitions,
     scenarioResults: scenarioResults as [ScenarioEvidence, ...ScenarioEvidence[]],
     summary: {

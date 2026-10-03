@@ -3,7 +3,7 @@ import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { type LoadedSkillPackageArtifacts, loadPackagedSkill } from "../package/archive.js";
-import { checkTesslReleaseGate, type TesslReleaseGateOptions } from "../release/tessl-gate.js";
+import { checkReleaseGate, type ReleaseGateOptions } from "../release/gate.js";
 import {
   createCanonicalSubmissionClient,
   SKILL_PRESS_API_BASE,
@@ -27,7 +27,7 @@ import {
 } from "./manifest.js";
 
 export interface SkillSubmissionOptions {
-  readonly evidence: TesslReleaseGateOptions;
+  readonly evidence: ReleaseGateOptions;
   readonly dryRun?: boolean;
   readonly resumeReceiptPath?: string;
   readonly client?: SkillPressSubmissionClient;
@@ -213,8 +213,9 @@ function failureCode(error: unknown): string {
   return "submission_failed";
 }
 
-function evidencePaths(options: TesslReleaseGateOptions): SubmissionEvidencePaths {
+function evidencePaths(options: ReleaseGateOptions): SubmissionEvidencePaths {
   return {
+    ...(options.provider === undefined ? {} : { provider: options.provider }),
     reviewEvidencePath: options.reviewEvidencePath,
     evalEvidencePath: options.evalEvidencePath,
     evalSource: options.evalSource,
@@ -225,10 +226,10 @@ async function revalidate(
   root: string,
   artifacts: LoadedSkillPackageArtifacts,
   prepared: PreparedSubmissionPayload,
-  evidence: TesslReleaseGateOptions,
+  evidence: ReleaseGateOptions,
 ): Promise<void> {
   const [gate, currentArtifacts] = await Promise.all([
-    checkTesslReleaseGate(root, evidence),
+    checkReleaseGate(root, evidence),
     loadPackagedSkill(root, artifacts.artifactsPath),
   ]);
   if (!gate.passed || gate.sourceCommit !== artifacts.sourceCommit) {
@@ -258,13 +259,13 @@ export async function runSkillSubmission(
   options: SkillSubmissionOptions,
 ): Promise<SubmissionReceipt> {
   const root = await realpath(resolve(projectDirectory));
-  const gate = await checkTesslReleaseGate(root, options.evidence);
+  const gate = await checkReleaseGate(root, options.evidence);
   if (!gate.passed || gate.sourceCommit !== inputArtifacts.sourceCommit) {
     throw new SubmissionRunError("Submission is blocked by the current release gate.", [
       issue(
         "submission.gate.blocked",
         "/evidence",
-        "current source-bound Tessl evidence must pass",
+        "current source-bound release evidence must pass",
       ),
     ]);
   }

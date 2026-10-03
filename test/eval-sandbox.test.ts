@@ -41,6 +41,59 @@ async function codes(run: () => unknown): Promise<readonly string[]> {
 
 describe("sandbox invocation policy", () => {
   it.each(["docker", "podman"] as const)(
+    "supports bounded %s ephemeral tools without writable host mounts",
+    (backend) => {
+      const base = request(backend);
+      const invocation = createSandboxInvocation({
+        ...base,
+        mounts: base.mounts.slice(0, 2),
+        outputStorage: "tmpfs",
+      });
+      expect(invocation.argv.filter((arg) => arg === "--mount")).toHaveLength(2);
+      expect(invocation.argv).toContain(
+        "--tmpfs=/output:rw,noexec,nosuid,nodev,size=64m,mode=1777",
+      );
+      expect(
+        invocation.argv
+          .filter((arg) => arg.startsWith("type=bind"))
+          .every((arg) => arg.endsWith(",readonly")),
+      ).toBe(true);
+      expect(invocation.argv).toContain("--network=none");
+      expect(invocation.argv).toContain("--read-only");
+    },
+  );
+
+  it("rejects extra, writable, missing and unknown ephemeral storage configurations", async () => {
+    const base = request();
+    const tmp = { ...base, mounts: base.mounts.slice(0, 2), outputStorage: "tmpfs" as const };
+    expect(await codes(() => createSandboxInvocation({ ...tmp, mounts: base.mounts }))).toContain(
+      "sandbox.mount.count",
+    );
+    expect(
+      await codes(() =>
+        createSandboxInvocation({
+          ...tmp,
+          mounts: [{ ...tmp.mounts[0], mode: "read-write" }, tmp.mounts[1]],
+        }),
+      ),
+    ).toContain("sandbox.mount.writable");
+    expect(
+      await codes(() => createSandboxInvocation({ ...tmp, mounts: [tmp.mounts[0]] })),
+    ).toContain("sandbox.mount.count");
+    expect(
+      await codes(() =>
+        createSandboxInvocation({ ...tmp, mounts: [tmp.mounts[0], tmp.mounts[0]] }),
+      ),
+    ).toContain("sandbox.mount.overlap");
+    expect(
+      await codes(() => createSandboxInvocation({ ...base, outputStorage: "other" as "tmpfs" })),
+    ).toContain("sandbox.output_storage");
+    expect(createSandboxInvocation({ ...base, outputStorage: "bind" }).argv).toEqual(
+      createSandboxInvocation(base).argv,
+    );
+  });
+
+  it.each(["docker", "podman"] as const)(
     "constructs a shell-free, release-eligible %s invocation",
     (backend) => {
       const invocation = createSandboxInvocation(request(backend));

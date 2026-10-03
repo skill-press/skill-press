@@ -6,7 +6,7 @@ the Skill Press CLI.
 
 ## Current interface boundary
 
-The CLI implements `init`, `check`, `test`, `eval`, `tessl`, `improve`, `package`, `submit`, `add`,
+The CLI implements `init`, `check`, `test`, `eval`, `tessl`, `improve`, `package`, `submit`, `discover`, `add`,
 `install`, `status`, and `doctor`.
 
 `submit` has one production destination, `https://skill-press.com/api/v1`. The production registry
@@ -84,6 +84,18 @@ reports Tessl Quality or Impact.
 `test` runs the configured argv on the host without a shell, bounds cwd to the project, and limits
 time and output. Run it only for a repository whose test commands you trust.
 
+A successful command exit is not a count of behavioral tests. For example,
+`node --test` can exit successfully with no test files. Supply actual cases and
+inspect their results before claiming the skill was exercised. Local readiness
+100 is not a Tessl score, human approval or permission to submit remotely.
+
+For a complete brief shape, see the repository's
+[synthetic incident example](../test/fixtures/create/complete-brief.yaml).
+Adapt its identity, namespace, real scenarios and test commands before creating
+your own project. The fixture is a schema example, not a release-ready template.
+The [launch candidates](../examples/launch-skills/README.md) provide actual skill
+content and walkthroughs, but are not published releases or scored submissions.
+
 ## Paired behavioral evaluation
 
 Provide a digest-pinned agent adapter image and explicit adapter argv:
@@ -131,7 +143,19 @@ hard stops.
 These role commands are user-authorized host programs, not sandboxed plugins. Run untrusted role
 binaries inside an external OS or container boundary.
 
-## Capture official Tessl evidence
+## Native evaluation (current author path)
+
+Use [native evaluation and submission](NATIVE_EVALUATION.md) for the Tessl-independent
+flow. `package`, `submit`, `status` and `doctor` accept `--native` with training
+evidence as `--review-evidence`, holdout evidence as `--eval-evidence`, and
+`--eval-source evals`. Commit source first. Native envelopes upload the complete
+config and evaluation inputs, so keep secrets and private data out of them.
+Native mode never calls Tessl; independent curator reruns remain required.
+
+The following Tessl capture and command examples document legacy compatibility;
+they are not prerequisites for native mode. Paid Tessl evaluation is not authorized.
+
+## Capture official Tessl evidence (legacy compatibility)
 
 Skill Press currently trusts official Tessl CLI 0.101.0 by executable digest. Authenticate and
 confirm the intended workspace, then create a bounded-lifetime key locally:
@@ -186,8 +210,8 @@ storage, and parser boundaries.
 
 ## Inspect the release gate
 
-Packaging and submission call `checkTesslReleaseGate` internally. Typed callers can invoke it
-directly:
+Packaging and submission call `checkReleaseGate` internally. Select `provider: "native"`
+for the native contract. The following legacy API remains available:
 
 ```js
 import { checkTesslReleaseGate } from "@skill-press/cli";
@@ -241,9 +265,9 @@ unpersisted receipt with `operationStatus: prepared`, the fixed registry origin,
 artifact bindings, and zero remote attempts. It does not require `SKILL_PRESS_TOKEN` and never
 contacts the service.
 
-The deterministic submission contains one canonical archive, provenance, checksums, Tessl Quality
-evidence, Tessl Impact evidence, and a manifest that marks client evidence advisory and requires
-server validation.
+The deterministic submission contains one canonical archive, provenance, checksums, two
+evidence documents for the selected protocol, and a manifest that marks client evidence
+advisory and requires server validation.
 
 ## Live submission boundary
 
@@ -393,10 +417,11 @@ skpress doctor --project . \
   --json
 ```
 
-`doctor` checks Node.js, Git, the configured Docker/Podman runtime, Tessl, local installed-skill
+In legacy mode, `doctor` checks Node.js, Git, the configured Docker/Podman runtime, Tessl, local installed-skill
 collisions, `TESSL_TOKEN`, `SKILL_PRESS_TOKEN`, and optional evidence freshness. It never prints
 credential values or contacts the canonical registry. The live `/session` endpoint remains
-authoritative for Skill Press authentication once the service exists.
+authoritative for Skill Press authentication once the service exists. With `--native`,
+omit `--tessl-executable`; Tessl executable and credential checks are not performed.
 
 ## npm trusted release for the CLI
 

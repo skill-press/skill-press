@@ -1,0 +1,45 @@
+{
+  "provenance": "Source-derived reconstruction of Skill Press platform commits 7cecf2c, 92747c7 and 5c99fd4. Excerpts below normalize formatting and omit unrelated fields; they are not raw CI logs or an unseen holdout.",
+  "task": "用中文诊断：我更新了 CLI pin 和 launch lifecycle 开关，第一次 CI 失败后已修正 workflow validator；现在真实 workflow 检查通过，但 deployment-hardening 的有效 CI fixture 测试仍失败。请指出最小修复范围、如何验证，以及哪些成功结论现在还不能下。只诊断，不修改文件、不重跑 CI、不部署。",
+  "consumerRevision": "92747c7ca7d9cd3e8c2c84257adf862cca13fd36",
+  "observations": [
+    "The recorded run at this revision failed: 167 tests passed and one failed in the canonical workflow fixture test.",
+    "npm run workflow:deploy:check passed locally at this revision.",
+    "The following entries describe the same CLI checkout and lifecycle environment in three different files. Unrelated entries are omitted."
+  ],
+  "files": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "checkoutRef": "8d863640ae622a2a9731653789d4bbd058e9c79b",
+      "env": {
+        "SKILL_PRESS_CLI_ROOT": "${{ github.workspace }}/.lifecycle-cli",
+        "SKILL_PRESS_LAUNCH_SKILLS": "1",
+        "WRANGLER_SEND_METRICS": "false"
+      }
+    },
+    {
+      "path": "scripts/verify-deploy-workflow.mjs",
+      "checkoutRef": "8d863640ae622a2a9731653789d4bbd058e9c79b",
+      "env": {
+        "SKILL_PRESS_CLI_ROOT": "${{ github.workspace }}/.lifecycle-cli",
+        "SKILL_PRESS_LAUNCH_SKILLS": "1",
+        "WRANGLER_SEND_METRICS": "false"
+      }
+    },
+    {
+      "path": "test/deployment-hardening.test.ts",
+      "checkoutRef": "fe9f97f659618f25b64f50576448971fda0af473",
+      "env": {
+        "SKILL_PRESS_CLI_ROOT": "${{ github.workspace }}/.lifecycle-cli",
+        "WRANGLER_SEND_METRICS": "false"
+      }
+    }
+  ],
+  "expectedOutcome": [
+    "Identify the fixture's stale checkoutRef and missing SKILL_PRESS_LAUNCH_SKILLS=1; both must match the intended actual workflow.",
+    "Propose changes only to the affected entries in test/deployment-hardening.test.ts, retaining validator assertions and negative cases.",
+    "Verify workflow validation and focused workflow tests, then normal exact-revision consumer CI; do not claim a production deployment, lifecycle pass or runner defect from the supplied observations.",
+    "Distinguish a source-backed reconstruction from inspecting the original complete failure log."
+  ],
+  "evaluationBoundary": "Developer-visible smoke task only. Both baseline and skill arms must receive identical task, observations and file facts, without expectedOutcome or the known repair commit. No incremental-gain or release-qualification result exists."
+}

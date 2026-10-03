@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/skill-press/skill-press/main/schemas/native-evidence.schema.json",
+  "title": "SkillPressNativeEvidence",
+  "description": "Advisory native measurement and complete evaluation semantics bound to release source. No independent execution claim.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "evidenceType",
+    "advisory",
+    "source",
+    "config",
+    "inputs",
+    "measurement"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "evidenceType": { "const": "skillpress.native-evidence" },
+    "advisory": { "const": true },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commit",
+        "projectConfigSha256",
+        "skillSha256",
+        "evalSource",
+        "evalSourceSha256"
+      ],
+      "properties": {
+        "commit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "projectConfigSha256": { "$ref": "#/definitions/digest" },
+        "skillSha256": { "$ref": "#/definitions/digest" },
+        "evalSource": { "const": "evals" },
+        "evalSourceSha256": { "$ref": "#/definitions/digest" }
+      }
+    },
+    "config": { "$ref": "skill-press.schema.json" },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["training", "holdout", "rubric"],
+      "properties": {
+        "training": { "$ref": "eval-suite.schema.json" },
+        "holdout": { "$ref": "eval-suite.schema.json" },
+        "rubric": { "$ref": "eval-rubric.schema.json" }
+      }
+    },
+    "measurement": { "$ref": "eval-evidence.schema.json" }
+  },
+  "definitions": { "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" } }
+}

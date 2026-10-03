@@ -97,6 +97,10 @@ export interface SkillPressPairedEvaluationEvidence {
    * via the `definition` "digest".
    */
   configSha256: string;
+  /**
+   * Digest of the complete selected suite and rubric, including expected and forbidden behavior. Absent in historical evidence, which cannot qualify for native release admission.
+   */
+  evaluationInputsSha256?: string;
   repetitions: number;
   /**
    * @minItems 1
@@ -171,6 +175,15 @@ export interface LegEvidence {
   loadedSkillSha256: string | null;
   rubricScore: number | null;
   successful: boolean;
+  /**
+   * Adapter judge scores retained for rubric recomputation; these are advisory judgments, not independently verified facts.
+   *
+   * @maxItems 32
+   */
+  criterionScores?: {
+    id: string;
+    score: number;
+  }[];
   /**
    * This interface was referenced by `SkillPressPairedEvaluationEvidence`'s JSON-Schema
    * via the `definition` "digest".

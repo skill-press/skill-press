@@ -1,5 +1,7 @@
 export { SKILL_PRESS_PINNED_KEYS } from "./install/production-keys.js";
 export { SERVER_REVIEW_POLICY } from "./release/server-policy.js";
+export { NATIVE_REVIEW_POLICY } from "./release/native-policy.js";
+export { checkNativeEvaluation } from "./release/native-check.js";
 export {
   renderAddHelp,
   renderCheckHelp,
@@ -273,6 +275,16 @@ export type {
   ProjectWritePhase,
 } from "./create/write.js";
 export { VERSION } from "./version.js";
+export { checkReleaseGate } from "./release/gate.js";
+export type { ReleaseGateOptions, ReleaseGateReport } from "./release/gate.js";
+export { checkNativeReleaseGate, prepareNativeEvidence } from "./release/native-evidence.js";
+export {
+  checkReviewedTextReleaseGate,
+  prepareReviewedTextRelease,
+} from "./release/reviewed-text-gate.js";
+export type { ReviewedTextReleaseGateReport } from "./release/reviewed-text-gate.js";
+export { prepareReviewedTextEvidence } from "./release/reviewed-text-evidence.js";
+export type { NativeEvidenceEnvelope, NativeReleaseGateReport } from "./release/native-evidence.js";
 export { validateAgentSkill } from "./validate/agent-skill.js";
 export {
   MAX_SKILL_DIAGNOSTICS,

@@ -159,6 +159,9 @@ describe("package CLI orchestration", () => {
     expect(output.stdout.join("")).toContain("Tessl release gate: blocked");
     expect(output.stdout.join("")).toContain("Quality: unavailable/90");
     expect(output.stdout.join("")).toContain("Impact: unavailable/90");
+    expect(output.stdout.join("")).toContain(
+      "- [release.score.quality] quality threshold was not reached",
+    );
   });
 
   it.each([
@@ -192,7 +195,7 @@ describe("package CLI orchestration", () => {
     expect(JSON.parse(output.stderr[0] as string)).toMatchObject({
       ok: false,
       code: "release_blocked",
-      message: "Source changed after the Tessl release gate.",
+      message: "Source changed after the release gate.",
       issues: [{ code: "release.configuration", path: "/project" }],
     });
   });

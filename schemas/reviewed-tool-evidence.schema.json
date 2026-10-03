@@ -1,0 +1,692 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/skill-press/skill-press/main/schemas/reviewed-tool-evidence.schema.json",
+  "title": "SkillPressReviewedToolEvidence",
+  "description": "Complete source-bound host-model/isolated-Python receipts. Shape validation is not behavioral quality, execution authenticity or admission.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "evidenceType",
+    "execution",
+    "activationMeasurement",
+    "runId",
+    "createdAt",
+    "suite",
+    "rubric",
+    "repetitions",
+    "evaluationInputsSha256",
+    "skillTextSha256",
+    "plannedPairs",
+    "unattemptedPairs",
+    "complete",
+    "records",
+    "summary",
+    "releaseEligible",
+    "ineligibilityReasons",
+    "source",
+    "config",
+    "artifact",
+    "image",
+    "skillFiles",
+    "maximumModelCalls"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "reviewed-text-evidence.schema.json#/properties/schemaVersion"
+    },
+    "evidenceType": {
+      "const": "skillpress.reviewed-tool-suite"
+    },
+    "execution": {
+      "const": "host-networked-model-isolated-python"
+    },
+    "activationMeasurement": {
+      "$ref": "reviewed-text-evidence.schema.json#/properties/activationMeasurement"
+    },
+    "runId": {
+      "$ref": "reviewed-text-evidence.schema.json#/properties/runId"
+    },
+    "createdAt": {
+      "$ref": "reviewed-text-evidence.schema.json#/properties/createdAt"
+    },
+    "suite": {
+      "$ref": "reviewed-text-evidence.schema.json#/properties/suite"
+    },
+    "rubric": {
+      "$ref": "reviewed-text-evidence.schema.json#/properties/rubric"
+    },
+    "repetitions": {
+      "$ref": "reviewed-text-evidence.schema.json#/properties/repetitions"
+    },
+    "evaluationInputsSha256": {
+      "$ref": "reviewed-text-evidence.schema.json#/properties/evaluationInputsSha256"
+    },
+    "skillTextSha256": {
+      "$ref": "reviewed-text-evidence.schema.json#/properties/skillTextSha256"
+    },
+    "plannedPairs": {
+      "$ref": "reviewed-text-evidence.schema.json#/properties/plannedPairs"
+    },
+    "unattemptedPairs": {
+      "$ref": "reviewed-text-evidence.schema.json#/properties/unattemptedPairs"
+    },
+    "complete": {
+      "$ref": "reviewed-text-evidence.schema.json#/properties/complete"
+    },
+    "records": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2560,
+      "items": {
+        "$ref": "#/definitions/record"
+      }
+    },
+    "summary": {
+      "$ref": "reviewed-text-evidence.schema.json#/properties/summary"
+    },
+    "releaseEligible": {
+      "$ref": "reviewed-text-evidence.schema.json#/properties/releaseEligible"
+    },
+    "ineligibilityReasons": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "const": "tool_profile_not_admitted"
+      }
+    },
+    "source": {
+      "$ref": "reviewed-text-evidence.schema.json#/properties/source"
+    },
+    "config": {
+      "$ref": "reviewed-text-evidence.schema.json#/properties/config"
+    },
+    "artifact": {
+      "$ref": "reviewed-text-evidence.schema.json#/properties/artifact"
+    },
+    "image": {
+      "type": "string",
+      "pattern": "^python@sha256:[a-f0-9]{64}$"
+    },
+    "skillFiles": {
+      "$ref": "#/definitions/resources"
+    },
+    "maximumModelCalls": {
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 28160
+    }
+  },
+  "definitions": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "resources": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "sha256": {
+            "$ref": "#/definitions/digest"
+          }
+        }
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "diagnostics",
+        "usage",
+        "releaseEligible",
+        "requestedModel",
+        "effort",
+        "authentication",
+        "cliVersion",
+        "execution",
+        "inputSha256",
+        "outputSha256",
+        "durationMs",
+        "outputSchemaSha256"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 131072
+        },
+        "diagnostics": {
+          "type": "array",
+          "maxItems": 1,
+          "items": {
+            "const": "Code Mode is unavailable because code-mode host is disabled. Code mode will fail closed; enable `features.code_mode_host` and install `codex-code-mode-host`."
+          }
+        },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["inputTokens", "cachedInputTokens", "outputTokens"],
+          "properties": {
+            "inputTokens": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "cachedInputTokens": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "outputTokens": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        "releaseEligible": {
+          "const": false
+        },
+        "requestedModel": {
+          "const": "gpt-6.1-sol"
+        },
+        "effort": {
+          "const": "medium"
+        },
+        "authentication": {
+          "const": "forced-chatgpt"
+        },
+        "cliVersion": {
+          "const": "0.160.0"
+        },
+        "execution": {
+          "const": "reviewed-host-text-pilot"
+        },
+        "inputSha256": {
+          "$ref": "#/definitions/digest"
+        },
+        "outputSha256": {
+          "$ref": "#/definitions/digest"
+        },
+        "durationMs": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "outputSchemaSha256": {
+          "$ref": "#/definitions/digest"
+        }
+      }
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "image",
+        "pythonSha256",
+        "inputs",
+        "skillFiles",
+        "network",
+        "outputStorage",
+        "policy",
+        "execution",
+        "releaseEligible"
+      ],
+      "properties": {
+        "kind": {
+          "const": "skillpress.reviewed-python-tool.v1"
+        },
+        "image": {
+          "type": "string",
+          "pattern": "^python@sha256:[a-f0-9]{64}$"
+        },
+        "pythonSha256": {
+          "$ref": "#/definitions/digest"
+        },
+        "inputs": {
+          "$ref": "#/definitions/resources"
+        },
+        "skillFiles": {
+          "$ref": "#/definitions/resources"
+        },
+        "network": {
+          "const": "none"
+        },
+        "outputStorage": {
+          "const": "tmpfs"
+        },
+        "policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "timeoutSeconds",
+            "cpus",
+            "memoryMib",
+            "pids",
+            "tmpfsMib",
+            "shmMib",
+            "maxOutputBytes",
+            "maxArtifactBytes",
+            "maxArtifactFiles"
+          ],
+          "properties": {
+            "timeoutSeconds": {
+              "const": 30
+            },
+            "cpus": {
+              "const": 1
+            },
+            "memoryMib": {
+              "const": 512
+            },
+            "pids": {
+              "const": 64
+            },
+            "tmpfsMib": {
+              "const": 8
+            },
+            "shmMib": {
+              "const": 16
+            },
+            "maxOutputBytes": {
+              "const": 65536
+            },
+            "maxArtifactBytes": {
+              "const": 67108864
+            },
+            "maxArtifactFiles": {
+              "const": 1024
+            }
+          }
+        },
+        "execution": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "exitCode",
+            "signal",
+            "durationMs",
+            "stdoutBytes",
+            "stderrBytes",
+            "stdoutSha256",
+            "stderrSha256",
+            "stdoutText",
+            "stderrText",
+            "cleanupAttempted",
+            "cleanupOk"
+          ],
+          "properties": {
+            "status": {
+              "enum": ["passed", "failed"]
+            },
+            "exitCode": {
+              "enum": [0, 1, 2]
+            },
+            "signal": {
+              "const": null
+            },
+            "durationMs": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "stdoutBytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65536
+            },
+            "stderrBytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65536
+            },
+            "stdoutSha256": {
+              "$ref": "#/definitions/digest"
+            },
+            "stderrSha256": {
+              "$ref": "#/definitions/digest"
+            },
+            "stdoutText": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 65536
+            },
+            "stderrText": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 65536
+            },
+            "cleanupAttempted": {
+              "type": "boolean"
+            },
+            "cleanupOk": {
+              "type": "boolean"
+            }
+          }
+        },
+        "releaseEligible": {
+          "const": false
+        }
+      }
+    },
+    "step": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["index", "prompt", "response", "action", "tool"],
+          "properties": {
+            "index": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "prompt": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["version", "text", "sha256"],
+              "properties": {
+                "version": {
+                  "enum": ["skillpress.tool-actor.v2", "skillpress.tool-actor.v3"]
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1048576
+                },
+                "sha256": {
+                  "$ref": "#/definitions/digest"
+                }
+              }
+            },
+            "response": {
+              "$ref": "#/definitions/receipt"
+            },
+            "action": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "code"],
+              "properties": {
+                "kind": {
+                  "const": "python"
+                },
+                "code": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 65536
+                }
+              }
+            },
+            "tool": {
+              "$ref": "#/definitions/tool"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["index", "prompt", "response", "action"],
+          "properties": {
+            "index": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 3
+            },
+            "prompt": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["version", "text", "sha256"],
+              "properties": {
+                "version": {
+                  "enum": ["skillpress.tool-actor.v2", "skillpress.tool-actor.v3"]
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1048576
+                },
+                "sha256": {
+                  "$ref": "#/definitions/digest"
+                }
+              }
+            },
+            "response": {
+              "$ref": "#/definitions/receipt"
+            },
+            "action": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "text"],
+              "properties": {
+                "kind": {
+                  "const": "answer"
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 24576
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "status",
+        "answer",
+        "steps",
+        "modelInvocations",
+        "toolInvocations",
+        "releaseEligible"
+      ],
+      "properties": {
+        "kind": {
+          "enum": ["skillpress.reviewed-tool-actor.v2", "skillpress.reviewed-tool-actor.v3"]
+        },
+        "status": {
+          "const": "complete"
+        },
+        "answer": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24576
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "items": {
+            "$ref": "#/definitions/step"
+          }
+        },
+        "modelInvocations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "toolInvocations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "releaseEligible": {
+          "const": false
+        }
+      }
+    },
+    "leg": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["activated", "actor", "judgePrompt", "judge", "criteria", "score"],
+      "properties": {
+        "activated": {
+          "type": "boolean"
+        },
+        "actor": {
+          "$ref": "#/definitions/actor"
+        },
+        "judgePrompt": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "text", "sha256"],
+          "properties": {
+            "version": {
+              "enum": ["skillpress.tool-judge.v1", "skillpress.tool-judge.v2"]
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1048576
+            },
+            "sha256": {
+              "$ref": "#/definitions/digest"
+            }
+          }
+        },
+        "judge": {
+          "$ref": "reviewed-text-evidence.schema.json#/definitions/receipt"
+        },
+        "criteria": {
+          "$ref": "reviewed-text-evidence.schema.json#/definitions/leg/properties/criteria"
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        }
+      }
+    },
+    "pair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "execution",
+        "activationMeasurement",
+        "selection",
+        "skillTextSha256",
+        "skillFiles",
+        "image",
+        "baseline",
+        "withSkill",
+        "modelInvocations",
+        "releaseEligible"
+      ],
+      "properties": {
+        "kind": {
+          "const": "skillpress.reviewed-tool-pair.v1"
+        },
+        "execution": {
+          "const": "host-networked-model-isolated-python"
+        },
+        "activationMeasurement": {
+          "const": "harness-metadata-selection"
+        },
+        "selection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["prompt", "response", "selected", "rationale"],
+          "properties": {
+            "prompt": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["version", "role", "text", "sha256"],
+              "properties": {
+                "version": {
+                  "const": "skillpress.text-evaluation.v1"
+                },
+                "role": { "const": "selector" },
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1048576
+                },
+                "sha256": {
+                  "$ref": "#/definitions/digest"
+                }
+              }
+            },
+            "response": {
+              "$ref": "reviewed-text-evidence.schema.json#/definitions/receipt"
+            },
+            "selected": {
+              "type": "boolean"
+            },
+            "rationale": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
+            }
+          }
+        },
+        "skillTextSha256": {
+          "$ref": "#/definitions/digest"
+        },
+        "skillFiles": {
+          "$ref": "#/definitions/resources"
+        },
+        "image": {
+          "type": "string",
+          "pattern": "^python@sha256:[a-f0-9]{64}$"
+        },
+        "baseline": {
+          "$ref": "#/definitions/leg"
+        },
+        "withSkill": {
+          "$ref": "#/definitions/leg"
+        },
+        "modelInvocations": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 11
+        },
+        "releaseEligible": {
+          "const": false
+        }
+      }
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "scenarioId", "repetition", "status", "pair"],
+      "properties": {
+        "runId": {
+          "$ref": "#/definitions/digest"
+        },
+        "scenarioId": {
+          "$ref": "reviewed-text-evidence.schema.json#/definitions/record/properties/scenarioId"
+        },
+        "repetition": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "status": {
+          "const": "passed"
+        },
+        "pair": {
+          "$ref": "#/definitions/pair"
+        }
+      }
+    }
+  }
+}

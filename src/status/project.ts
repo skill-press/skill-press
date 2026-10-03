@@ -2,10 +2,10 @@ import { checkProject } from "../check/project.js";
 import { loadProjectConfig } from "../config/load.js";
 import { type LoadedSkillPackageArtifacts, loadPackagedSkill } from "../package/archive.js";
 import {
-  checkTesslReleaseGate,
-  type TesslReleaseGateOptions,
-  type TesslReleaseGateReport,
-} from "../release/tessl-gate.js";
+  checkReleaseGate,
+  type ReleaseGateOptions,
+  type ReleaseGateReport,
+} from "../release/gate.js";
 import { readSubmissionReceipt, type SubmissionReceipt } from "../submission/journal.js";
 import { type PreparedSubmissionPayload, prepareSkillSubmission } from "../submission/manifest.js";
 
@@ -16,7 +16,7 @@ export interface ProjectStatusIssue {
 }
 
 export interface ProjectStatusOptions {
-  readonly evidence?: TesslReleaseGateOptions;
+  readonly evidence?: ReleaseGateOptions;
   readonly artifactsPath?: string;
   readonly submissionReceiptPath?: string;
   readonly now?: () => Date;
@@ -25,7 +25,7 @@ export interface ProjectStatusOptions {
 interface ProjectStatusOperations {
   readonly loadConfig: typeof loadProjectConfig;
   readonly checkLocal: typeof checkProject;
-  readonly checkGate: typeof checkTesslReleaseGate;
+  readonly checkGate: typeof checkReleaseGate;
   readonly loadPackage: typeof loadPackagedSkill;
   readonly readReceipt: typeof readSubmissionReceipt;
   readonly prepareSubmission: typeof prepareSkillSubmission;
@@ -34,7 +34,7 @@ interface ProjectStatusOperations {
 const defaultOperations: ProjectStatusOperations = Object.freeze({
   loadConfig: loadProjectConfig,
   checkLocal: checkProject,
-  checkGate: checkTesslReleaseGate,
+  checkGate: checkReleaseGate,
   loadPackage: loadPackagedSkill,
   readReceipt: readSubmissionReceipt,
   prepareSubmission: prepareSkillSubmission,
@@ -52,7 +52,7 @@ export interface ProjectStatusReport {
     readonly score: number;
     readonly minimum: number;
   };
-  readonly gate: TesslReleaseGateReport | null;
+  readonly gate: ReleaseGateReport | null;
   readonly package: null | {
     readonly artifactsPath: string;
     readonly sourceCommit: string;
@@ -131,6 +131,9 @@ export async function inspectProjectStatus(
     submission === null || packaged === null || options.evidence === undefined
       ? null
       : await dependencies.prepareSubmission(projectDirectory, packaged, {
+          ...(options.evidence.provider === undefined
+            ? {}
+            : { provider: options.evidence.provider }),
           reviewEvidencePath: options.evidence.reviewEvidencePath,
           evalEvidencePath: options.evidence.evalEvidencePath,
           evalSource: options.evidence.evalSource,
@@ -148,7 +151,7 @@ export async function inspectProjectStatus(
       ),
     );
   } else if (!gate.passed) {
-    issues.push(issue("status.gate.blocked", "/gate", "the current Tessl release gate is blocked"));
+    issues.push(issue("status.gate.blocked", "/gate", "the current release gate is blocked"));
   }
   if (packaged !== null && gate !== null && packaged.sourceCommit !== gate.sourceCommit) {
     issues.push(

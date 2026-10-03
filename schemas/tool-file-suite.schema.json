@@ -1,0 +1,113 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/skill-press/skill-press/main/schemas/tool-file-suite.schema.json",
+  "title": "SkillPressToolFileSuite",
+  "description": "Preview-only v2 source-bound tool fixtures. Not admitted for model evaluation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "suite", "skill", "scenarios"],
+  "properties": {
+    "schemaVersion": {
+      "const": 2
+    },
+    "suite": {
+      "type": "string",
+      "enum": ["training", "holdout"]
+    },
+    "skill": {
+      "$ref": "#/definitions/portableName"
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "items": {
+        "$ref": "#/definitions/scenario"
+      }
+    }
+  },
+  "definitions": {
+    "portableName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "behaviorList": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1000
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "category", "shouldActivate", "prompt", "expectedBehavior"],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/portableName"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["positive", "near-miss", "failure", "adversarial"]
+        },
+        "shouldActivate": {
+          "type": "boolean"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 8192
+        },
+        "expectedBehavior": {
+          "$ref": "#/definitions/behaviorList"
+        },
+        "forbiddenBehavior": {
+          "$ref": "#/definitions/behaviorList"
+        },
+        "fixture": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "files": {
+              "type": "array",
+              "maxItems": 16,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["path", "source", "bytes", "sha256"],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "pattern": "^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$"
+                  },
+                  "source": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 240,
+                    "pattern": "^fixtures/(training|holdout)/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$"
+                  },
+                  "bytes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 524288
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

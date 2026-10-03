@@ -10,28 +10,29 @@ import {
   type StagedCanonicalSkill,
 } from "../package/stage.js";
 import { isSafePathInput } from "../path-safety.js";
-import {
-  checkTesslReleaseGate,
-  TesslReleaseGateError,
-  type TesslReleaseGateReport,
-} from "../release/tessl-gate.js";
+import { TesslReleaseGateError } from "../release/tessl-gate.js";
+import { checkReleaseGate } from "../release/gate.js";
 import type { CliExitCode, CliIo } from "../cli.js";
+import { gateHuman } from "./release-output.js";
 
-export const PACKAGE_HELP = `Create reproducible release artifacts after the Tessl gate passes.
+export const PACKAGE_HELP = `Create reproducible release artifacts after the selected evaluation gate passes.
 
 Usage:
   skpress package --review-evidence <file> --eval-evidence <file> --eval-source <directory> [options]
 
 Options:
+  --native                    Use native training/holdout evidence; never invoke Tessl
+  --reviewed-tool             Use tool receipts with the fixed reviewed Python image; no execution
+  --reviewed-text             Use source-bound host-text receipts; never run inference or Tessl
   --project <directory>       Project root; defaults to the current directory
-  --review-evidence <file>    Private Tessl Quality evidence file
-  --eval-evidence <file>      Private Tessl Impact evidence file
+  --review-evidence <file>    Native training or legacy Tessl Quality evidence
+  --eval-evidence <file>      Native holdout or legacy Tessl Impact evidence
   --eval-source <directory>   Evaluated scenario source inside the project
   --json                      Emit one stable JSON object
   -h, --help                  Show this help
 
-Packaging fails closed unless current, source-bound official Tessl evidence satisfies every
-configured release threshold. The returned private artifacts path can be passed to submit.
+Packaging fails closed without current source-bound evidence for the selected protocol. Native evidence
+is advisory and still requires server validation and independent curator review. The returned private artifacts path can be passed to submit.
 `;
 
 interface ReleaseIssue {
@@ -46,10 +47,11 @@ export interface GateArguments {
   readonly evalEvidencePath: string;
   readonly evalSource: string;
   readonly json: boolean;
+  readonly provider?: "native" | "reviewed-text" | "reviewed-tool";
 }
 
 interface PackageOperations {
-  readonly checkGate: typeof checkTesslReleaseGate;
+  readonly checkGate: typeof checkReleaseGate;
   readonly stage: (project: string) => Promise<StagedCanonicalSkill>;
   readonly package: (
     project: string,
@@ -93,9 +95,25 @@ function takeValue(args: readonly string[], index: number, flag: string): string
 function parse(args: readonly string[]): GateArguments {
   const values = new Map<string, string>();
   let json = false;
+  let provider: GateArguments["provider"];
   const allowed = new Set(["--project", "--review-evidence", "--eval-evidence", "--eval-source"]);
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index] as string;
+    if (
+      argument === "--native" ||
+      argument === "--reviewed-text" ||
+      argument === "--reviewed-tool"
+    ) {
+      if (provider !== undefined)
+        throw new PackageUsageError("Select exactly one evidence protocol, once.");
+      provider =
+        argument === "--native"
+          ? "native"
+          : argument === "--reviewed-text"
+            ? "reviewed-text"
+            : "reviewed-tool";
+      continue;
+    }
     if (argument === "--json") {
       if (json) throw new PackageUsageError("--json may be specified only once.");
       json = true;
@@ -118,11 +136,12 @@ function parse(args: readonly string[]): GateArguments {
     evalEvidencePath: required("--eval-evidence"),
     evalSource: required("--eval-source"),
     json,
+    ...(provider === undefined ? {} : { provider }),
   });
 }
 
 const defaultOperations: PackageOperations = Object.freeze({
-  checkGate: checkTesslReleaseGate,
+  checkGate: checkReleaseGate,
   stage: stageCanonicalSkill,
   package: packageStagedSkill,
 });
@@ -160,14 +179,11 @@ async function failure(
 
 function gateOptions(args: GateArguments) {
   return {
+    ...(args.provider === undefined ? {} : { provider: args.provider }),
     reviewEvidencePath: args.reviewEvidencePath,
     evalEvidencePath: args.evalEvidencePath,
     evalSource: args.evalSource,
   };
-}
-
-function gateHuman(gate: TesslReleaseGateReport): string {
-  return `Tessl release gate: ${gate.passed ? "passed" : "blocked"}\nQuality: ${gate.scores.quality ?? "unavailable"}/${gate.thresholds.quality}\nImpact: ${gate.scores.impact ?? "unavailable"}/${gate.thresholds.impact}\n`;
 }
 
 function knownIssues(error: unknown): readonly ReleaseIssue[] | undefined {
@@ -221,7 +237,7 @@ export async function runPackageCommand(
     }
     const staged = await operations.stage(parsed.project);
     if (staged.sourceCommit !== gate.sourceCommit) {
-      throw new PackageCommandError("Source changed after the Tessl release gate.", "/project");
+      throw new PackageCommandError("Source changed after the release gate.", "/project");
     }
     const artifacts = await operations.package(parsed.project, staged);
     const finalGate = await operations.checkGate(parsed.project, gateOptions(parsed));

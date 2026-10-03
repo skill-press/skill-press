@@ -7,16 +7,17 @@ import {
 } from "../package/archive.js";
 import { SkillStagingError, stageCanonicalSkill } from "../package/stage.js";
 import { isSafePathInput } from "../path-safety.js";
+import { TesslReleaseGateError } from "../release/tessl-gate.js";
 import {
-  checkTesslReleaseGate,
-  TesslReleaseGateError,
-  type TesslReleaseGateOptions,
-  type TesslReleaseGateReport,
-} from "../release/tessl-gate.js";
+  checkReleaseGate,
+  type ReleaseGateOptions,
+  type ReleaseGateReport,
+} from "../release/gate.js";
 import { SubmissionJournalError, type SubmissionReceipt } from "../submission/journal.js";
 import { SubmissionManifestError } from "../submission/manifest.js";
 import { runSkillSubmission, SubmissionRunError } from "../submission/run.js";
 import type { CliExitCode, CliIo } from "../cli.js";
+import { gateHuman } from "./release-output.js";
 
 export const SUBMIT_HELP = `Submit one verified candidate to the canonical Skill Press review pipeline.
 
@@ -24,10 +25,13 @@ Usage:
   skpress submit --review-evidence <file> --eval-evidence <file> --eval-source <directory> [options]
 
 Options:
+  --native                    Use native training/holdout evidence; never invoke Tessl
+  --reviewed-tool             Use tool receipts with the fixed reviewed Python image; no execution
+  --reviewed-text             Use source-bound host-text receipts; never run inference or Tessl
   --project <directory>       Project root; defaults to the current directory
   --artifacts <directory>     Reuse an exact .skill-press/staging/<run>/artifacts package
-  --review-evidence <file>    Private Tessl Quality evidence file
-  --eval-evidence <file>      Private Tessl Impact evidence file
+  --review-evidence <file>    Native training or legacy Tessl Quality evidence
+  --eval-evidence <file>      Native holdout or legacy Tessl Impact evidence
   --eval-source <directory>   Evaluated scenario source inside the project
   --dry-run                   Prepare and validate locally without contacting Skill Press
   --resume <receipt>          Retry or refresh the exact private submission journal
@@ -48,14 +52,14 @@ interface SubmissionCliIssue {
 interface SubmitArguments {
   readonly project: string;
   readonly artifactsPath?: string;
-  readonly evidence: TesslReleaseGateOptions;
+  readonly evidence: ReleaseGateOptions;
   readonly dryRun: boolean;
   readonly resumeReceiptPath?: string;
   readonly json: boolean;
 }
 
 interface SubmissionCommandOperations {
-  readonly checkGate: typeof checkTesslReleaseGate;
+  readonly checkGate: typeof checkReleaseGate;
   readonly stage: typeof stageCanonicalSkill;
   readonly package: typeof packageStagedSkill;
   readonly load: typeof loadPackagedSkill;
@@ -98,7 +102,13 @@ function parse(args: readonly string[]): SubmitArguments {
   ]);
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index] as string;
-    if (argument === "--json" || argument === "--dry-run") {
+    if (
+      argument === "--json" ||
+      argument === "--dry-run" ||
+      argument === "--native" ||
+      argument === "--reviewed-text" ||
+      argument === "--reviewed-tool"
+    ) {
       if (booleans.has(argument))
         throw new SubmitUsageError(`${argument} may be specified only once.`);
       booleans.add(argument);
@@ -117,6 +127,11 @@ function parse(args: readonly string[]): SubmitArguments {
   if (booleans.has("--dry-run") && values.has("--resume")) {
     throw new SubmitUsageError("--dry-run cannot be combined with --resume.");
   }
+  if (
+    ["--native", "--reviewed-text", "--reviewed-tool"].filter((flag) => booleans.has(flag)).length >
+    1
+  )
+    throw new SubmitUsageError("Select exactly one evidence protocol.");
   if (values.has("--resume") && !values.has("--artifacts")) {
     throw new SubmitUsageError("--resume requires --artifacts to bind the exact prior package.");
   }
@@ -126,6 +141,9 @@ function parse(args: readonly string[]): SubmitArguments {
       ? {}
       : { artifactsPath: values.get("--artifacts") as string }),
     evidence: {
+      ...(booleans.has("--native") ? { provider: "native" as const } : {}),
+      ...(booleans.has("--reviewed-text") ? { provider: "reviewed-text" as const } : {}),
+      ...(booleans.has("--reviewed-tool") ? { provider: "reviewed-tool" as const } : {}),
       reviewEvidencePath: required("--review-evidence"),
       evalEvidencePath: required("--eval-evidence"),
       evalSource: required("--eval-source"),
@@ -139,7 +157,7 @@ function parse(args: readonly string[]): SubmitArguments {
 }
 
 const defaultOperations: SubmissionCommandOperations = Object.freeze({
-  checkGate: checkTesslReleaseGate,
+  checkGate: checkReleaseGate,
   stage: stageCanonicalSkill,
   package: packageStagedSkill,
   load: loadPackagedSkill,
@@ -202,10 +220,6 @@ function isUnavailableStorageError(error: unknown): boolean {
   );
 }
 
-function gateHuman(gate: TesslReleaseGateReport): string {
-  return `Tessl release gate: ${gate.passed ? "passed" : "blocked"}\nQuality: ${gate.scores.quality ?? "unavailable"}/${gate.thresholds.quality}\nImpact: ${gate.scores.impact ?? "unavailable"}/${gate.thresholds.impact}\n`;
-}
-
 function receiptHuman(receipt: SubmissionReceipt): string {
   const remote =
     receipt.remote === null ? "not submitted" : `${receipt.remote.status} (${receipt.remote.url})`;
@@ -215,7 +229,7 @@ function receiptHuman(receipt: SubmissionReceipt): string {
 
 async function packageForSubmission(
   parsed: SubmitArguments,
-  gate: TesslReleaseGateReport,
+  gate: ReleaseGateReport,
   operations: SubmissionCommandOperations,
 ): Promise<LoadedSkillPackageArtifacts> {
   if (parsed.artifactsPath !== undefined) {
