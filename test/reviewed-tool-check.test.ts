@@ -137,7 +137,8 @@ it.each([
 it("documents eval-tool and handles unavailable output", async () => {
   const io = evalIo();
   expect(await runCli(["eval-tool", "--help"], io)).toBe(0);
-  expect(io.stdout.mock.calls[0][0]).toContain("eleven per pair");
+  expect(io.stdout.mock.calls[0][0]).toContain("eleven per v1 pair, seventeen per v2 file pair");
+  expect(io.stdout.mock.calls[0][0]).toContain("not quality passed");
   io.stderr.mockImplementation(() => {
     throw new Error("broken output");
   });

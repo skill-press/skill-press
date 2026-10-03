@@ -1,6 +1,16 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cp, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
@@ -199,7 +209,7 @@ it("rejects a commit changed during project preparation", async () => {
   );
 });
 
-it("previews exact original bytes through the CLI, but blocks model execution and v1 admission", async () => {
+it("previews original bytes but blocks insufficient execution budget and v1 admission", async () => {
   const root = await fixture();
   const prepared = await prepareToolFilePreview(root, "training");
   expect(prepared?.scenarios[0].files[0].content).toEqual(data);
@@ -222,7 +232,7 @@ it("previews exact original bytes through the CLI, but blocks model execution an
     expect(report).toMatchObject({
       modelCalls: 0,
       readinessAssessed: false,
-      executionSupported: false,
+      executionSupported: true,
       releaseAuthorized: false,
     });
     expect(report.scenarios[0].files[0]).toMatchObject({
@@ -241,6 +251,110 @@ it("previews exact original bytes through the CLI, but blocks model execution an
   expect(
     await runCli(["eval-tool", "--project", root, "--suite", "training", "--dry-run"], io),
   ).toBe(1);
+});
+
+it.each([
+  "complete",
+  "incomplete",
+  "cancel",
+  "suite-error",
+  "progress-error",
+  "closed-output",
+  "closed-error",
+])("public file evaluation retains private checkpoints for %s", async (kind) => {
+  const root = await fixture();
+  const before = process.listenerCount("SIGINT");
+  const runner = vi
+    .spyOn(fileSuiteRunner, "runReviewedFileSuite")
+    .mockImplementation(async (options) => {
+      await options.onEvent({ runId: "synthetic", scenarioId: "read-files", repetition: 1 }, {
+        phase: "actor",
+        prompt: { text: "PRIVATE_PROMPT" },
+      } as never);
+      if (kind === "suite-error") throw new Error("PRIVATE_PROVIDER_FAILURE");
+      if (kind === "cancel") {
+        process.emit("SIGINT");
+        expect(options.signal?.aborted).toBe(true);
+      }
+      await options.onResult({
+        runId: "synthetic",
+        scenarioId: "read-files",
+        repetition: 1,
+        status: "failed",
+        reason: "pair_execution_failed",
+      });
+      return {
+        complete: kind !== "incomplete",
+        summary: null,
+        releaseEligible: false,
+      } as never;
+    });
+  const io = {
+    stdout: vi.fn(() => {
+      if (kind === "closed-output") throw new Error("closed");
+    }),
+    stderr: vi.fn((text: string) => {
+      if (kind === "closed-error" || (kind === "progress-error" && text.includes("eval-tool.step")))
+        throw new Error("closed");
+    }),
+  };
+  const code = await runCli(
+    [
+      "eval-tool",
+      "--project",
+      root,
+      "--suite",
+      "training",
+      "--reviewed-inputs",
+      "--max-model-calls",
+      "1000",
+      "--json",
+    ],
+    io,
+  );
+  expect(code).toBe(
+    kind === "complete" ? 0 : ["closed-output", "closed-error"].includes(kind) ? 1 : 3,
+  );
+  expect(process.listenerCount("SIGINT")).toBe(before);
+  const messages = io.stderr.mock.calls.map(([text]) => JSON.parse(text));
+  const started = messages.find((message) => message.event === "eval-tool.started");
+  expect(started.checkpointPath).toMatch(/^\.skill-press\/runs\/[a-f0-9]{64}$/);
+  const path = join(root, started.checkpointPath);
+  expect((await stat(join(path, "plan.json"))).mode & 0o777).toBe(0o600);
+  if (kind !== "closed-error")
+    expect(await readFile(join(path, "event-1.json"), "utf8")).toContain("PRIVATE_PROMPT");
+  if (["complete", "incomplete", "closed-output"].includes(kind)) {
+    expect(JSON.parse(await readFile(join(path, "diagnostic.json"), "utf8"))).toMatchObject({
+      releaseEligible: false,
+    });
+  }
+  expect(JSON.stringify(io.stdout.mock.calls)).not.toContain("PRIVATE_PROMPT");
+  expect(JSON.stringify(io.stderr.mock.calls)).not.toContain("PRIVATE_PROVIDER_FAILURE");
+  expect(runner).toHaveBeenCalledTimes(kind === "closed-error" ? 0 : 1);
+});
+
+it("rejects file execution when checkpoints are not ignored", async () => {
+  const root = await fixture();
+  await writeFile(join(root, ".gitignore"), ".skill-press/staging/\n");
+  commit(root);
+  const runner = vi.spyOn(fileSuiteRunner, "runReviewedFileSuite");
+  const io = { stdout: vi.fn(), stderr: vi.fn() };
+  expect(
+    await runCli(
+      [
+        "eval-tool",
+        "--project",
+        root,
+        "--suite",
+        "training",
+        "--reviewed-inputs",
+        "--max-model-calls",
+        "1000",
+      ],
+      io,
+    ),
+  ).toBe(3);
+  expect(runner).not.toHaveBeenCalled();
 });
 
 it.each([

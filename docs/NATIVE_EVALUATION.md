@@ -359,7 +359,7 @@ support does not establish production deployment. Independent corroboration and
 explicit curator acceptance remain mandatory; original advisory markers remain
 unchanged. Real launch candidates still need qualifying quality results.
 
-### File fixtures: input preview only
+### File fixtures: reviewed diagnostics, not admission
 
 `eval-tool --suite training --dry-run --json` also recognizes suite `schemaVersion: 2`
 using `schemas/tool-file-suite.schema.json`. This experimental version replaces inline
@@ -375,9 +375,14 @@ are verified against their declared size and digest and the clean committed sour
 Limits are 512 KiB per file, 2 MiB per scenario and 16 files. V1 limits are unchanged.
 The preview reports exact `/input/` paths, sizes and hashes without model/container
 execution. Status `input-preview` means only that these inputs were prepared;
-`readinessAssessed: false` and `executionSupported: false` are intentional.
+`readinessAssessed: false` is intentional; execution support does not establish readiness.
 
-V2 execution currently returns exit 3 with `tool.file_fixtures.execution_not_supported`.
+After reviewing both suites and all resources, invoke the same command with
+`--reviewed-inputs --max-model-calls <count>` instead of `--dry-run`. The budget
+must cover scenarios × configured repetitions × 17. Both suites must use v2.
+V2 always emits JSON. Exit 0 / `diagnostic-completed` means execution completed,
+not that quality gates passed. Exit 3 means blocked/incomplete, and output failure
+may return 1. No model is called during preview or with insufficient budget.
 An internal `reviewed-file-pair` primitive now implements versioned selection/actor/judge
 prompts and isolated original-byte access. Each judge has its own tool history and no
 Skill resources or other-arm answer. The pair permits at most 17 model calls and three
@@ -390,8 +395,11 @@ and pair-result persistence callbacks before continuing. Failures stop the suite
 partial runs have no success-rate summary. `reviewed-file-project` captures both v2
 suites, original bytes, canonical Skill resources, config and rubric from one clean
 committed source. Entry and exit checks (including exceptional exits) revalidate that
-capture; these checks do not run between model calls. Checkpoint callbacks still need
-private on-disk storage and public-command integration. These primitives are not wired into public
-execution or admission; both report `releaseEligible: false`. Existing `check`, native/text evaluation and
+capture; these checks do not run between model calls. Public execution stores its plan,
+each event and pair, and final diagnostic in ignored private `.skill-press/runs/`
+storage with mode 0600 and exclusive creation. Progress excludes prompts and answers.
+Cancellation requests stop later work; retained checkpoints are not automatically retried.
+The diagnostic reports `releaseEligible: false` and
+`tool.file_fixtures.admission_not_supported`. Existing `check`, native/text evaluation and
 release gates still reject v2 suites. Do not treat preview success as evaluation
 readiness, content qualification or permission to submit. No production support is claimed.

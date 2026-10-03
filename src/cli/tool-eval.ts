@@ -13,7 +13,8 @@ import {
 import { isSafePathInput } from "../path-safety.js";
 import { runCapturedCommand } from "../process/capture.js";
 import { assessReviewedToolMeasurement } from "../release/reviewed-tool-measurement.js";
-import { prepareToolFilePreview, verifyToolFilePreview } from "../eval/tool-file-preview.js";
+import { prepareToolFilePreview } from "../eval/tool-file-preview.js";
+import { runFileEvalCommand } from "./file-eval.js";
 
 export const TOOL_EVAL_HELP = `Run one reviewed first-party tool suite through the existing isolated Python evaluator.
 
@@ -27,17 +28,18 @@ Python runs in the existing network-isolated Docker sandbox with read-only input
 the host model remains networked. This does not authorize unreviewed third-party inputs.
 Inputs are sent to Codex using existing ChatGPT login only: gpt-6.1-sol / medium,
 reviewed codex-cli 0.160.0. No Tessl, API-billing fallback or automatic retry.
-The cap bounds explicit harness calls (at most eleven per pair), not provider-internal retries.
+The cap bounds explicit harness calls (eleven per v1 pair, seventeen per v2 file pair), not provider-internal retries.
 The interpreter digest is fixed by the reviewed tool admission policy. Both arms
 receive the same interpreter; only the selected skill arm receives skill resources.
 Project test commands are not executed. --dry-run invokes neither models nor containers.
-Suite schemaVersion 2 previews committed file fixtures only; model execution,
-readiness assessment and admission for that version are not supported yet.
+Suite schemaVersion 2 supports reviewed file diagnostics with private checkpoints.
+V2 exit 0 means preview/execution completed, not quality passed; readiness assessment
+and admission for that version are not supported yet. V2 reports are JSON.
 
 Results and per-pair checkpoints remain private under ignored .skill-press/runs/.
 Progress goes to stderr; stdout contains the final report, not prompts or answers.
 SIGINT/SIGTERM requests cancellation; provider-side cancellation is not guaranteed.
-Exit 0 means preview ready or this suite passed advisory checks; 3 means blocked
+For v1, exit 0 means preview ready or this suite passed advisory checks; 3 means blocked
 or incomplete. Both suites, eval-check and independent curator review are still
 required. No submission, publication or deployment is performed.
 `;
@@ -123,23 +125,7 @@ export async function runToolEvalCommand(args: readonly string[], io: CliIo): Pr
     const root = await realpath(resolve(options.project));
     const filePreview = await prepareToolFilePreview(root, options.suite);
     if (filePreview !== null) {
-      await verifyToolFilePreview(root, filePreview);
-      const report = {
-        command: "eval-tool",
-        ok: options.dryRun,
-        status: options.dryRun ? "input-preview" : "blocked",
-        suite: options.suite,
-        schemaVersion: 2,
-        sourceCommit: filePreview.source.commit,
-        limits: filePreview.limits,
-        scenarios: filePreview.scenarios.map(({ id, metadata }) => ({ id, files: metadata })),
-        modelCalls: 0,
-        executionSupported: false,
-        readinessAssessed: false,
-        releaseAuthorized: false,
-        issues: ["tool.file_fixtures.execution_not_supported"],
-      };
-      return (await emit(io.stdout, `${JSON.stringify(report)}\n`)) ? (options.dryRun ? 0 : 3) : 1;
+      return await runFileEvalCommand(root, options, io);
     }
     const prepared = await prepareReviewedToolProject(root, TOOL_REVIEW_POLICY.image);
     const readiness = await checkProject(root);
