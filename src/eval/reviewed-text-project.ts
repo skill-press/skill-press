@@ -11,6 +11,13 @@ import { runReviewedTextSuite, type ReviewedTextSuiteOptions } from "./reviewed-
 
 const digest = (text: string) => createHash("sha256").update(text).digest("hex");
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
+export class UnsupportedTextResourcesError extends Error {
+  constructor() {
+    super("Reviewed text projects support SKILL.md and an optional LICENSE only.");
+    this.name = "UnsupportedTextResourcesError";
+  }
+}
+
 function freeze<T>(value: T): T {
   if (value !== null && typeof value === "object") {
     for (const child of Object.values(value)) freeze(child);
@@ -33,7 +40,7 @@ export async function prepareReviewedTextProject(projectDirectory: string) {
     document === undefined ||
     staged.files.some((file) => !["SKILL.md", "LICENSE"].includes(file.path))
   )
-    throw new Error("Reviewed text projects support SKILL.md and an optional LICENSE only.");
+    throw new UnsupportedTextResourcesError();
   if (
     staged.sourceCommit !== source.commit ||
     staged.skillSha256 !== source.skillSha256 ||

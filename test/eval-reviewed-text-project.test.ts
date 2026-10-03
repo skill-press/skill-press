@@ -463,6 +463,33 @@ it("rejects bundled resources instead of silently evaluating only the document",
     { cwd: root },
   );
   await expect(prepareReviewedTextProject(root)).rejects.toThrow(/optional LICENSE only/);
+  for (const args of [
+    ["eval-text", "--project", root, "--suite", "holdout", "--dry-run", "--json"],
+    textArgs(root),
+  ]) {
+    const io = textIo();
+    expect(await runCli(args, io)).toBe(3);
+    expect(io.stdout).not.toHaveBeenCalled();
+    const diagnostic = JSON.parse(io.stderr.mock.calls.at(-1)?.[0] ?? "{}");
+    expect(diagnostic.code).toBe("text.profile.unsupported_resources");
+    expect(diagnostic.message).toContain("eval-tool --dry-run");
+    expect(diagnostic.message).not.toContain(root);
+  }
+  expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
+});
+
+it("keeps unknown preparation errors generic even when their text mimics a profile error", async () => {
+  const root = await fixture();
+  vi.spyOn(projects, "prepareReviewedTextProject").mockRejectedValue(
+    new Error(
+      "Reviewed text projects support SKILL.md and an optional LICENSE only. private-secret",
+    ),
+  );
+  const io = textIo();
+  expect(await runCli(textArgs(root), io)).toBe(3);
+  const output = io.stderr.mock.calls.at(-1)?.[0] ?? "{}";
+  expect(JSON.parse(output).code).toBe("text.evaluation.failed");
+  expect(output).not.toContain("private-secret");
   expect(runReviewedSelectedTextPair).not.toHaveBeenCalled();
 });
 

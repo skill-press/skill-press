@@ -8,6 +8,7 @@ import { createRunStorage } from "../eval/paired.js";
 import {
   prepareReviewedTextProject,
   runPreparedReviewedTextSuite,
+  UnsupportedTextResourcesError,
 } from "../eval/reviewed-text-project.js";
 import { isSafePathInput } from "../path-safety.js";
 import { runCapturedCommand } from "../process/capture.js";
@@ -222,14 +223,19 @@ export async function runTextEvalCommand(args: readonly string[], io: CliIo): Pr
         ? 0
         : 3
       : 1;
-  } catch {
+  } catch (error) {
     return (await emit(
       io.stderr,
       `${JSON.stringify({
         ok: false,
-        code: "text.evaluation.failed",
+        code:
+          error instanceof UnsupportedTextResourcesError
+            ? "text.profile.unsupported_resources"
+            : "text.evaluation.failed",
         message:
-          "Evaluation could not finish with verified source and private evidence. Retain any checkpoints; no automatic retry was attempted.",
+          error instanceof UnsupportedTextResourcesError
+            ? "Text evaluation supports SKILL.md and an optional LICENSE only. For bundled resources, preview eval-tool --dry-run with the same --project and --suite, then review its requirements before running. No model was invoked."
+            : "Evaluation could not finish with verified source and private evidence. Retain any checkpoints; no automatic retry was attempted.",
         ...(checkpointPath === undefined ? {} : { checkpointPath }),
       })}\n`,
     ))
