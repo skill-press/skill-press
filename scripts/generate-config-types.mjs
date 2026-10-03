@@ -7,6 +7,10 @@ import { compileFromFile } from "json-schema-to-typescript";
 const checkOnly = process.argv.includes("--check");
 const targets = [
   {
+    schema: "schemas/tool-file-suite.schema.json",
+    output: "src/eval/generated-tool-file-suite.ts",
+  },
+  {
     schema: "schemas/skill-press.schema.json",
     output: "src/config/generated.ts",
   },

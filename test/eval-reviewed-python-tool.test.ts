@@ -6,6 +6,8 @@ vi.mock("../src/eval/sandbox-execute.js", () => ({ executeSandboxInvocation: vi.
 import { executeSandboxInvocation } from "../src/eval/sandbox-execute.js";
 import {
   runReviewedPythonTool,
+  runReviewedPythonFileTool,
+  validateReviewedBinaryToolFiles,
   type ReviewedPythonToolRequest,
 } from "../src/eval/reviewed-python-tool.js";
 
@@ -16,6 +18,42 @@ const request = (): ReviewedPythonToolRequest => ({
   skillFiles: [{ path: "scripts/profile.py", content: "print('profile')" }],
 });
 afterEach(() => vi.resetAllMocks());
+
+it("mounts binary v2 bytes unchanged without changing sandbox boundaries", async () => {
+  const bytes = Uint8Array.from([0, 255, 128, 10]);
+  vi.mocked(executeSandboxInvocation).mockImplementation(async (invocation) => {
+    const mount = invocation.argv.filter((arg) => arg.startsWith("type=bind"))[1];
+    expect(mount).toContain("readonly");
+    const input = mount.split(",")[1].slice(4);
+    expect(await readFile(join(input, "raw.bin"))).toEqual(Buffer.from(bytes));
+    expect(invocation.argv).toContain("--network=none");
+    return { status: "passed" } as Awaited<ReturnType<typeof executeSandboxInvocation>>;
+  });
+  expect(
+    await runReviewedPythonFileTool({
+      ...request(),
+      inputs: [{ path: "raw.bin", content: bytes }],
+    }),
+  ).toMatchObject({ kind: "skillpress.reviewed-python-tool.v2", releaseEligible: false });
+});
+
+it("preserves separate binary and v1 input limits", () => {
+  expect(() => validateReviewedBinaryToolFiles(null as never)).toThrow();
+  expect(() =>
+    validateReviewedBinaryToolFiles([{ path: "a", content: "text" as never }]),
+  ).toThrow();
+  expect(() =>
+    validateReviewedBinaryToolFiles([{ path: "a", content: new Uint8Array(524289) }]),
+  ).toThrow();
+  expect(() =>
+    validateReviewedBinaryToolFiles(
+      Array.from({ length: 5 }, (_, i) => ({ path: `f${i}`, content: new Uint8Array(524288) })),
+    ),
+  ).toThrow();
+  expect(() =>
+    validateReviewedBinaryToolFiles([{ path: "a", content: new Uint8Array(524288) }]),
+  ).not.toThrow();
+});
 
 it.each([false, true])(
   "stages only supplied bytes and cleans private staging (executor throws=%s)",

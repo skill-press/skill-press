@@ -18,7 +18,35 @@ export interface ReviewedPythonToolRequest {
   readonly skillFiles: readonly ReviewedToolFile[];
 }
 
-const hash = (text: string) => createHash("sha256").update(text).digest("hex");
+const hash = (text: string | Uint8Array) => createHash("sha256").update(text).digest("hex");
+
+export interface ReviewedBinaryToolFile {
+  readonly path: string;
+  readonly content: Uint8Array;
+}
+
+export const TOOL_FILE_LIMITS = Object.freeze({
+  perFileBytes: 512 * 1024,
+  totalBytes: 2 * 1024 * 1024,
+  files: 16,
+});
+
+export function validateReviewedBinaryToolFiles(files: readonly ReviewedBinaryToolFile[]): void {
+  if (!Array.isArray(files)) throw new Error("Invalid binary tool files.");
+  // Reuse exactly the v1 mount-name, collision and reserved-path constraints.
+  validateFiles(files.map((file) => ({ path: file.path, content: "" })));
+  let total = 0;
+  for (const file of files) {
+    if (
+      !(file.content instanceof Uint8Array) ||
+      file.content.byteLength > TOOL_FILE_LIMITS.perFileBytes
+    )
+      throw new Error("Invalid binary tool file.");
+    total += file.content.byteLength;
+  }
+  if (total > TOOL_FILE_LIMITS.totalBytes)
+    throw new Error("Binary tool inputs exceed the byte limit.");
+}
 
 function validateFiles(files: readonly ReviewedToolFile[]): void {
   if (!Array.isArray(files) || files.length > 16) throw new Error("Too many tool files.");
@@ -67,9 +95,38 @@ export function validateReviewedPythonToolRequest(input: ReviewedPythonToolReque
 export async function runReviewedPythonTool(request: ReviewedPythonToolRequest) {
   const input = structuredClone(request);
   validateReviewedPythonToolRequest(input);
+  return Object.freeze({
+    kind: "skillpress.reviewed-python-tool.v1" as const,
+    ...(await executePythonBytes(input)),
+  });
+}
+
+/** Preview/development primitive only. V2 has no model or admission support yet. */
+export async function runReviewedPythonFileTool(
+  request: Omit<ReviewedPythonToolRequest, "inputs"> & {
+    readonly inputs: readonly ReviewedBinaryToolFile[];
+  },
+) {
+  const input = structuredClone(request);
+  validateReviewedPythonToolRequest({ ...input, inputs: [] });
+  validateReviewedBinaryToolFiles(input.inputs);
+  return Object.freeze({
+    kind: "skillpress.reviewed-python-tool.v2" as const,
+    ...(await executePythonBytes(input)),
+  });
+}
+
+async function executePythonBytes(
+  input: Omit<ReviewedPythonToolRequest, "inputs"> & {
+    readonly inputs: readonly { readonly path: string; readonly content: string | Uint8Array }[];
+  },
+) {
   const root = await mkdtemp(join(tmpdir(), "skillpress-python-tool-"));
   try {
-    const stage = async (name: string, files: readonly ReviewedToolFile[]) => {
+    const stage = async (
+      name: string,
+      files: readonly { readonly path: string; readonly content: string | Uint8Array }[],
+    ) => {
       const directory = join(root, name);
       await mkdir(directory, { mode: 0o755 });
       for (const file of files) {
@@ -104,7 +161,6 @@ export async function runReviewedPythonTool(request: ReviewedPythonToolRequest) 
     });
     const execution = await executeSandboxInvocation(invocation);
     return Object.freeze({
-      kind: "skillpress.reviewed-python-tool.v1" as const,
       image: input.image,
       pythonSha256: hash(input.python),
       inputs: input.inputs.map((file) => ({ path: file.path, sha256: hash(file.content) })),

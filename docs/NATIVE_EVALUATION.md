@@ -358,3 +358,27 @@ Server support requires `skillpress.tool-review@1` and migration 0011. Local/CI
 support does not establish production deployment. Independent corroboration and
 explicit curator acceptance remain mandatory; original advisory markers remain
 unchanged. Real launch candidates still need qualifying quality results.
+
+### File fixtures: input preview only
+
+`eval-tool --suite training --dry-run --json` also recognizes suite `schemaVersion: 2`
+using `schemas/tool-file-suite.schema.json`. This experimental version replaces inline
+`content` with a committed file reference, for example:
+
+```json
+{"path":"before.tgz","source":"fixtures/training/before.tgz","bytes":474200,"sha256":"<actual-lowercase-SHA-256>"}
+```
+
+The source is relative to `evals/` and must remain inside `fixtures/<suite>/`.
+References cannot cross suites, follow symlinks or escape the source tree. Files
+are verified against their declared size and digest and the clean committed source.
+Limits are 512 KiB per file, 2 MiB per scenario and 16 files. V1 limits are unchanged.
+The preview reports exact `/input/` paths, sizes and hashes without model/container
+execution. Status `input-preview` means only that these inputs were prepared;
+`readinessAssessed: false` and `executionSupported: false` are intentional.
+
+V2 execution currently returns exit 3 with `tool.file_fixtures.execution_not_supported`.
+Model prompts, independent file-reading judges, evaluation receipts and server admission
+are not implemented for this version. Existing `check`, native/text evaluation and
+release gates still reject v2 suites. Do not treat preview success as evaluation
+readiness, content qualification or permission to submit. No production support is claimed.

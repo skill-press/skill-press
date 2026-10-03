@@ -13,6 +13,7 @@ import {
 import { isSafePathInput } from "../path-safety.js";
 import { runCapturedCommand } from "../process/capture.js";
 import { assessReviewedToolMeasurement } from "../release/reviewed-tool-measurement.js";
+import { prepareToolFilePreview, verifyToolFilePreview } from "../eval/tool-file-preview.js";
 
 export const TOOL_EVAL_HELP = `Run one reviewed first-party tool suite through the existing isolated Python evaluator.
 
@@ -30,6 +31,8 @@ The cap bounds explicit harness calls (at most eleven per pair), not provider-in
 The interpreter digest is fixed by the reviewed tool admission policy. Both arms
 receive the same interpreter; only the selected skill arm receives skill resources.
 Project test commands are not executed. --dry-run invokes neither models nor containers.
+Suite schemaVersion 2 previews committed file fixtures only; model execution,
+readiness assessment and admission for that version are not supported yet.
 
 Results and per-pair checkpoints remain private under ignored .skill-press/runs/.
 Progress goes to stderr; stdout contains the final report, not prompts or answers.
@@ -118,6 +121,26 @@ export async function runToolEvalCommand(args: readonly string[], io: CliIo): Pr
   let checkpointPath: string | undefined;
   try {
     const root = await realpath(resolve(options.project));
+    const filePreview = await prepareToolFilePreview(root, options.suite);
+    if (filePreview !== null) {
+      await verifyToolFilePreview(root, filePreview);
+      const report = {
+        command: "eval-tool",
+        ok: options.dryRun,
+        status: options.dryRun ? "input-preview" : "blocked",
+        suite: options.suite,
+        schemaVersion: 2,
+        sourceCommit: filePreview.source.commit,
+        limits: filePreview.limits,
+        scenarios: filePreview.scenarios.map(({ id, metadata }) => ({ id, files: metadata })),
+        modelCalls: 0,
+        executionSupported: false,
+        readinessAssessed: false,
+        releaseAuthorized: false,
+        issues: ["tool.file_fixtures.execution_not_supported"],
+      };
+      return (await emit(io.stdout, `${JSON.stringify(report)}\n`)) ? (options.dryRun ? 0 : 3) : 1;
+    }
     const prepared = await prepareReviewedToolProject(root, TOOL_REVIEW_POLICY.image);
     const readiness = await checkProject(root);
     const plannedPairs =
