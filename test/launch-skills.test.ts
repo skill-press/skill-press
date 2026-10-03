@@ -53,6 +53,7 @@ describe("launch skill source candidates", () => {
     "csv-quality-check",
     "ci-revision-triage",
     "task-report-selection",
+    "report-edit",
   ])("stages and packages actual %s source in a separate author project", async (name) => {
     const root = await mkdtemp(join(tmpdir(), "launch-author-"));
     try {
@@ -102,6 +103,7 @@ describe("launch skill source candidates", () => {
     "csv-quality-check",
     "ci-revision-triage",
     "task-report-selection",
+    "report-edit",
   ])("validates the complete %s skill tree", async (name) => {
     expect(await validateAgentSkill(resolve("skills", name), { expectedName: name })).toMatchObject(
       {
