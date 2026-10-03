@@ -384,7 +384,11 @@ Skill resources or other-arm answer. The pair permits at most 17 model calls and
 Python calls per actor/judge, persists each requested tool action before execution,
 and stops on persistence, model or infrastructure failure without retry. A successful
 judge tool call is required when files exist; it does not prove adequate semantic review.
-This primitive is not wired into public execution, suite checkpoints or admission and
-always reports `releaseEligible: false`. Existing `check`, native/text evaluation and
+The internal `reviewed-file-suite` runner preflights every scenario before inference,
+enforces a whole-suite model-call budget, runs repetitions serially, and awaits event
+and pair-result persistence callbacks before continuing. Failures stop the suite;
+partial runs have no success-rate summary. These callbacks still need project-bound
+private storage and public-command integration. Neither primitive is wired into public
+execution or admission; both report `releaseEligible: false`. Existing `check`, native/text evaluation and
 release gates still reject v2 suites. Do not treat preview success as evaluation
 readiness, content qualification or permission to submit. No production support is claimed.
